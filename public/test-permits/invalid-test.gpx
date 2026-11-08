@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1">
+  <metadata>
+    <name>Invalid GPX File</name>
+    <desc>This file is intentionally malformed for testing</desc>
+  </metadata>
+  <trk>
+    <name>Invalid Route</name>
+    <trkseg>
+      <trkpt lat="invalid" lon="data">
+        <ele>broken</ele>
+      </trkpt>
+    </trkseg>
+</gpx>

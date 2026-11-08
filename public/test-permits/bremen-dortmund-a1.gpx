@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="VEMAGS Route Export" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata>
+    <name>Bremen → Dortmund A1</name>
+    <desc>Heavy transport permit route DE-HB-2026-00734</desc>
+    <time>2026-11-08T12:00:00Z</time>
+  </metadata>
+  <trk>
+    <name>Bremen Heavy Cargo → Dortmund Industrial</name>
+    <trkseg>
+      <trkpt lat="53.0793" lon="8.8017">
+        <ele>5</ele>
+        <name>Bremen Heavy Cargo Terminal</name>
+      </trkpt>
+      <trkpt lat="52.9500" lon="8.7500">
+        <ele>10</ele>
+      </trkpt>
+      <trkpt lat="52.8000" lon="8.6500">
+        <ele>15</ele>
+      </trkpt>
+      <trkpt lat="52.6500" lon="8.5500">
+        <ele>20</ele>
+      </trkpt>
+      <trkpt lat="52.5000" lon="8.4500">
+        <ele>25</ele>
+      </trkpt>
+      <trkpt lat="52.3500" lon="8.3500">
+        <ele>30</ele>
+      </trkpt>
+      <trkpt lat="52.2000" lon="8.2500">
+        <ele>35</ele>
+      </trkpt>
+      <trkpt lat="52.0500" lon="8.1500">
+        <ele>40</ele>
+      </trkpt>
+      <trkpt lat="51.9000" lon="8.0000">
+        <ele>45</ele>
+      </trkpt>
+      <trkpt lat="51.7500" lon="7.8500">
+        <ele>50</ele>
+      </trkpt>
+      <trkpt lat="51.6000" lon="7.7000">
+        <ele>55</ele>
+      </trkpt>
+      <trkpt lat="51.5136" lon="7.4653">
+        <ele>85</ele>
+        <name>Dortmund Industrial Park</name>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>

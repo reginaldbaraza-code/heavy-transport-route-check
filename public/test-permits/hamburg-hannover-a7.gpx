@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="VEMAGS Route Export" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata>
+    <name>Hamburg → Hannover A7</name>
+    <desc>Heavy transport permit route DE-HH-2026-01845</desc>
+    <time>2026-11-08T12:00:00Z</time>
+  </metadata>
+  <trk>
+    <name>Hamburg Port → Hannover Logistics</name>
+    <trkseg>
+      <trkpt lat="53.5511" lon="9.9937">
+        <ele>5</ele>
+        <name>Hamburg Port Terminal</name>
+      </trkpt>
+      <trkpt lat="53.5000" lon="9.9700">
+        <ele>10</ele>
+      </trkpt>
+      <trkpt lat="53.4500" lon="9.9500">
+        <ele>15</ele>
+      </trkpt>
+      <trkpt lat="53.3500" lon="9.9200">
+        <ele>20</ele>
+      </trkpt>
+      <trkpt lat="53.2500" lon="9.9000">
+        <ele>25</ele>
+      </trkpt>
+      <trkpt lat="53.1500" lon="9.8700">
+        <ele>30</ele>
+      </trkpt>
+      <trkpt lat="53.0500" lon="9.8200">
+        <ele>35</ele>
+      </trkpt>
+      <trkpt lat="52.9500" lon="9.7800">
+        <ele>40</ele>
+      </trkpt>
+      <trkpt lat="52.8500" lon="9.7500">
+        <ele>45</ele>
+      </trkpt>
+      <trkpt lat="52.7500" lon="9.7200">
+        <ele>50</ele>
+      </trkpt>
+      <trkpt lat="52.6500" lon="9.6900">
+        <ele>55</ele>
+      </trkpt>
+      <trkpt lat="52.5500" lon="9.6600">
+        <ele>60</ele>
+      </trkpt>
+      <trkpt lat="52.4500" lon="9.6400">
+        <ele>65</ele>
+      </trkpt>
+      <trkpt lat="52.3737" lon="9.7381">
+        <ele>55</ele>
+        <name>Hannover Logistics Hub</name>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>

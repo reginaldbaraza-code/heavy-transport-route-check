@@ -1,0 +1,15 @@
+{
+  "permitNumber": "DE-HB-2026-00734",
+  "route": "Bremen → Dortmund via A1",
+  "origin": "Bremen Heavy Cargo Terminal",
+  "destination": "Dortmund Industrial Park",
+  "validFrom": "2026-11-12T00:00:00+01:00",
+  "validUntil": "2026-11-18T23:59:59+01:00",
+  "vehicle": {
+    "width": 3.5,
+    "height": 4.2,
+    "length": 32.0,
+    "grossWeight": 72
+  },
+  "routeDescription": "A1 motorway from Bremen via Münster to Dortmund. Total distance approximately 220 km. Weekend transport allowed."
+}

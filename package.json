@@ -10,11 +10,17 @@
     "format": "oxfmt"
   },
   "dependencies": {
+    "@turf/boolean-intersects": "^7.4.0",
+    "@turf/buffer": "^7.4.0",
+    "@turf/turf": "^7.4.0",
+    "@types/geojson": "^7946.0.16",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.47.0",
+    "maplibre-gl": "^6.17.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-router-dom": "^7.18.4"
+    "react-router-dom": "^7.18.4",
+    "xml2js": "^0.6.2"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
@@ -22,6 +28,7 @@
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@vercel/node": "^30.0.0",
     "@vitejs/plugin-react": "^6.0.0",
     "oxfmt": "^0.2.0",
     "tailwindcss": "^4.0.0",

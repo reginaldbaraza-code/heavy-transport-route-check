@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.0" creator="VEMAGS Route Export" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata>
+    <name>Duisburg → Köln A3</name>
+    <desc>Heavy transport permit route DE-NW-2026-02198</desc>
+    <time>2026-11-08T12:00:00Z</time>
+  </metadata>
+  <trk>
+    <name>Duisburg Logistics → Köln Wind Terminal</name>
+    <trkseg>
+      <trkpt lat="51.4344" lon="6.7623">
+        <ele>33</ele>
+        <name>Duisburg Logistics Yard</name>
+      </trkpt>
+      <trkpt lat="51.3500" lon="6.8000">
+        <ele>35</ele>
+      </trkpt>
+      <trkpt lat="51.2500" lon="6.8500">
+        <ele>38</ele>
+      </trkpt>
+      <trkpt lat="51.1500" lon="6.9000">
+        <ele>40</ele>
+      </trkpt>
+      <trkpt lat="51.0500" lon="6.9500">
+        <ele>42</ele>
+      </trkpt>
+      <trkpt lat="50.9419" lon="6.9603">
+        <ele>37</ele>
+        <name>Köln Wind Terminal</name>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>

@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="VEMAGS Route Export" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata>
+    <name>München → Stuttgart A8</name>
+    <desc>Heavy transport permit route DE-BY-2026-04621</desc>
+    <time>2026-11-08T12:00:00Z</time>
+  </metadata>
+  <trk>
+    <name>München Wind Farm → Stuttgart Industrial</name>
+    <trkseg>
+      <trkpt lat="48.1351" lon="11.5820">
+        <ele>519</ele>
+        <name>München Wind Farm</name>
+      </trkpt>
+      <trkpt lat="48.1500" lon="11.4500">
+        <ele>515</ele>
+      </trkpt>
+      <trkpt lat="48.1800" lon="11.3000">
+        <ele>510</ele>
+      </trkpt>
+      <trkpt lat="48.2000" lon="11.1500">
+        <ele>505</ele>
+      </trkpt>
+      <trkpt lat="48.2200" lon="11.0000">
+        <ele>500</ele>
+      </trkpt>
+      <trkpt lat="48.2500" lon="10.8500">
+        <ele>495</ele>
+      </trkpt>
+      <trkpt lat="48.2800" lon="10.7000">
+        <ele>490</ele>
+      </trkpt>
+      <trkpt lat="48.3200" lon="10.5500">
+        <ele">485</ele>
+      </trkpt>
+      <trkpt lat="48.3600" lon="10.4000">
+        <ele>480</ele>
+      </trkpt>
+      <trkpt lat="48.4000" lon="10.2500">
+        <ele>475</ele>
+      </trkpt>
+      <trkpt lat="48.4400" lon="10.1000">
+        <ele>470</ele>
+      </trkpt>
+      <trkpt lat="48.4800" lon="9.9500">
+        <ele>465</ele>
+      </trkpt>
+      <trkpt lat="48.5200" lon="9.8000">
+        <ele>460</ele>
+      </trkpt>
+      <trkpt lat="48.5600" lon="9.6500">
+        <ele>455</ele>
+      </trkpt>
+      <trkpt lat="48.6000" lon="9.5000">
+        <ele>450</ele>
+      </trkpt>
+      <trkpt lat="48.6400" lon="9.3500">
+        <ele>345</ele>
+      </trkpt>
+      <trkpt lat="48.6800" lon="9.2000">
+        <ele>240</ele>
+      </trkpt>
+      <trkpt lat="48.7758" lon="9.1829">
+        <ele>207</ele>
+        <name>Stuttgart Industrial Complex</name>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>

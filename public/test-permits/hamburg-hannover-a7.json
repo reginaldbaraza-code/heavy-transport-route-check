@@ -1,0 +1,15 @@
+{
+  "permitNumber": "DE-HH-2026-01845",
+  "route": "Hamburg → Hannover via A7",
+  "origin": "Hamburg Port Terminal",
+  "destination": "Hannover Logistics Hub",
+  "validFrom": "2026-11-10T00:00:00+01:00",
+  "validUntil": "2026-11-15T23:59:59+01:00",
+  "vehicle": {
+    "width": 3.2,
+    "height": 4.5,
+    "length": 28.5,
+    "grossWeight": 60
+  },
+  "routeDescription": "A7 motorway from Hamburg via Soltau to Hannover. Total distance approximately 150 km. Night transport preferred 22:00-06:00."
+}
