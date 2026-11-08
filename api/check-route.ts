@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import * as turf from '@turf/turf';
-import { parseStringPromise } from 'xml2js';
+import xml2js from 'xml2js';
 
 export const config = {
-  maxDuration: 60,
+  maxDuration: 30,
 };
 
 type GPXPoint = {
@@ -53,10 +53,12 @@ type RouteCheckResult = {
 
 async function parseGPX(gpxContent: string): Promise<GPXPoint[]> {
   try {
-    const parsed = await parseStringPromise(gpxContent, {
+    const parser = new xml2js.Parser({
       explicitArray: false,
       mergeAttrs: true,
     });
+    
+    const parsed = await parser.parseStringPromise(gpxContent);
 
     const points: GPXPoint[] = [];
     const track = parsed?.gpx?.trk;
@@ -97,7 +99,15 @@ async function parseGPX(gpxContent: string): Promise<GPXPoint[]> {
     return points;
   } catch (error) {
     console.error('GPX parsing error:', error);
-    throw new Error(`Invalid GPX file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    
+    if (error instanceof Error) {
+      if (error.message.includes('track') || error.message.includes('points')) {
+        throw error;
+      }
+      throw new Error(`Invalid GPX file format: ${error.message}`);
+    }
+    
+    throw new Error('Invalid GPX file: Unable to parse XML structure');
   }
 }
 
@@ -129,8 +139,40 @@ function calculateRouteDistance(points: GPXPoint[]): number {
   return Math.round(totalDistance);
 }
 
+function determineAffectedRoads(points: GPXPoint[]): string[] {
+  // Simple heuristic: determine which Autobahn roads (A1-A99) the route might touch
+  // based on rough geographic areas in Germany
+  
+  const minLat = Math.min(...points.map(p => p.lat));
+  const maxLat = Math.max(...points.map(p => p.lat));
+  const minLng = Math.min(...points.map(p => p.lng));
+  const maxLng = Math.max(...points.map(p => p.lng));
+  
+  const roads: string[] = [];
+  
+  // North-South routes
+  if (minLng < 10 && maxLng > 8) roads.push('A7'); // Hamburg-Kassel-Würzburg
+  if (minLng < 9 && maxLng > 7) roads.push('A1'); // Hamburg-Bremen-Dortmund-Köln
+  if (minLng < 12 && maxLng > 10) roads.push('A9'); // Berlin-Leipzig-Nürnberg-München
+  
+  // East-West routes
+  if (minLat < 52 && maxLat > 50 && minLng < 9 && maxLng > 6) roads.push('A2'); // Dortmund-Hannover-Berlin
+  if (minLat < 51 && maxLat > 49 && minLng < 9 && maxLng > 6) roads.push('A3'); // Köln-Frankfurt-Nürnberg
+  if (minLat < 49 && maxLat > 47 && minLng < 11 && maxLng > 8) roads.push('A8'); // Stuttgart-München
+  
+  // Add some major connectors
+  if (minLat < 53 && maxLat > 51 && minLng < 11) roads.push('A27'); // Bremen area
+  if (minLat < 52 && maxLat > 50 && minLng < 10) roads.push('A31', 'A33'); // Northern routes
+  
+  // If no roads determined, return main ones to check
+  if (roads.length === 0) {
+    return ['A1', 'A3', 'A7', 'A8', 'A9'];
+  }
+  
+  return [...new Set(roads)];
+}
+
 function extractWidthRestriction(description: string): number | null {
-  // Look for patterns like "3.5 m", "3,5m", "width 3.5"
   const patterns = [
     /(\d+[.,]\d+)\s*m/i,
     /width[:\s]*(\d+[.,]\d+)/i,
@@ -156,13 +198,11 @@ function checkVehicleAgainstEvent(
 ): { exceeds: boolean; restriction?: number; type?: string } {
   const description = [event.title, event.description].join(' ').toLowerCase();
   
-  // Check for width restrictions
   const widthRestriction = extractWidthRestriction(description);
   if (widthRestriction && vehicle.width > widthRestriction) {
     return { exceeds: true, restriction: widthRestriction, type: 'width' };
   }
   
-  // Check for blocked lanes
   if (event.isBlocked && event.isBlocked.length > 0) {
     const blockedText = event.isBlocked.join(' ').toLowerCase();
     if (blockedText.includes('all') || blockedText.includes('alle')) {
@@ -173,19 +213,130 @@ function checkVehicleAgainstEvent(
   return { exceeds: false };
 }
 
-async function fetchAutobahnEvents(): Promise<any> {
+async function fetchRoadEvents(road: string, type: 'roadworks' | 'closure' | 'warning'): Promise<any[]> {
   try {
-    const response = await fetch(`${process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : 'http://localhost:3000'}/api/autobahn-events`, {
-      signal: AbortSignal.timeout(25000),
-    });
+    const response = await fetch(
+      `https://verkehr.autobahn.de/o/autobahn/${road}/services/${type}`,
+      {
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(5000),
+      }
+    );
     
-    if (!response.ok) {
-      throw new Error(`Events API returned ${response.status}`);
-    }
+    if (!response.ok) return [];
     
-    return await response.json();
+    const data = await response.json();
+    const key = type === 'roadworks' ? 'roadworks' : type === 'closure' ? 'closure' : 'warning';
+    return data[key] || [];
   } catch (error) {
-    console.error('Failed to fetch Autobahn events:', error);
+    console.error(`Error fetching ${type} for ${road}:`, error);
+    return [];
+  }
+}
+
+function calculateAge(timestamp?: string): string {
+  if (!timestamp) return 'Recently';
+  
+  try {
+    const eventTime = new Date(timestamp);
+    if (isNaN(eventTime.getTime())) return 'Recently';
+    
+    const now = new Date();
+    const diffMs = now.getTime() - eventTime.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffDays > 0) return `${diffDays}d ago`;
+    if (diffHours > 0) return `${diffHours}h ago`;
+    if (diffMins > 0) return `${diffMins}m ago`;
+    return 'Just now';
+  } catch {
+    return 'Recently';
+  }
+}
+
+async function fetchAutobahnEventsForRoute(roads: string[]): Promise<any> {
+  try {
+    const allEvents = await Promise.all(
+      roads.map(async (road) => {
+        const [roadworks, closures, warnings] = await Promise.all([
+          fetchRoadEvents(road, 'roadworks'),
+          fetchRoadEvents(road, 'closure'),
+          fetchRoadEvents(road, 'warning'),
+        ]);
+        
+        return { road, roadworks, closures, warnings };
+      })
+    );
+    
+    const processedRoadworks = allEvents.flatMap(({ roadworks }) =>
+      roadworks.map((item: any) => ({
+        id: item.identifier || `rw-${Date.now()}-${Math.random()}`,
+        title: item.title || 'Roadworks',
+        description: [
+          ...(Array.isArray(item.subtitle) ? item.subtitle : item.subtitle ? [item.subtitle] : []),
+          ...(Array.isArray(item.description) ? item.description : item.description ? [item.description] : [])
+        ].filter(Boolean).join(' · ') || 'Roadworks in progress',
+        lat: parseFloat(item.coordinate?.lat),
+        lng: parseFloat(item.coordinate?.long),
+        type: 'roadworks' as const,
+        severity: item.isBlocked?.length ? 'warning' as const : 'info' as const,
+        extent: item.extent,
+        isBlocked: item.isBlocked,
+        timestamp: item.startTimestamp,
+        age: calculateAge(item.startTimestamp),
+        confidence: 'high' as const,
+      }))
+    ).filter(item => !isNaN(item.lat) && !isNaN(item.lng));
+
+    const processedClosures = allEvents.flatMap(({ closures }) =>
+      closures.map((item: any) => ({
+        id: item.identifier || `cl-${Date.now()}-${Math.random()}`,
+        title: item.title || 'Closure',
+        description: [
+          ...(Array.isArray(item.subtitle) ? item.subtitle : item.subtitle ? [item.subtitle] : []),
+          ...(Array.isArray(item.description) ? item.description : item.description ? [item.description] : [])
+        ].filter(Boolean).join(' · ') || 'Road closure in effect',
+        lat: parseFloat(item.coordinate?.lat),
+        lng: parseFloat(item.coordinate?.long),
+        type: 'closures' as const,
+        severity: 'danger' as const,
+        extent: item.extent,
+        timestamp: item.startTimestamp,
+        age: calculateAge(item.startTimestamp),
+        confidence: 'high' as const,
+      }))
+    ).filter(item => !isNaN(item.lat) && !isNaN(item.lng));
+
+    const processedWarnings = allEvents.flatMap(({ warnings }) =>
+      warnings.map((item: any) => ({
+        id: item.identifier || `wn-${Date.now()}-${Math.random()}`,
+        title: item.title || 'Warning',
+        description: [
+          ...(Array.isArray(item.subtitle) ? item.subtitle : item.subtitle ? [item.subtitle] : []),
+          ...(Array.isArray(item.description) ? item.description : item.description ? [item.description] : [])
+        ].filter(Boolean).join(' · ') || 'Traffic warning',
+        lat: parseFloat(item.coordinate?.lat),
+        lng: parseFloat(item.coordinate?.long),
+        type: 'warnings' as const,
+        severity: 'warning' as const,
+        extent: item.extent,
+        timestamp: item.startTimestamp,
+        age: calculateAge(item.startTimestamp),
+        confidence: 'medium' as const,
+      }))
+    ).filter(item => !isNaN(item.lat) && !isNaN(item.lng));
+
+    return {
+      roadworks: processedRoadworks,
+      closures: processedClosures,
+      warnings: processedWarnings,
+      source: 'Autobahn GmbH (verkehr.autobahn.de)',
+      roads: roads.join(', '),
+    };
+  } catch (error) {
+    console.error('Error fetching Autobahn events:', error);
     return null;
   }
 }
@@ -216,7 +367,6 @@ export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
-  // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -233,32 +383,44 @@ export default async function handler(
     const { gpxContent, vehicle, permitNumber } = req.body;
 
     if (!gpxContent) {
-      return res.status(400).json({ error: 'GPX content is required' });
+      return res.status(400).json({ 
+        error: 'GPX content is required',
+        hint: 'Please provide a valid GPX file with route data.',
+      });
     }
 
     if (!vehicle || typeof vehicle.width !== 'number') {
-      return res.status(400).json({ error: 'Valid vehicle dimensions are required' });
+      return res.status(400).json({ 
+        error: 'Valid vehicle dimensions are required',
+        hint: 'Provide width, height, length, and grossWeight as numbers.',
+      });
     }
 
-    // Parse GPX
-    const routePoints = await parseGPX(gpxContent);
+    let routePoints: GPXPoint[];
+    try {
+      routePoints = await parseGPX(gpxContent);
+    } catch (parseError) {
+      return res.status(400).json({ 
+        error: parseError instanceof Error ? parseError.message : 'Invalid GPX file',
+        hint: 'Please upload a valid GPX file with track points containing latitude and longitude coordinates.',
+      });
+    }
     
-    // Calculate route properties
     const distance = calculateRouteDistance(routePoints);
     const origin = routePoints[0].name || 'Start';
     const destination = routePoints[routePoints.length - 1].name || 'End';
     
-    // Create corridor buffer (5km on each side)
     const corridor = createRouteCorridor(routePoints, 5);
     
-    // Fetch live Autobahn events
-    const autobahnData = await fetchAutobahnEvents();
-    const degraded = !autobahnData || !autobahnData.source.includes('verkehr.autobahn.de');
+    const affectedRoads = determineAffectedRoads(routePoints);
+    console.log('Checking roads:', affectedRoads.join(', '));
+    
+    const autobahnData = await fetchAutobahnEventsForRoute(affectedRoads);
+    const degraded = !autobahnData;
     
     const evidence: RouteEvidence[] = [];
     
     if (autobahnData) {
-      // Check roadworks
       for (const event of autobahnData.roadworks || []) {
         if (checkIntersection(corridor, event.lat, event.lng)) {
           const vehicleCheck = checkVehicleAgainstEvent(event, vehicle);
@@ -270,23 +432,23 @@ export default async function handler(
                 ? `Width restriction ${vehicleCheck.restriction}m – vehicle exceeds`
                 : 'Roadworks blocking route',
               detail: event.description,
-              source: 'Autobahn GmbH roadworks feed',
-              age: event.age || 'Unknown',
+              source: `Live: Autobahn GmbH ${autobahnData.roads}`,
+              age: event.age,
               confidence: 'high',
               state: 'danger',
               category: 'roadworks',
               lat: event.lat,
               lng: event.lng,
             });
-          } else {
+          } else if (event.severity === 'warning') {
             evidence.push({
               id: event.id,
               title: event.title,
               detail: event.description,
-              source: 'Autobahn GmbH roadworks feed',
-              age: event.age || 'Unknown',
+              source: `Live: Autobahn GmbH ${autobahnData.roads}`,
+              age: event.age,
               confidence: 'high',
-              state: event.severity === 'warning' ? 'warning' : 'clear',
+              state: 'warning',
               category: 'roadworks',
               lat: event.lat,
               lng: event.lng,
@@ -295,15 +457,14 @@ export default async function handler(
         }
       }
 
-      // Check closures
       for (const event of autobahnData.closures || []) {
         if (checkIntersection(corridor, event.lat, event.lng)) {
           evidence.push({
             id: event.id,
             title: 'Full closure on permitted route',
             detail: event.description,
-            source: 'Autobahn GmbH traffic feed',
-            age: event.age || 'Unknown',
+            source: `Live: Autobahn GmbH ${autobahnData.roads}`,
+            age: event.age,
             confidence: 'high',
             state: 'danger',
             category: 'closures',
@@ -313,15 +474,14 @@ export default async function handler(
         }
       }
 
-      // Check warnings
       for (const event of autobahnData.warnings || []) {
         if (checkIntersection(corridor, event.lat, event.lng)) {
           evidence.push({
             id: event.id,
             title: event.title,
             detail: event.description,
-            source: 'Autobahn GmbH warning feed',
-            age: event.age || 'Unknown',
+            source: `Live: Autobahn GmbH ${autobahnData.roads}`,
+            age: event.age,
             confidence: 'medium',
             state: 'warning',
             category: 'roadworks',
@@ -332,17 +492,13 @@ export default async function handler(
       }
     }
 
-    // If no issues found and not degraded, add a "clear" evidence item
     if (evidence.length === 0 && !degraded) {
       evidence.push({
         id: 'route-clear',
         title: 'No active roadworks or closures',
-        detail: 'All checked sources show no disruptions on the permitted route corridor.',
-        source: 'Autobahn GmbH feeds',
-        age: autobahnData?.cachedAt ? new Date(autobahnData.cachedAt).toLocaleString('en-US', {
-          hour: '2-digit',
-          minute: '2-digit',
-        }) : 'Unknown',
+        detail: `All checked Autobahn routes (${autobahnData?.roads || 'none'}) show no disruptions on the permitted route corridor.`,
+        source: `Live: Autobahn GmbH checked ${new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`,
+        age: 'Just checked',
         confidence: 'high',
         state: 'clear',
         category: 'roadworks',
@@ -366,7 +522,7 @@ export default async function handler(
         : verdict === 'HOLD'
           ? `${issueCount} blocking ${issueCount === 1 ? 'issue' : 'issues'} detected on permitted route.`
           : degraded
-            ? 'The Autobahn data source is temporarily unavailable.'
+            ? 'The Autobahn data source is temporarily unavailable. Retry or verify manually.'
             : `${evidence.length} item${evidence.length === 1 ? '' : 's'} require verification.`,
       impact: `Selected vehicle: ${vehicle.width.toFixed(2)}m W × ${vehicle.height.toFixed(2)}m H × ${vehicle.length.toFixed(1)}m L · ${vehicle.grossWeight}t${degraded ? '. Data source unavailable – cannot confirm route is clear.' : ''}`,
       confidence,
@@ -386,16 +542,32 @@ export default async function handler(
   } catch (error) {
     console.error('Route check error:', error);
     
-    if (error instanceof Error && error.message.includes('Invalid GPX')) {
-      return res.status(400).json({ 
-        error: error.message,
-        hint: 'Please upload a valid GPX file with track points containing latitude and longitude coordinates.',
-      });
-    }
-    
-    return res.status(500).json({ 
-      error: 'Failed to check route',
-      details: error instanceof Error ? error.message : 'Unknown error',
+    // Return degraded VERIFY verdict instead of 500
+    return res.status(200).json({
+      verdict: 'VERIFY',
+      title: 'Can't confirm route – check failed',
+      summary: 'An error occurred while checking the route. Please verify manually or retry.',
+      impact: 'Unable to complete automated route check due to technical error.',
+      confidence: 'medium',
+      issueCount: 0,
+      evidence: [{
+        id: 'system-error',
+        title: 'Route check system error',
+        detail: error instanceof Error ? error.message : 'Unknown error occurred',
+        source: 'Route check system',
+        age: 'Just now',
+        confidence: 'medium',
+        state: 'warning',
+        category: 'observations',
+      }],
+      route: {
+        coordinates: [],
+        origin: 'Unknown',
+        destination: 'Unknown',
+        distance: 0,
+        corridor: 'Unknown',
+      },
+      degraded: true,
     });
   }
 }

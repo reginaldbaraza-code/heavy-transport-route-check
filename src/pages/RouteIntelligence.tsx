@@ -25,10 +25,11 @@ export default function RouteIntelligenceNew() {
   const [checking, setChecking] = useState(false)
   const [result, setResult] = useState<RouteCheckResult | null>(null)
   const [activeLayer, setActiveLayer] = useState('roadworks')
-  const [vehicleWidth, setVehicleWidth] = useState('3.2')
-  const [vehicleHeight, setVehicleHeight] = useState('4.5')
-  const [vehicleLength, setVehicleLength] = useState('28.5')
-  const [vehicleWeight, setVehicleWeight] = useState('60')
+  const [vehicleProfile, setVehicleProfile] = useState('standard')
+  const [vehicleWidth, setVehicleWidth] = useState('3.0')
+  const [vehicleHeight, setVehicleHeight] = useState('4.0')
+  const [vehicleLength, setVehicleLength] = useState('25.0')
+  const [vehicleWeight, setVehicleWeight] = useState('52')
   const [departure, setDeparture] = useState('10.11.2026, 22:00')
   const [permitNumber, setPermitNumber] = useState('')
   const [routeFile, setRouteFile] = useState('')
@@ -65,6 +66,7 @@ export default function RouteIntelligenceNew() {
           minute: '2-digit',
           hour12: false,
         }))
+        setVehicleProfile('custom')
         setVehicleWidth(metadata.vehicle.width.toString())
         setVehicleHeight(metadata.vehicle.height.toString())
         setVehicleLength(metadata.vehicle.length.toString())
@@ -236,32 +238,67 @@ export default function RouteIntelligenceNew() {
             <h2>Approved dimensions</h2>
           </div>
 
-          <div className="custom-vehicle-fields">
-            {[
-              ['width', 'Width', 'm', vehicleWidth, setVehicleWidth],
-              ['height', 'Height', 'm', vehicleHeight, setVehicleHeight],
-              ['length', 'Length', 'm', vehicleLength, setVehicleLength],
-              ['grossWeight', 'Gross weight', 't', vehicleWeight, setVehicleWeight],
-            ].map(([field, label, unit, value, setValue]) => {
-              const invalid = parseFloat(value as string) <= 0
-              return (
-                <label key={field as string}>
-                  <span>{label}</span>
-                  <div className={invalid ? 'invalid' : ''}>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      value={value as string}
-                      onChange={e => (setValue as (v: string) => void)(e.target.value)}
-                    />
-                    <b>{unit}</b>
-                  </div>
-                  {invalid && <small>Enter a value greater than 0 {unit}.</small>}
-                </label>
-              )
-            })}
-          </div>
+          <label>
+            <span>Transport profile</span>
+            <select 
+              value={vehicleProfile} 
+              onChange={e => {
+                setVehicleProfile(e.target.value)
+                if (e.target.value === 'standard') {
+                  setVehicleWidth('3.0')
+                  setVehicleHeight('4.0')
+                  setVehicleLength('25.0')
+                  setVehicleWeight('52')
+                } else if (e.target.value === 'wide') {
+                  setVehicleWidth('3.8')
+                  setVehicleHeight('4.2')
+                  setVehicleLength('32.0')
+                  setVehicleWeight('68')
+                }
+              }}
+            >
+              <option value="standard">Standard heavy haulage · 3.0m × 4.0m × 25.0m · 52t</option>
+              <option value="wide">Wide heavy haulage · 3.8m × 4.2m × 32.0m · 68t</option>
+              <option value="custom">Custom vehicle</option>
+            </select>
+            <small className="field-helper">Use the measurements approved in the transport permit.</small>
+          </label>
+
+          {vehicleProfile === 'custom' ? (
+            <div className="custom-vehicle-fields">
+              {[
+                ['width', 'Width', 'm', vehicleWidth, setVehicleWidth],
+                ['height', 'Height', 'm', vehicleHeight, setVehicleHeight],
+                ['length', 'Length', 'm', vehicleLength, setVehicleLength],
+                ['grossWeight', 'Gross weight', 't', vehicleWeight, setVehicleWeight],
+              ].map(([field, label, unit, value, setValue]) => {
+                const invalid = parseFloat(value as string) <= 0
+                return (
+                  <label key={field as string}>
+                    <span>{label}</span>
+                    <div className={invalid ? 'invalid' : ''}>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        value={value as string}
+                        onChange={e => (setValue as (v: string) => void)(e.target.value)}
+                      />
+                      <b>{unit}</b>
+                    </div>
+                    {invalid && <small>Enter a value greater than 0 {unit}.</small>}
+                  </label>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="vehicle-profile-facts">
+              <div><span>Width</span><strong>{vehicleWidth} m</strong></div>
+              <div><span>Height</span><strong>{vehicleHeight} m</strong></div>
+              <div><span>Length</span><strong>{vehicleLength} m</strong></div>
+              <div><span>Gross weight</span><strong>{vehicleWeight} t</strong></div>
+            </div>
+          )}
 
           <div className="route-source-note">
             <ShieldCheck size={16} />
