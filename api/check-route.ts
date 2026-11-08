@@ -515,7 +515,7 @@ export default async function handler(
         : verdict === 'HOLD'
           ? 'Hold departure – blocking issue on route'
           : degraded
-            ? 'Can't confirm route – data source unavailable'
+            ? "Can't confirm route – data source unavailable"
             : 'Verification required – potential issue detected',
       summary: verdict === 'READY'
         ? `No disruptions found on ${distance}km route.`
@@ -545,7 +545,7 @@ export default async function handler(
     // Return degraded VERIFY verdict instead of 500
     return res.status(200).json({
       verdict: 'VERIFY',
-      title: 'Can't confirm route – check failed',
+      title: "Can't confirm route – check failed",
       summary: 'An error occurred while checking the route. Please verify manually or retry.',
       impact: 'Unable to complete automated route check due to technical error.',
       confidence: 'medium',
