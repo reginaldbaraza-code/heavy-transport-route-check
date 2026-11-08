@@ -366,6 +366,7 @@ button, a, input, select, textarea {
   .settings-card-footer button { justify-content: center; }
 }
 
+
 /* MDS product system — shared shell and component language */
 .app-frame { background: var(--bg-base) !important; }
 .app-main { background: var(--bg-base); }
@@ -1482,7 +1483,7 @@ h4 { font-size: 18px !important; line-height: 1.35 !important; }
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  opacity: 0.4;
+  opacity: 0.65;
   transition: opacity 0.2s ease;
 }
 

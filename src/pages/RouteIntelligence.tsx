@@ -99,16 +99,38 @@ export default function RouteIntelligencePolished() {
   }
 
   const handleFileUpload = async (file: File) => {
-    setRouteFile(file.name)
     setError('')
-    setStep('vehicle')
-
+    
+    // Validate file extension
+    if (!file.name.toLowerCase().endsWith('.gpx')) {
+      setError('Invalid file format. Please upload a .gpx file.')
+      setRouteFile('')
+      return
+    }
+    
     try {
       const content = await readFileAsText(file)
+      
+      // Validate GPX structure
+      if (!content.includes('<gpx') || !content.includes('</gpx>')) {
+        setError('Invalid GPX file. The file does not contain valid GPX data.')
+        setRouteFile('')
+        return
+      }
+      
+      // Check for track points
+      if (!content.includes('<trkpt')) {
+        setError('Invalid GPX file. No route track points found.')
+        setRouteFile('')
+        return
+      }
+      
+      setRouteFile(file.name)
       setGpxContent(content)
+      setStep('vehicle')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to read file')
-      setStep('import')
+      setRouteFile('')
     }
   }
 

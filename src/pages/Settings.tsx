@@ -16,7 +16,7 @@ const initialProfile = {
 }
 
 const deliveryChannels = [
-  { id: 'inApp', label: 'In-app', description: 'Show route alerts in this MVP and the alert history.' },
+  { id: 'inApp', label: 'In-app', description: 'Show route alerts in the application and the alert history.' },
   { id: 'email', label: 'E-mail', description: 'Send route-status changes to the dispatch inbox.' },
   { id: 'sms', label: 'SMS', description: 'Send urgent HOLD and VERIFY alerts to the duty dispatcher.' },
 ]
@@ -56,7 +56,7 @@ export default function Settings() {
   return (
     <div className="app-page settings-page">
       <header className="settings-heading">
-        <span>MVP settings</span>
+        <span>Settings</span>
         <h1>{activeTab === 'profile' ? 'Organisation profile' : 'Route alert notifications'}</h1>
         <p>Manage the operator identity shown in route checks and choose how dispatchers receive monitoring alerts.</p>
       </header>

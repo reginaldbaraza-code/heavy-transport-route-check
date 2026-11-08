@@ -278,7 +278,7 @@ export default function Layout() {
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               onKeyDown={handleSearch}
-              placeholder="Search permits, routes, roads…"
+              placeholder="Search…"
               style={{
                 background: 'transparent',
                 border: 'none',

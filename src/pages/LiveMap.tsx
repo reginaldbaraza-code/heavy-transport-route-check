@@ -337,12 +337,12 @@ export default function LiveMap() {
     <div className="live-map-page">
       <header className="live-map-header">
         <div>
-          <div className="live-map-title"><h1>Map Explorer</h1><span className={`feed-status ${liveStatus}`}><Radio size={11} /> {liveStatus === 'refreshing' ? 'Updating operational scenario' : 'Local operational scenario'}</span></div>
+          <div className="live-map-title"><h1>Corridor monitor</h1><span className={`feed-status ${liveStatus}`}><Radio size={11} /> {liveStatus === 'refreshing' ? 'Fetching live data' : 'Live: Autobahn GmbH'}</span></div>
           <p>See current roadworks, warnings, closures, and heavy-transport restrictions across Germany.</p>
         </div>
         <div className="live-map-header-actions">
           <span><Clock3 size={12} /> Updated {formatBerlinTime(lastUpdated)}</span>
-          <button type="button" onClick={refreshEvents} disabled={liveStatus === 'refreshing'}><RefreshCw size={13} className={liveStatus === 'refreshing' ? 'spin' : ''} /> Refresh simulation</button>
+          <button type="button" onClick={refreshEvents} disabled={liveStatus === 'refreshing'}><RefreshCw size={13} className={liveStatus === 'refreshing' ? 'spin' : ''} /> Refresh data</button>
           <button type="button" onClick={() => mapRef.current?.fitBounds(germanyOutline, { padding: [32, 32], animate: true })}><Maximize2 size={13} /> Fit Germany</button>
           <Link to="/discover" className="market-button primary">Find related offers</Link>
         </div>
@@ -420,7 +420,7 @@ export default function LiveMap() {
                     )
                   })}
                 </div>
-                <div className="layer-panel-footer"><span>Data mode</span><strong>Local vectors · deterministic scenario</strong></div>
+                <div className="layer-panel-footer"><span>Data source</span><strong>Live: Autobahn GmbH · Updated {formatBerlinTime(lastUpdated)}</strong></div>
               </>
             )}
           </section>
