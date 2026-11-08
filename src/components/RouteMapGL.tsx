@@ -51,6 +51,7 @@ const RouteMapGL = forwardRef<RouteMapHandle, Props>(({
   const map = useRef<maplibregl.Map | null>(null);
   const markers = useRef<maplibregl.Marker[]>([]);
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [styleLoadCount, setStyleLoadCount] = useState(0);
   const [legendExpanded, setLegendExpanded] = useState(false);
 
   // Expose methods to parent via ref
@@ -100,7 +101,10 @@ const RouteMapGL = forwardRef<RouteMapHandle, Props>(({
 
     // Use styledata event to ensure layers are re-added after any style change
     mapInstance.on('styledata', () => {
-      setMapLoaded(true);
+      if (mapInstance.isStyleLoaded()) {
+        setMapLoaded(true);
+        setStyleLoadCount(prev => prev + 1);
+      }
     });
 
     map.current = mapInstance;
@@ -214,7 +218,7 @@ const RouteMapGL = forwardRef<RouteMapHandle, Props>(({
     } catch (e) {
       console.error('Failed to fit bounds:', e);
     }
-  }, [coordinates, corridor, verdict, mapLoaded]);
+  }, [coordinates, corridor, verdict, mapLoaded, styleLoadCount]);
 
   // Update markers
   useEffect(() => {
