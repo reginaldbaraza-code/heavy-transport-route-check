@@ -51,6 +51,7 @@ const RouteMapGL = forwardRef<RouteMapHandle, Props>(({
   const map = useRef<maplibregl.Map | null>(null);
   const markers = useRef<maplibregl.Marker[]>([]);
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [legendExpanded, setLegendExpanded] = useState(false);
 
   // Expose methods to parent via ref
   useImperativeHandle(ref, () => ({
@@ -92,6 +93,7 @@ const RouteMapGL = forwardRef<RouteMapHandle, Props>(({
       center: [10.45, 51.16], // Center of Germany
       zoom: 6,
       attributionControl: true,
+      cooperativeGestures: true,
     });
 
     mapInstance.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
@@ -305,12 +307,20 @@ const RouteMapGL = forwardRef<RouteMapHandle, Props>(({
       <div ref={mapContainer} className="route-map-gl-container" />
       
       {/* Layer controls */}
-      <div className="route-map-gl-layers">
-        <div className="route-map-gl-layers-header">
+      <div className={`route-map-gl-layers ${legendExpanded ? 'expanded' : ''}`}>
+        <button 
+          type="button"
+          className="route-map-gl-layers-header"
+          onClick={() => setLegendExpanded(!legendExpanded)}
+          style={{ cursor: 'pointer', width: '100%', textAlign: 'left' }}
+        >
           <Layers3 size={16} />
           <span>Layers</span>
-        </div>
-        {layers.map((layer) => (
+          <span className="expand-icon" style={{ marginLeft: 'auto', fontSize: '18px' }}>
+            {legendExpanded ? '−' : '+'}
+          </span>
+        </button>
+        {legendExpanded && layers.map((layer) => (
           <button
             key={layer.id}
             type="button"

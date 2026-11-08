@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import L, { type LayerGroup, type Map as LeafletMap, type Marker } from 'leaflet'
+import * as maplibregl from 'maplibre-gl'
+import 'maplibre-gl/dist/maplibre-gl.css'
 import { Link } from 'react-router-dom'
-import 'leaflet/dist/leaflet.css'
 import {
   AlertTriangle, ArrowRight, Camera, Car, ChevronDown, CircleParking, Clock3, CloudSnow,
   Construction, Layers3, LocateFixed, Map as MapIcon, Maximize2,
@@ -48,29 +48,6 @@ const eventMeta = {
   parking: { label: 'Parking', short: 'P', color: '#3156a3', icon: CircleParking },
 }
 
-function popupContent(event: OperationalEvent) {
-  const root = document.createElement('div')
-  root.className = 'live-popup'
-  const label = document.createElement('span')
-  label.textContent = `${eventMeta[event.type].label} · ${event.road}`
-  const title = document.createElement('strong')
-  title.textContent = event.title
-  const detail = document.createElement('p')
-  detail.textContent = event.detail
-  const updated = document.createElement('small')
-  updated.textContent = `${event.source} · ${event.confidence}% confidence · Updated ${event.updated}`
-  root.append(label, title, detail, updated)
-  return root
-}
-
-function markerSymbol(type: OperationalEventType) {
-  if (type === 'roadworks') return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 21 20H3Z"/><path d="M9 15h6M10.5 11h3"/></svg>'
-  if (type === 'warnings') return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 21 20H3Z"/><path d="M12 8v5M12 16.5v.5"/></svg>'
-  if (type === 'closures') return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M7 12h10"/></svg>'
-  if (type === 'webcams') return '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="7" width="16" height="12" rx="2"/><circle cx="12" cy="13" r="3"/><path d="m8 7 1.5-2h5L16 7"/></svg>'
-  return '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 17V7h4a3 3 0 0 1 0 6H9"/></svg>'
-}
-
 const formatBerlinTime = (date: Date) => new Intl.DateTimeFormat('de-DE', {
   timeZone: 'Europe/Berlin',
   hour: '2-digit',
@@ -78,50 +55,16 @@ const formatBerlinTime = (date: Date) => new Intl.DateTimeFormat('de-DE', {
   hour12: false,
 }).format(date)
 
-function eventIcon(type: OperationalEventType) {
-  const meta = eventMeta[type]
-  return L.divIcon({
-    className: 'ops-marker-host',
-    html: `<span class="ops-map-marker ${type}" style="--marker-color:${meta.color}">${markerSymbol(type)}</span>`,
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
-    popupAnchor: [0, -16],
-  })
-}
-
-function clusterEvents(events: OperationalEvent[], zoom: number) {
-  const cellSize = zoom <= 5.5 ? 1.8 : zoom <= 6.5 ? 1.0 : zoom <= 7.5 ? 0.4 : 0.25
-  const groups = new Map<string, OperationalEvent[]>()
-  events.forEach(event => {
-    const key = `${Math.floor(event.lat / cellSize)}:${Math.floor(event.lng / cellSize)}`
-    groups.set(key, [...(groups.get(key) ?? []), event])
-  })
-  return [...groups.values()].map(items => {
-    const types = items.reduce<Record<string, number>>((counts, item) => ({ ...counts, [item.type]: (counts[item.type] ?? 0) + 1 }), {})
-    const dominantType = Object.entries(types).sort((a, b) => b[1] - a[1])[0][0] as OperationalEventType
-    return {
-      items,
-      dominantType,
-      lat: items.reduce((sum, item) => sum + item.lat, 0) / items.length,
-      lng: items.reduce((sum, item) => sum + item.lng, 0) / items.length,
-    }
-  })
-}
-
 export default function LiveMap() {
-  const mapNode = useRef<HTMLDivElement>(null)
-  const mapRef = useRef<LeafletMap | null>(null)
-  const eventGroupRef = useRef<LayerGroup | null>(null)
-  const overlayGroupRef = useRef<LayerGroup | null>(null)
-  const markerRefs = useRef(new Map<string, Marker>())
-  const baseLayerRef = useRef<LayerGroup | null>(null)
+  const mapContainer = useRef<HTMLDivElement>(null)
+  const mapRef = useRef<maplibregl.Map | null>(null)
   const [events, setEvents] = useState<OperationalEvent[]>(() => createOperationalEvents())
   const [activeLayers, setActiveLayers] = useState<string[]>(['roadworks', 'warnings', 'closures', 'traffic'])
   const [selectedEvent, setSelectedEvent] = useState<OperationalEvent | null>(null)
   const [query, setQuery] = useState('')
   const [scope, setScope] = useState<'national' | 'munich'>('national')
   const [baseMap, setBaseMap] = useState<'road' | 'contrast'>('road')
-  const [mapZoom, setMapZoom] = useState(6)
+  const [mapLoaded, setMapLoaded] = useState(false)
   const [liveStatus, setLiveStatus] = useState<'ready' | 'refreshing'>('ready')
   const [snowRisk, setSnowRisk] = useState<SnowCell[]>(snowCells.map(([lat, lng, intensity]) => ({ lat, lng, intensity, temperature: -1, snowfall: 0.6 })))
   const [lastUpdated, setLastUpdated] = useState(new Date())
@@ -160,161 +103,269 @@ export default function LiveMap() {
     return () => window.clearInterval(interval)
   }, [refreshEvents])
 
+  // Initialize map
   useEffect(() => {
-    if (!mapNode.current || mapRef.current) return
-    const map = L.map(mapNode.current, { zoomControl: false, minZoom: 5, maxZoom: 13, attributionControl: false }).setView([51.12, 10.35], 6)
+    if (!mapContainer.current || mapRef.current) return
+
+    const map = new maplibregl.Map({
+      container: mapContainer.current,
+      style: {
+        version: 8,
+        sources: {
+          'osm-tiles': {
+            type: 'raster',
+            tiles: ['https://tiles.openfreemap.com/natural/{z}/{x}/{y}.png'],
+            tileSize: 256,
+            attribution: '© OpenFreeMap contributors',
+          },
+        },
+        layers: [
+          {
+            id: 'osm-tiles',
+            type: 'raster',
+            source: 'osm-tiles',
+          },
+        ],
+      },
+      center: [10.35, 51.12],
+      zoom: 6,
+      minZoom: 5,
+      maxZoom: 13,
+      cooperativeGestures: true,
+    })
+
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
+    map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-right')
+
+    map.on('load', () => {
+      // Add GeoJSON source for clustered events
+      map.addSource('events', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: [],
+        },
+        cluster: true,
+        clusterRadius: 50,
+        clusterMaxZoom: 9,
+      })
+
+      // Cluster circle layer
+      map.addLayer({
+        id: 'clusters',
+        type: 'circle',
+        source: 'events',
+        filter: ['has', 'point_count'],
+        paint: {
+          'circle-color': [
+            'step',
+            ['get', 'point_count'],
+            '#51bbd6',
+            10,
+            '#f59e0b',
+            25,
+            '#ef4444'
+          ],
+          'circle-radius': [
+            'step',
+            ['get', 'point_count'],
+            15,
+            10,
+            20,
+            25,
+            25
+          ],
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#fff',
+        },
+      })
+
+      // Cluster count layer
+      map.addLayer({
+        id: 'cluster-count',
+        type: 'symbol',
+        source: 'events',
+        filter: ['has', 'point_count'],
+        layout: {
+          'text-field': '{point_count_abbreviated}',
+          'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
+          'text-size': 12,
+        },
+        paint: {
+          'text-color': '#ffffff',
+        },
+      })
+
+      // Unclustered point layer (visible at zoom >= 10)
+      map.addLayer({
+        id: 'unclustered-point',
+        type: 'circle',
+        source: 'events',
+        filter: ['!', ['has', 'point_count']],
+        minzoom: 10,
+        paint: {
+          'circle-color': [
+            'match',
+            ['get', 'type'],
+            'roadworks', '#f59e0b',
+            'warnings', '#ef4444',
+            'closures', '#334155',
+            'webcams', '#0ea5e9',
+            'parking', '#6366f1',
+            '#999999'
+          ],
+          'circle-radius': 8,
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#fff',
+        },
+      })
+
+      // Unclustered label layer (visible at zoom >= 10)
+      map.addLayer({
+        id: 'unclustered-label',
+        type: 'symbol',
+        source: 'events',
+        filter: ['!', ['has', 'point_count']],
+        minzoom: 10,
+        layout: {
+          'text-field': ['get', 'title'],
+          'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
+          'text-size': 11,
+          'text-offset': [0, 1.5],
+          'text-anchor': 'top',
+        },
+        paint: {
+          'text-color': '#333',
+          'text-halo-color': '#fff',
+          'text-halo-width': 1,
+        },
+      })
+
+      // Click handlers
+      map.on('click', 'clusters', (e) => {
+        const features = map.queryRenderedFeatures(e.point, { layers: ['clusters'] })
+        const clusterId = features[0]?.properties?.cluster_id
+        if (clusterId) {
+          const source = map.getSource('events') as maplibregl.GeoJSONSource
+          source.getClusterExpansionZoom(clusterId, (err, zoom) => {
+            if (err || !features[0].geometry || features[0].geometry.type !== 'Point') return
+            map.easeTo({
+              center: features[0].geometry.coordinates as [number, number],
+              zoom: zoom || 10,
+            })
+          })
+        }
+      })
+
+      map.on('click', 'unclustered-point', (e) => {
+        if (e.features && e.features[0]) {
+          const props = e.features[0].properties
+          if (props) {
+            setSelectedEvent({
+              id: props.id,
+              type: props.type,
+              title: props.title,
+              detail: props.detail,
+              road: props.road,
+              lat: props.lat,
+              lng: props.lng,
+              updated: props.updated,
+              source: props.source,
+              confidence: props.confidence,
+              dataCategory: props.dataCategory,
+              marketQuery: props.marketQuery,
+            })
+
+            // Create popup
+            new maplibregl.Popup()
+              .setLngLat([props.lng, props.lat])
+              .setHTML(`
+                <div class="live-popup">
+                  <span>${eventMeta[props.type as OperationalEventType].label} · ${props.road}</span>
+                  <strong>${props.title}</strong>
+                  <p>${props.detail}</p>
+                  <small>${props.source} · ${props.confidence}% confidence · Updated ${props.updated}</small>
+                </div>
+              `)
+              .addTo(map)
+          }
+        }
+      })
+
+      map.on('mouseenter', 'clusters', () => {
+        map.getCanvas().style.cursor = 'pointer'
+      })
+      map.on('mouseleave', 'clusters', () => {
+        map.getCanvas().style.cursor = ''
+      })
+      map.on('mouseenter', 'unclustered-point', () => {
+        map.getCanvas().style.cursor = 'pointer'
+      })
+      map.on('mouseleave', 'unclustered-point', () => {
+        map.getCanvas().style.cursor = ''
+      })
+
+      setMapLoaded(true)
+    })
+
     mapRef.current = map
-    baseLayerRef.current = L.layerGroup().addTo(map)
-    eventGroupRef.current = L.layerGroup().addTo(map)
-    overlayGroupRef.current = L.layerGroup().addTo(map)
-    L.control.zoom({ position: 'bottomright' }).addTo(map)
-    L.control.scale({ imperial: false, position: 'bottomright' }).addTo(map)
-    const syncZoom = () => setMapZoom(map.getZoom())
-    map.on('zoomend', syncZoom)
+
     return () => {
-      map.off('zoomend', syncZoom)
       map.remove()
       mapRef.current = null
-      baseLayerRef.current = null
-      eventGroupRef.current = null
-      overlayGroupRef.current = null
-      markerRefs.current.clear()
     }
   }, [])
 
+  // Update events GeoJSON when visibleEvents changes
   useEffect(() => {
     const map = mapRef.current
-    const group = baseLayerRef.current
-    if (!map || !group) return
-    group.clearLayers()
-    const contrast = baseMap === 'contrast'
-    L.polygon(germanyOutline, {
-      color: contrast ? '#f5c518' : '#315b7d', weight: contrast ? 3 : 2,
-      fillColor: contrast ? '#17324a' : '#fbfcfd', fillOpacity: 1, interactive: false,
-    }).addTo(group)
-    stateBoundaries.forEach(boundary => {
-      L.polyline(boundary, {
-        color: contrast ? '#7794ab' : '#c5d0d8',
-        weight: 1,
-        opacity: .9,
-        dashArray: '4 4',
-        interactive: false,
-      }).addTo(group)
-    })
-    rivers.forEach(river => {
-      L.polyline(river.points, {
-        color: contrast ? '#69a9d6' : '#85bedf',
-        weight: contrast ? 2 : 1.5,
-        opacity: .9,
-      }).bindTooltip(river.name, { sticky: true, direction: 'top' }).addTo(group)
-    })
-    roadVectors.forEach(road => {
-      L.polyline(road.points, { color: contrast ? '#0b1c2a' : '#fff', weight: 5, opacity: .98, interactive: false }).addTo(group)
-      L.polyline(road.points, {
-        color: road.name === 'A7' || road.name === 'A3' ? '#e4a80d' : contrast ? '#9fc6df' : '#557f9e',
-        weight: 2, opacity: .95,
-      }).bindTooltip(road.name, { sticky: true, direction: 'top' }).addTo(group)
-      const labelPoint = road.points[Math.floor(road.points.length / 2)]
-      L.marker(labelPoint, {
-        interactive: false,
-        icon: L.divIcon({ className: 'local-road-label', html: road.name, iconSize: [44, 24], iconAnchor: [22, 12] }),
-      }).addTo(group)
-    })
-    ;[...cities, ...regionalCities].forEach(([name, lat, lng]) => {
-      L.circleMarker([lat, lng], { radius: 2.5, color: contrast ? '#fff' : '#0a2540', weight: 1, fillOpacity: 1, interactive: false }).addTo(group)
-      L.marker([lat, lng], {
-        interactive: false,
-        icon: L.divIcon({ className: 'vector-city-label', html: name, iconSize: [110, 24], iconAnchor: [-5, 12] }),
-      }).addTo(group)
-    })
-  }, [baseMap])
+    if (!map || !mapLoaded) return
 
+    const source = map.getSource('events') as maplibregl.GeoJSONSource
+    if (!source) return
+
+    const geojson: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: visibleEvents.map(event => ({
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: [event.lng, event.lat],
+        },
+        properties: {
+          id: event.id,
+          type: event.type,
+          title: event.title,
+          detail: event.detail,
+          road: event.road,
+          lat: event.lat,
+          lng: event.lng,
+          updated: event.updated,
+          source: event.source,
+          confidence: event.confidence,
+          dataCategory: event.dataCategory,
+          marketQuery: event.marketQuery,
+        },
+      })),
+    }
+
+    source.setData(geojson)
+  }, [visibleEvents, mapLoaded])
+
+  // Handle scope changes
   useEffect(() => {
     const map = mapRef.current
-    const eventGroup = eventGroupRef.current
-    const overlayGroup = overlayGroupRef.current
-    if (!map || !eventGroup || !overlayGroup) return
-    eventGroup.clearLayers()
-    overlayGroup.clearLayers()
-    markerRefs.current.clear()
-
-    if (mapZoom < 9) {
-      clusterEvents(visibleEvents, mapZoom).forEach(cluster => {
-        const color = eventMeta[cluster.dominantType].color
-        L.marker([cluster.lat, cluster.lng], {
-          icon: L.divIcon({
-            className: 'ops-cluster-host',
-            html: `<span class="ops-cluster" style="--cluster-color:${color}"><strong>${cluster.items.length}</strong><small>signals</small></span>`,
-            iconSize: [72, 58],
-            iconAnchor: [36, 29],
-          }),
-          keyboard: true,
-          title: `${cluster.items.length} operational signals`,
-        })
-          .on('click', () => map.flyTo([cluster.lat, cluster.lng], 8, { duration: .55 }))
-          .addTo(eventGroup)
-      })
+    if (!map || !mapLoaded) return
+    
+    if (scope === 'munich') {
+      map.flyTo({ center: [11.58, 48.14], zoom: 10, duration: 800 })
     } else {
-      visibleEvents.forEach(event => {
-        const marker = L.marker([event.lat, event.lng], { icon: eventIcon(event.type), keyboard: true, title: event.title })
-          .bindPopup(popupContent(event), { maxWidth: 280 })
-          .on('click', () => setSelectedEvent(event))
-          .addTo(eventGroup)
-        markerRefs.current.set(event.id, marker)
-      })
+      const bounds = germanyOutline.reduce((bounds, coord) => {
+        return bounds.extend([coord[1], coord[0]] as [number, number])
+      }, new maplibregl.LngLatBounds())
+      map.fitBounds(bounds, { padding: 32, duration: 800 })
     }
-
-    if (activeLayers.includes('traffic')) {
-      roadVectors.forEach((road, index) => {
-        const roadEvents = scopeEvents.filter(event => event.road === road.name)
-        const restrictions = roadEvents.filter(event => event.type === 'closures').length
-        const warnings = roadEvents.filter(event => event.type === 'warnings').length
-        const color = restrictions > 1 ? '#ef4444' : warnings > 1 || index % 5 === 0 ? '#f59e0b' : '#2ca36b'
-        L.polyline(road.points, {
-          color,
-          weight: 4,
-          opacity: .58,
-          interactive: false,
-        }).addTo(overlayGroup)
-      })
-    }
-    if (activeLayers.includes('snow')) {
-      snowRisk.filter(cell => cell.intensity > 5).forEach(cell => {
-        L.circle([cell.lat, cell.lng], {
-          radius: 9000 + cell.intensity * 115,
-          color: '#7c3aed',
-          weight: 1,
-          fillColor: cell.intensity > 75 ? '#7c3aed' : '#60a5fa',
-          fillOpacity: .22,
-        }).bindTooltip(`Snow & ice risk ${cell.intensity}% · ${cell.temperature} °C · ${cell.snowfall} cm`, { sticky: true }).addTo(overlayGroup)
-      })
-    }
-    if (activeLayers.includes('heavy')) {
-      heavyConstraints.forEach((constraint, index) => {
-        const event: OperationalEvent = {
-          ...constraint,
-          id: `heavy-${index}`,
-          type: 'warnings',
-          updated: '6 min ago',
-          source: 'Heavy transport restriction register',
-          confidence: 96,
-          dataCategory: 'Heavy transport constraints',
-          marketQuery: 'heavy transport restrictions permits',
-        }
-        L.marker([constraint.lat, constraint.lng], {
-          icon: L.divIcon({ className: 'ops-marker-host', html: '<span class="ops-map-marker heavy">H</span>', iconSize: [28, 28], iconAnchor: [14, 14] }),
-          title: constraint.title,
-        }).bindPopup(popupContent(event)).addTo(overlayGroup)
-      })
-    }
-  }, [activeLayers, mapZoom, scopeEvents, snowRisk, visibleEvents])
-
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map) return
-    if (scope === 'munich') map.flyTo([48.14, 11.58], 10, { duration: .8 })
-    else map.fitBounds(germanyOutline, { padding: [32, 32], animate: true, duration: .8 })
-  }, [scope])
+  }, [scope, mapLoaded])
 
   const toggleLayer = (id: string) => {
     setActiveLayers(current => current.includes(id) ? current.filter(layer => layer !== id) : [...current, id])
@@ -322,8 +373,7 @@ export default function LiveMap() {
 
   const focusEvent = (event: OperationalEvent) => {
     setSelectedEvent(event)
-    mapRef.current?.flyTo([event.lat, event.lng], 8, { duration: .7 })
-    window.setTimeout(() => markerRefs.current.get(event.id)?.openPopup(), 750)
+    mapRef.current?.flyTo({ center: [event.lng, event.lat], zoom: 11, duration: 700 })
   }
 
   const layerCount = (id: string) => {
@@ -337,20 +387,40 @@ export default function LiveMap() {
     <div className="live-map-page">
       <header className="live-map-header">
         <div>
-          <div className="live-map-title"><h1>Corridor monitor</h1><span className={`feed-status ${liveStatus}`}><Radio size={11} /> {liveStatus === 'refreshing' ? 'Fetching live data' : 'Live: Autobahn GmbH'}</span></div>
+          <div className="live-map-title">
+            <h1>Corridor monitor</h1>
+            <span className={`feed-status ${liveStatus}`}>
+              <Radio size={11} /> {liveStatus === 'refreshing' ? 'Fetching live data' : 'Live: Autobahn GmbH'}
+            </span>
+          </div>
           <p>See current roadworks, warnings, closures, and heavy-transport restrictions across Germany.</p>
         </div>
         <div className="live-map-header-actions">
           <span><Clock3 size={12} /> Updated {formatBerlinTime(lastUpdated)}</span>
-          <button type="button" onClick={refreshEvents} disabled={liveStatus === 'refreshing'}><RefreshCw size={13} className={liveStatus === 'refreshing' ? 'spin' : ''} /> Refresh data</button>
-          <button type="button" onClick={() => mapRef.current?.fitBounds(germanyOutline, { padding: [32, 32], animate: true })}><Maximize2 size={13} /> Fit Germany</button>
+          <button type="button" onClick={refreshEvents} disabled={liveStatus === 'refreshing'}>
+            <RefreshCw size={13} className={liveStatus === 'refreshing' ? 'spin' : ''} /> Refresh data
+          </button>
+          <button type="button" onClick={() => {
+            const map = mapRef.current
+            if (!map) return
+            const bounds = germanyOutline.reduce((bounds, coord) => {
+              return bounds.extend([coord[1], coord[0]] as [number, number])
+            }, new maplibregl.LngLatBounds())
+            map.fitBounds(bounds, { padding: 32 })
+          }}>
+            <Maximize2 size={13} /> Fit Germany
+          </button>
           <Link to="/discover" className="market-button primary">Find related offers</Link>
         </div>
       </header>
 
       <div className="live-map-tabs" role="tablist" aria-label="Map scope">
-        <button type="button" className={scope === 'national' ? 'active' : ''} onClick={() => setScope('national')}><MapIcon size={13} /> Germany data coverage</button>
-        <button type="button" className={scope === 'munich' ? 'active' : ''} onClick={() => setScope('munich')}><LocateFixed size={13} /> Munich mobility use case</button>
+        <button type="button" className={scope === 'national' ? 'active' : ''} onClick={() => setScope('national')}>
+          <MapIcon size={13} /> Germany data coverage
+        </button>
+        <button type="button" className={scope === 'munich' ? 'active' : ''} onClick={() => setScope('munich')}>
+          <LocateFixed size={13} /> Munich mobility use case
+        </button>
         <span />
         <button type="button" className={baseMap === 'road' ? 'active' : ''} onClick={() => setBaseMap('road')}>Road</button>
         <button type="button" className={baseMap === 'contrast' ? 'active' : ''} onClick={() => setBaseMap('contrast')}>High contrast</button>
@@ -398,7 +468,7 @@ export default function LiveMap() {
         </aside>
 
         <main className="live-map-stage">
-          <div ref={mapNode} className="leaflet-map" aria-label="Interactive live mobility map of Germany" />
+          <div ref={mapContainer} className="maplibre-map" aria-label="Interactive live mobility map of Germany" />
 
           <section className={`live-layer-panel ${layerPanelOpen ? 'open' : ''}`}>
             <button type="button" className="layer-panel-heading" onClick={() => setLayerPanelOpen(open => !open)}>

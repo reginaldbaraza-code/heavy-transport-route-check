@@ -381,6 +381,8 @@ export default function RouteIntelligencePolished() {
                       <div className="input-with-unit">
                         <input
                           type="number"
+                          inputMode="decimal"
+                          pattern="[0-9]*[.,]?[0-9]*"
                           min="0"
                           step="0.1"
                           value={value as string}
@@ -516,6 +518,16 @@ export default function RouteIntelligencePolished() {
                   </div>
                 </div>
               </div>
+            </div>
+            
+            {/* Mobile sticky action bar */}
+            <div className="mobile-route-actions" style={{ display: 'none' }}>
+              <button type="button" className="btn-secondary" onClick={resetFlow}>
+                Re-check
+              </button>
+              <button type="button" className="btn-primary" onClick={() => setToast('Site confirmation feature coming soon')}>
+                Confirm on site
+              </button>
             </div>
           </>
         )}
