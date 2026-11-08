@@ -82,6 +82,28 @@ export default function RouteMapGL({
     mapInstance.on('load', () => {
       setMapLoaded(true);
     });
+    
+    // Fallback to OSM raster tiles if OpenFreeMap fails
+    mapInstance.on('error', (e) => {
+      if (e.error?.message?.includes('tiles') || e.error?.message?.includes('style')) {
+        console.warn('Map tiles failed, falling back to OSM:', e.error);
+        try {
+          mapInstance.addSource('osm-fallback', {
+            type: 'raster',
+            tiles: ['https://a.tile.openstreetmap.org/{z}/{x}/{y}.png'],
+            tileSize: 256,
+            attribution: '© OpenStreetMap contributors',
+          });
+          mapInstance.addLayer({
+            id: 'osm-fallback-tiles',
+            type: 'raster',
+            source: 'osm-fallback',
+          }, 'openfree-tiles');
+        } catch (fallbackError) {
+          console.error('Fallback basemap also failed:', fallbackError);
+        }
+      }
+    });
 
     map.current = mapInstance;
 

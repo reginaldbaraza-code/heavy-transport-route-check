@@ -4,248 +4,211 @@ export const config = {
   maxDuration: 30,
 };
 
-type AutobahnRoadwork = {
-  identifier: string;
+type AutobahnEvent = {
+  id: string;
   title: string;
-  subtitle?: string[];
-  description?: string[];
-  coordinate: {
-    lat: string;
-    long: string;
-  };
-  displayType: string;
-  extent?: string;
-  isBlocked?: string[];
-  startTimestamp?: string;
-};
-
-type AutobahnClosure = {
-  identifier: string;
-  title: string;
-  subtitle?: string[];
-  description?: string[];
-  coordinate: {
-    lat: string;
-    long: string;
-  };
-  displayType: string;
-  extent?: string;
-  startTimestamp?: string;
-};
-
-type AutobahnWarning = {
-  identifier: string;
-  title: string;
-  subtitle?: string[];
-  description?: string[];
-  coordinate: {
-    lat: string;
-    long: string;
-  };
-  displayType: string;
-  extent?: string;
-  startTimestamp?: string;
+  description: string;
+  lat: number;
+  lng: number;
+  type: 'roadworks' | 'closures' | 'warnings';
+  severity: 'danger' | 'warning' | 'info';
+  timestamp?: string;
+  age: string;
+  confidence: 'high' | 'medium';
 };
 
 type AutobahnEventsResponse = {
-  roadworks: Array<{
-    id: string;
-    title: string;
-    description: string;
-    lat: number;
-    lng: number;
-    type: 'roadworks';
-    severity: 'warning' | 'info';
-    extent?: string;
-    isBlocked?: string[];
-    timestamp?: string;
-    age?: string;
-    confidence: 'high' | 'medium';
-  }>;
-  closures: Array<{
-    id: string;
-    title: string;
-    description: string;
-    lat: number;
-    lng: number;
-    type: 'closures';
-    severity: 'danger' | 'warning';
-    extent?: string;
-    timestamp?: string;
-    age?: string;
-    confidence: 'high' | 'medium';
-  }>;
-  warnings: Array<{
-    id: string;
-    title: string;
-    description: string;
-    lat: number;
-    lng: number;
-    type: 'warnings';
-    severity: 'warning' | 'info';
-    extent?: string;
-    timestamp?: string;
-    age?: string;
-    confidence: 'high' | 'medium';
-  }>;
+  roadworks: AutobahnEvent[];
+  closures: AutobahnEvent[];
+  warnings: AutobahnEvent[];
   cachedAt: string;
   source: string;
+  roads?: string[];
 };
 
 const AUTOBAHN_API_BASE = 'https://verkehr.autobahn.de/o/autobahn';
-const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+const CACHE_DURATION_MS = 5 * 60 * 1000;
 
 let cachedResponse: { data: AutobahnEventsResponse; timestamp: number } | null = null;
 
-function calculateAge(timestamp?: string): string {
-  if (!timestamp) return 'Unknown';
+function normalizeDescription(parts: any[]): string {
+  if (!parts || parts.length === 0) return '';
   
-  const eventTime = new Date(timestamp);
-  const now = new Date();
-  const diffMs = now.getTime() - eventTime.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMins / 60);
-  const diffDays = Math.floor(diffHours / 24);
-
-  if (diffDays > 0) return `${diffDays}d ago`;
-  if (diffHours > 0) return `${diffHours}h ago`;
-  if (diffMins > 0) return `${diffMins}m ago`;
-  return 'Just now';
+  // Join array parts
+  let text = parts.filter(Boolean).join(' · ');
+  
+  // Fix single-character artifact pattern (e.g. "S · a · a · r · b · r · ü · c · k")
+  // Pattern: single char + space + · + space, repeated
+  const singleCharPattern = /([a-zA-ZäöüßÄÖÜ])\s*·\s*(?=[a-zA-ZäöüßÄÖÜ]\s*·|[a-zA-ZäöüßÄÖÜ]$)/g;
+  
+  // First check if this looks like the artifact pattern
+  const matches = text.match(singleCharPattern);
+  if (matches && matches.length > 3) {
+    // Likely an artifact, remove all the separators between single characters
+    text = text.replace(/([a-zA-ZäöüßÄÖÜ])\s*·\s*/g, '$1');
+  }
+  
+  // Clean up multiple consecutive separators
+  text = text.replace(/\s*·\s*·\s*/g, ' · ');
+  
+  // Trim
+  text = text.trim();
+  
+  return text || 'Event in progress';
 }
 
-async function fetchAutobahnEvents(): Promise<AutobahnEventsResponse> {
-  const now = Date.now();
+function calculateAge(timestamp?: string, fetchTime?: Date): string {
+  const now = fetchTime || new Date();
   
-  // Return cached data if still valid
-  if (cachedResponse && (now - cachedResponse.timestamp < CACHE_DURATION_MS)) {
+  if (!timestamp) {
+    return `Updated ${now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`;
+  }
+  
+  try {
+    const eventTime = new Date(timestamp);
+    if (isNaN(eventTime.getTime())) {
+      return `Updated ${now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`;
+    }
+    
+    const diffMs = now.getTime() - eventTime.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffDays > 0) return `${diffDays}d ago`;
+    if (diffHours > 0) return `${diffHours}h ago`;
+    if (diffMins > 0) return `${diffMins}m ago`;
+    return 'Just now';
+  } catch {
+    return `Updated ${now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`;
+  }
+}
+
+async function fetchRoadEvents(road: string, type: 'roadworks' | 'closure' | 'warning'): Promise<any[]> {
+  try {
+    const response = await fetch(
+      `${AUTOBAHN_API_BASE}/${road}/services/${type}`,
+      {
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(5000),
+      }
+    );
+    
+    if (!response.ok) return [];
+    
+    const data = await response.json();
+    const key = type === 'roadworks' ? 'roadworks' : type === 'closure' ? 'closure' : 'warning';
+    return data[key] || [];
+  } catch (error) {
+    console.error(`Error fetching ${type} for ${road}:`, error);
+    return [];
+  }
+}
+
+async function fetchAutobahnEvents(roads?: string[]): Promise<AutobahnEventsResponse> {
+  const now = Date.now();
+  const fetchTime = new Date();
+  
+  // Return cached data if still valid and no specific roads requested
+  if (!roads && cachedResponse && (now - cachedResponse.timestamp < CACHE_DURATION_MS)) {
     return cachedResponse.data;
   }
 
   try {
-    // Fetch all three types of events in parallel
-    const [roadworksRes, closuresRes, warningsRes] = await Promise.all([
-      fetch(`${AUTOBAHN_API_BASE}/`, { 
-        headers: { 'Accept': 'application/json' },
-        signal: AbortSignal.timeout(10000)
-      }).then(r => r.json()).then(data => 
-        data.roads?.map((road: string) => 
-          fetch(`${AUTOBAHN_API_BASE}/${road}/services/roadworks`, {
-            headers: { 'Accept': 'application/json' },
-            signal: AbortSignal.timeout(5000)
-          }).then(r => r.ok ? r.json() : { roadworks: [] })
-        ) || []
-      ).then(promises => Promise.all(promises)).catch(() => []),
-      
-      fetch(`${AUTOBAHN_API_BASE}/`, { 
-        headers: { 'Accept': 'application/json' },
-        signal: AbortSignal.timeout(10000)
-      }).then(r => r.json()).then(data => 
-        data.roads?.map((road: string) => 
-          fetch(`${AUTOBAHN_API_BASE}/${road}/services/closure`, {
-            headers: { 'Accept': 'application/json' },
-            signal: AbortSignal.timeout(5000)
-          }).then(r => r.ok ? r.json() : { closure: [] })
-        ) || []
-      ).then(promises => Promise.all(promises)).catch(() => []),
-      
-      fetch(`${AUTOBAHN_API_BASE}/`, { 
-        headers: { 'Accept': 'application/json' },
-        signal: AbortSignal.timeout(10000)
-      }).then(r => r.json()).then(data => 
-        data.roads?.map((road: string) => 
-          fetch(`${AUTOBAHN_API_BASE}/${road}/services/warning`, {
-            headers: { 'Accept': 'application/json' },
-            signal: AbortSignal.timeout(5000)
-          }).then(r => r.ok ? r.json() : { warning: [] })
-        ) || []
-      ).then(promises => Promise.all(promises)).catch(() => []),
-    ]);
-
-    // Process roadworks
-    const roadworks = roadworksRes.flatMap((data: any) => 
-      (data.roadworks || []).map((item: AutobahnRoadwork) => ({
-        id: item.identifier,
+    // If specific roads requested, use those; otherwise get main routes
+    const roadsToFetch = roads || ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9', 'A10'];
+    
+    const allEvents = await Promise.all(
+      roadsToFetch.slice(0, 15).map(async (road) => {
+        const [roadworks, closures, warnings] = await Promise.all([
+          fetchRoadEvents(road, 'roadworks'),
+          fetchRoadEvents(road, 'closure'),
+          fetchRoadEvents(road, 'warning'),
+        ]);
+        
+        return { road, roadworks, closures, warnings };
+      })
+    );
+    
+    const processedRoadworks: AutobahnEvent[] = allEvents.flatMap(({ roadworks }) =>
+      roadworks.map((item: any) => ({
+        id: item.identifier || `rw-${Date.now()}-${Math.random()}`,
         title: item.title || 'Roadworks',
-        description: [
-          ...(item.subtitle || []),
-          ...(item.description || [])
-        ].filter(Boolean).join(' · ') || 'Roadworks in progress',
-        lat: parseFloat(item.coordinate.lat),
-        lng: parseFloat(item.coordinate.long),
+        description: normalizeDescription([
+          ...(Array.isArray(item.subtitle) ? item.subtitle : item.subtitle ? [item.subtitle] : []),
+          ...(Array.isArray(item.description) ? item.description : item.description ? [item.description] : [])
+        ]),
+        lat: parseFloat(item.coordinate?.lat),
+        lng: parseFloat(item.coordinate?.long),
         type: 'roadworks' as const,
         severity: item.isBlocked?.length ? 'warning' as const : 'info' as const,
-        extent: item.extent,
-        isBlocked: item.isBlocked,
         timestamp: item.startTimestamp,
-        age: calculateAge(item.startTimestamp),
+        age: calculateAge(item.startTimestamp, fetchTime),
         confidence: 'high' as const,
       }))
     ).filter(item => !isNaN(item.lat) && !isNaN(item.lng));
 
-    // Process closures
-    const closures = closuresRes.flatMap((data: any) => 
-      (data.closure || []).map((item: AutobahnClosure) => ({
-        id: item.identifier,
+    const processedClosures: AutobahnEvent[] = allEvents.flatMap(({ closures }) =>
+      closures.map((item: any) => ({
+        id: item.identifier || `cl-${Date.now()}-${Math.random()}`,
         title: item.title || 'Closure',
-        description: [
-          ...(item.subtitle || []),
-          ...(item.description || [])
-        ].filter(Boolean).join(' · ') || 'Road closure in effect',
-        lat: parseFloat(item.coordinate.lat),
-        lng: parseFloat(item.coordinate.long),
+        description: normalizeDescription([
+          ...(Array.isArray(item.subtitle) ? item.subtitle : item.subtitle ? [item.subtitle] : []),
+          ...(Array.isArray(item.description) ? item.description : item.description ? [item.description] : [])
+        ]),
+        lat: parseFloat(item.coordinate?.lat),
+        lng: parseFloat(item.coordinate?.long),
         type: 'closures' as const,
         severity: 'danger' as const,
-        extent: item.extent,
         timestamp: item.startTimestamp,
-        age: calculateAge(item.startTimestamp),
+        age: calculateAge(item.startTimestamp, fetchTime),
         confidence: 'high' as const,
       }))
     ).filter(item => !isNaN(item.lat) && !isNaN(item.lng));
 
-    // Process warnings
-    const warnings = warningsRes.flatMap((data: any) => 
-      (data.warning || []).map((item: AutobahnWarning) => ({
-        id: item.identifier,
+    const processedWarnings: AutobahnEvent[] = allEvents.flatMap(({ warnings }) =>
+      warnings.map((item: any) => ({
+        id: item.identifier || `wn-${Date.now()}-${Math.random()}`,
         title: item.title || 'Warning',
-        description: [
-          ...(item.subtitle || []),
-          ...(item.description || [])
-        ].filter(Boolean).join(' · ') || 'Traffic warning',
-        lat: parseFloat(item.coordinate.lat),
-        lng: parseFloat(item.coordinate.long),
+        description: normalizeDescription([
+          ...(Array.isArray(item.subtitle) ? item.subtitle : item.subtitle ? [item.subtitle] : []),
+          ...(Array.isArray(item.description) ? item.description : item.description ? [item.description] : [])
+        ]),
+        lat: parseFloat(item.coordinate?.lat),
+        lng: parseFloat(item.coordinate?.long),
         type: 'warnings' as const,
-        severity: item.displayType?.toLowerCase().includes('danger') ? 'warning' as const : 'info' as const,
-        extent: item.extent,
+        severity: 'warning' as const,
         timestamp: item.startTimestamp,
-        age: calculateAge(item.startTimestamp),
+        age: calculateAge(item.startTimestamp, fetchTime),
         confidence: 'medium' as const,
       }))
     ).filter(item => !isNaN(item.lat) && !isNaN(item.lng));
 
     const response: AutobahnEventsResponse = {
-      roadworks,
-      closures,
-      warnings,
+      roadworks: processedRoadworks,
+      closures: processedClosures,
+      warnings: processedWarnings,
       cachedAt: new Date().toISOString(),
       source: 'Autobahn GmbH (verkehr.autobahn.de)',
+      roads: roadsToFetch,
     };
 
-    // Cache the response
-    cachedResponse = {
-      data: response,
-      timestamp: now,
-    };
+    // Cache the response only for full queries
+    if (!roads) {
+      cachedResponse = {
+        data: response,
+        timestamp: now,
+      };
+    }
 
     return response;
   } catch (error) {
     console.error('Error fetching Autobahn events:', error);
     
-    // Return cached data if available, even if expired
     if (cachedResponse) {
       return cachedResponse.data;
     }
     
-    // Return empty response with degraded state
     return {
       roadworks: [],
       closures: [],
@@ -260,7 +223,6 @@ export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
-  // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -274,9 +236,12 @@ export default async function handler(
   }
 
   try {
-    const events = await fetchAutobahnEvents();
+    // Support roads query param
+    const roadsParam = req.query.roads as string | undefined;
+    const roads = roadsParam ? roadsParam.split(',').map(r => r.trim()) : undefined;
     
-    // Set cache headers
+    const events = await fetchAutobahnEvents(roads);
+    
     res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
     
     return res.status(200).json(events);
