@@ -271,61 +271,78 @@ async function fetchAutobahnEventsForRoute(roads: string[]): Promise<any> {
     );
     
     const processedRoadworks = allEvents.flatMap(({ roadworks }) =>
-      roadworks.map((item: any) => ({
-        id: item.identifier || `rw-${Date.now()}-${Math.random()}`,
-        title: item.title || 'Roadworks',
-        description: [
-          ...(Array.isArray(item.subtitle) ? item.subtitle : item.subtitle ? [item.subtitle] : []),
-          ...(Array.isArray(item.description) ? item.description : item.description ? [item.description] : [])
-        ].filter(Boolean).join(' · ') || 'Roadworks in progress',
-        lat: parseFloat(item.coordinate?.lat),
-        lng: parseFloat(item.coordinate?.long),
-        type: 'roadworks' as const,
-        severity: item.isBlocked?.length ? 'warning' as const : 'info' as const,
-        extent: item.extent,
-        isBlocked: item.isBlocked,
-        timestamp: item.startTimestamp,
-        age: calculateAge(item.startTimestamp),
-        confidence: 'high' as const,
-      }))
+      roadworks.map((item: any) => {
+        // Autobahn API returns coordinate.lat/long as strings, isBlocked as string "true"/"false"
+        const lat = parseFloat(String(item.coordinate?.lat || ''));
+        const lng = parseFloat(String(item.coordinate?.long || ''));
+        const isBlocked = String(item.isBlocked) === 'true';
+        
+        return {
+          id: item.identifier || `rw-${Date.now()}-${Math.random()}`,
+          title: item.title || 'Roadworks',
+          description: [
+            ...(Array.isArray(item.subtitle) ? item.subtitle : item.subtitle ? [item.subtitle] : []),
+            ...(Array.isArray(item.description) ? item.description : item.description ? [item.description] : [])
+          ].filter(Boolean).join(' · ') || 'Roadworks in progress',
+          lat,
+          lng,
+          type: 'roadworks' as const,
+          severity: isBlocked ? 'warning' as const : 'info' as const,
+          extent: String(item.extent || ''),
+          isBlocked,
+          timestamp: item.startTimestamp || null,
+          age: calculateAge(item.startTimestamp),
+          confidence: 'high' as const,
+        };
+      })
     ).filter(item => !isNaN(item.lat) && !isNaN(item.lng));
 
     const processedClosures = allEvents.flatMap(({ closures }) =>
-      closures.map((item: any) => ({
-        id: item.identifier || `cl-${Date.now()}-${Math.random()}`,
-        title: item.title || 'Closure',
-        description: [
-          ...(Array.isArray(item.subtitle) ? item.subtitle : item.subtitle ? [item.subtitle] : []),
-          ...(Array.isArray(item.description) ? item.description : item.description ? [item.description] : [])
-        ].filter(Boolean).join(' · ') || 'Road closure in effect',
-        lat: parseFloat(item.coordinate?.lat),
-        lng: parseFloat(item.coordinate?.long),
-        type: 'closures' as const,
-        severity: 'danger' as const,
-        extent: item.extent,
-        timestamp: item.startTimestamp,
-        age: calculateAge(item.startTimestamp),
-        confidence: 'high' as const,
-      }))
+      closures.map((item: any) => {
+        const lat = parseFloat(String(item.coordinate?.lat || ''));
+        const lng = parseFloat(String(item.coordinate?.long || ''));
+        
+        return {
+          id: item.identifier || `cl-${Date.now()}-${Math.random()}`,
+          title: item.title || 'Closure',
+          description: [
+            ...(Array.isArray(item.subtitle) ? item.subtitle : item.subtitle ? [item.subtitle] : []),
+            ...(Array.isArray(item.description) ? item.description : item.description ? [item.description] : [])
+          ].filter(Boolean).join(' · ') || 'Road closure in effect',
+          lat,
+          lng,
+          type: 'closures' as const,
+          severity: 'danger' as const,
+          extent: String(item.extent || ''),
+          timestamp: item.startTimestamp || null,
+          age: calculateAge(item.startTimestamp),
+          confidence: 'high' as const,
+        };
+      })
     ).filter(item => !isNaN(item.lat) && !isNaN(item.lng));
 
     const processedWarnings = allEvents.flatMap(({ warnings }) =>
-      warnings.map((item: any) => ({
-        id: item.identifier || `wn-${Date.now()}-${Math.random()}`,
-        title: item.title || 'Warning',
-        description: [
-          ...(Array.isArray(item.subtitle) ? item.subtitle : item.subtitle ? [item.subtitle] : []),
-          ...(Array.isArray(item.description) ? item.description : item.description ? [item.description] : [])
-        ].filter(Boolean).join(' · ') || 'Traffic warning',
-        lat: parseFloat(item.coordinate?.lat),
-        lng: parseFloat(item.coordinate?.long),
-        type: 'warnings' as const,
-        severity: 'warning' as const,
-        extent: item.extent,
-        timestamp: item.startTimestamp,
-        age: calculateAge(item.startTimestamp),
-        confidence: 'medium' as const,
-      }))
+      warnings.map((item: any) => {
+        const lat = parseFloat(String(item.coordinate?.lat || ''));
+        const lng = parseFloat(String(item.coordinate?.long || ''));
+        
+        return {
+          id: item.identifier || `wn-${Date.now()}-${Math.random()}`,
+          title: item.title || 'Warning',
+          description: [
+            ...(Array.isArray(item.subtitle) ? item.subtitle : item.subtitle ? [item.subtitle] : []),
+            ...(Array.isArray(item.description) ? item.description : item.description ? [item.description] : [])
+          ].filter(Boolean).join(' · ') || 'Traffic warning',
+          lat,
+          lng,
+          type: 'warnings' as const,
+          severity: 'warning' as const,
+          extent: String(item.extent || ''),
+          timestamp: item.startTimestamp || null,
+          age: calculateAge(item.startTimestamp),
+          confidence: 'medium' as const,
+        };
+      })
     ).filter(item => !isNaN(item.lat) && !isNaN(item.lng));
 
     return {
@@ -547,7 +564,32 @@ export default async function handler(
   } catch (error) {
     console.error('Route check error:', error);
     
-    // Return degraded VERIFY verdict instead of 500
+    // Try to preserve route geometry even if check failed
+    let fallbackRoute;
+    try {
+      const points = await parseGPX(gpxContent);
+      const distance = calculateRouteDistance(points);
+      const origin = points[0]?.name || `${points[0]?.lat.toFixed(4)}, ${points[0]?.lng.toFixed(4)}`;
+      const destination = points[points.length - 1]?.name || `${points[points.length - 1]?.lat.toFixed(4)}, ${points[points.length - 1]?.lng.toFixed(4)}`;
+      
+      fallbackRoute = {
+        coordinates: points.map(p => [p.lat, p.lng]),
+        origin,
+        destination,
+        distance,
+        corridor: `±5km corridor (${distance}km route)`,
+      };
+    } catch {
+      fallbackRoute = {
+        coordinates: [],
+        origin: 'Unknown',
+        destination: 'Unknown',
+        distance: 0,
+        corridor: 'Unable to parse route',
+      };
+    }
+    
+    // Return degraded VERIFY verdict with route geometry if available
     return res.status(200).json({
       verdict: 'VERIFY',
       title: "Can't confirm route – check failed",
@@ -565,13 +607,7 @@ export default async function handler(
         state: 'warning',
         category: 'observations',
       }],
-      route: {
-        coordinates: [],
-        origin: 'Unknown',
-        destination: 'Unknown',
-        distance: 0,
-        corridor: 'Unknown',
-      },
+      route: fallbackRoute,
       degraded: true,
     });
   }

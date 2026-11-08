@@ -292,7 +292,7 @@ button, a, input, select, textarea {
   .route-page { padding: 18px 14px 30px; }.route-mode-switch { grid-template-columns: 1fr; }.route-result-top { flex-direction: column; }.route-stat-grid { grid-template-columns: 1fr; }
   .transport-facts { grid-template-columns: 1fr; }.transport-facts div + div { border-top: 1px solid var(--divider); border-left: 0; }.transport-workflow { grid-template-columns: 1fr; }.transport-workflow > svg { display: none; }
   .verification-evidence { grid-template-columns: 1fr; }.verification-evidence > div + div { border-top: 1px solid var(--divider); border-left: 0; }.verification-action { align-items: stretch; flex-direction: column; }.verification-action button { justify-content: center; }.monitoring-timeline { grid-template-columns: 1fr; gap: 8px; }.monitoring-timeline > i { width: 1px; height: 8px; margin: -5px 0 -5px 12px; }
-  .custom-vehicle-fields { grid-template-columns: 1fr; }.bridge-evidence-row, .no-response-banner { align-items: stretch; flex-direction: column !important; }.bridge-evidence-row > button, .bridge-evidence-row > span, .no-response-banner button { justify-content: center; }.demo-controls { right: 12px; bottom: 12px; width: min(310px, calc(100vw - 24px)); }
+  .custom-vehicle-fields { grid-template-columns: 1fr; }.bridge-evidence-row, .no-response-banner { align-items: stretch; flex-direction: column !important; }.bridge-evidence-row > button, .bridge-evidence-row > span, .no-response-banner button { justify-content: center; }.demo-controls { right: 12px; bottom: 12px; width: min(310px, calc(100vw - 24px)); z-index: 800; }
   .connector-sidebar { width: 58px; }.connector-sidebar-brand { padding-left: 9px; padding-right: 9px; }.connector-sidebar-brand > div:last-child, .connector-sidebar nav a span, .connector-sidebar-section { display: none; }.connector-sidebar nav a { padding-left: 20px; padding-right: 20px; }
   table { min-width: 720px; }.bg-white.overflow-hidden:has(> table), .rounded-xl.overflow-hidden:has(> table) { overflow-x: auto; }
   .app-sidebar { position: fixed !important; z-index: 1200; inset: 0 auto 0 0; width: 220px !important; transform: translateX(-100%); box-shadow: var(--shadow-xl); }.app-sidebar.mobile-open { transform: translateX(0); }.mobile-nav-trigger { display: grid !important; }
@@ -2269,8 +2269,9 @@ h4 { font-size: 18px !important; line-height: 1.35 !important; }
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
-  color: var(--text-tertiary);
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-weight: 500;
 }
 
 /* Responsive */
