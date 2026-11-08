@@ -90,7 +90,7 @@ function eventIcon(type: OperationalEventType) {
 }
 
 function clusterEvents(events: OperationalEvent[], zoom: number) {
-  const cellSize = zoom <= 5.5 ? 1.35 : zoom <= 7 ? 0.5 : 0.35
+  const cellSize = zoom <= 5.5 ? 1.8 : zoom <= 6.5 ? 1.0 : zoom <= 7.5 ? 0.4 : 0.25
   const groups = new Map<string, OperationalEvent[]>()
   events.forEach(event => {
     const key = `${Math.floor(event.lat / cellSize)}:${Math.floor(event.lng / cellSize)}`
@@ -238,7 +238,7 @@ export default function LiveMap() {
     overlayGroup.clearLayers()
     markerRefs.current.clear()
 
-    if (mapZoom < 8) {
+    if (mapZoom < 9) {
       clusterEvents(visibleEvents, mapZoom).forEach(cluster => {
         const color = eventMeta[cluster.dominantType].color
         L.marker([cluster.lat, cluster.lng], {
