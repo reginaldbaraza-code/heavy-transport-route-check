@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="VEMAGS Route Export" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata>
+    <name>Leipzig → Nürnberg A9</name>
+    <desc>Heavy transport permit route DE-SN-2026-03512</desc>
+    <time>2026-11-08T12:00:00Z</time>
+  </metadata>
+  <trk>
+    <name>Leipzig Freight → Nürnberg Cargo Hub</name>
+    <trkseg>
+      <trkpt lat="51.3397" lon="12.3731">
+        <ele>113</ele>
+        <name>Leipzig Freight Centre</name>
+      </trkpt>
+      <trkpt lat="51.2500" lon="12.3000">
+        <ele>120</ele>
+      </trkpt>
+      <trkpt lat="51.1000" lon="12.2000">
+        <ele>130</ele>
+      </trkpt>
+      <trkpt lat="50.9500" lon="12.1000">
+        <ele>140</ele>
+      </trkpt>
+      <trkpt lat="50.8000" lon="12.0000">
+        <ele>350</ele>
+      </trkpt>
+      <trkpt lat="50.6500" lon="11.9000">
+        <ele>360</ele>
+      </trkpt>
+      <trkpt lat="50.5000" lon="11.8000">
+        <ele>370</ele>
+      </trkpt>
+      <trkpt lat="50.3500" lon="11.7000">
+        <ele>380</ele>
+      </trkpt>
+      <trkpt lat="50.2000" lon="11.6000">
+        <ele>390</ele>
+      </trkpt>
+      <trkpt lat="50.0500" lon="11.5000">
+        <ele>400</ele>
+      </trkpt>
+      <trkpt lat="49.9000" lon="11.4000">
+        <ele>405</ele>
+      </trkpt>
+      <trkpt lat="49.7500" lon="11.3000">
+        <ele>410</ele>
+      </trkpt>
+      <trkpt lat="49.6000" lon="11.2000">
+        <ele>315</ele>
+      </trkpt>
+      <trkpt lat="49.4522" lon="11.0767">
+        <ele>302</ele>
+        <name>Nürnberg Heavy Cargo Hub</name>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>

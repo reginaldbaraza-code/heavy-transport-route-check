@@ -1,0 +1,15 @@
+{
+  "permitNumber": "DE-NW-2026-02198",
+  "route": "Duisburg → Köln via A3",
+  "origin": "Duisburg Logistics Yard",
+  "destination": "Köln Wind Terminal",
+  "validFrom": "2026-11-11T00:00:00+01:00",
+  "validUntil": "2026-11-16T23:59:59+01:00",
+  "vehicle": {
+    "width": 3.8,
+    "height": 4.5,
+    "length": 35.0,
+    "grossWeight": 80
+  },
+  "routeDescription": "A3 motorway from Duisburg to Köln. Total distance approximately 70 km. High-capacity transport, daytime allowed with escort."
+}

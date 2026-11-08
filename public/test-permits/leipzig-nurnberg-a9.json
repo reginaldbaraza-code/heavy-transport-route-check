@@ -1,0 +1,15 @@
+{
+  "permitNumber": "DE-SN-2026-03512",
+  "route": "Leipzig → Nürnberg via A9",
+  "origin": "Leipzig Freight Centre",
+  "destination": "Nürnberg Heavy Cargo Hub",
+  "validFrom": "2026-11-09T00:00:00+01:00",
+  "validUntil": "2026-11-14T23:59:59+01:00",
+  "vehicle": {
+    "width": 3.0,
+    "height": 4.0,
+    "length": 25.0,
+    "grossWeight": 52
+  },
+  "routeDescription": "A9 motorway from Leipzig via Hof to Nürnberg. Total distance approximately 290 km. Night transport mandatory."
+}
