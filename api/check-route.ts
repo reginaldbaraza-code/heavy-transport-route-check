@@ -505,8 +505,13 @@ export default async function handler(
       });
     }
 
-    const { verdict, confidence } = determineVerdict(evidence, degraded);
-    const issueCount = evidence.filter(e => e.state === 'danger').length;
+    // Deduplicate evidence by ID (same event shouldn't appear twice)
+    const uniqueEvidence = Array.from(
+      new Map(evidence.map(item => [item.id, item])).values()
+    );
+    
+    const { verdict, confidence } = determineVerdict(uniqueEvidence, degraded);
+    const issueCount = uniqueEvidence.filter(e => e.state === 'danger').length;
 
     const result: RouteCheckResult = {
       verdict,
@@ -527,7 +532,7 @@ export default async function handler(
       impact: `Selected vehicle: ${vehicle.width.toFixed(2)}m W × ${vehicle.height.toFixed(2)}m H × ${vehicle.length.toFixed(1)}m L · ${vehicle.grossWeight}t${degraded ? '. Data source unavailable – cannot confirm route is clear.' : ''}`,
       confidence,
       issueCount,
-      evidence,
+      evidence: uniqueEvidence,
       route: {
         coordinates: routePoints.map(p => [p.lat, p.lng]),
         origin,
