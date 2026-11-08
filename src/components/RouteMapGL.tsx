@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { AlertTriangle, CheckCircle2, CircleX, Layers3, Minus, Plus } from 'lucide-react';
@@ -18,6 +18,10 @@ type Props = {
   className?: string;
 };
 
+export type RouteMapHandle = {
+  flyToEvidence: (evidence: RouteEvidence) => void;
+};
+
 const VERDICT_COLORS = {
   READY: '#12b76a',
   HOLD: '#dc3f52',
@@ -30,7 +34,7 @@ const EVIDENCE_COLORS = {
   danger: '#dc3f52',
 };
 
-export default function RouteMapGL({
+const RouteMapGL = forwardRef<RouteMapHandle, Props>(({
   coordinates,
   origin,
   destination,
@@ -42,11 +46,24 @@ export default function RouteMapGL({
   onLayerChange,
   onEvidenceSelect,
   className = '',
-}: Props) {
+}, ref) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const markers = useRef<maplibregl.Marker[]>([]);
   const [mapLoaded, setMapLoaded] = useState(false);
+
+  // Expose methods to parent via ref
+  useImperativeHandle(ref, () => ({
+    flyToEvidence: (evidence: RouteEvidence) => {
+      if (map.current && evidence.lat != null && evidence.lng != null) {
+        map.current.flyTo({
+          center: [evidence.lng, evidence.lat],
+          zoom: 12,
+          duration: 1500,
+        });
+      }
+    },
+  }));
 
   // Initialize map
   useEffect(() => {
@@ -120,74 +137,102 @@ export default function RouteMapGL({
     if (!map.current || !mapLoaded || coordinates.length < 2) return;
 
     const mapInstance = map.current;
+    
+    // Helper to safely remove layer and source
+    const removeLayerAndSource = (layerId: string, sourceId: string) => {
+      try {
+        if (mapInstance.getLayer(layerId)) mapInstance.removeLayer(layerId);
+        if (mapInstance.getSource(sourceId)) mapInstance.removeSource(sourceId);
+      } catch (e) {
+        console.warn(`Failed to remove ${layerId}:`, e);
+      }
+    };
 
     // Remove existing route layers
-    if (mapInstance.getLayer('route-corridor')) mapInstance.removeLayer('route-corridor');
-    if (mapInstance.getLayer('route-line')) mapInstance.removeLayer('route-line');
-    if (mapInstance.getSource('route-corridor')) mapInstance.removeSource('route-corridor');
-    if (mapInstance.getSource('route-line')) mapInstance.removeSource('route-line');
+    removeLayerAndSource('route-corridor', 'route-corridor');
+    removeLayerAndSource('route-line', 'route-line');
+
+    // Convert coordinates to [lng, lat] for MapLibre
+    const geoCoordinates = coordinates.map(([lat, lng]) => [lng, lat]);
+    
+    console.log('Adding route with', coordinates.length, 'points');
+    console.log('First point (input):', coordinates[0], '→ (geo):', geoCoordinates[0]);
 
     // Add corridor if provided
     if (corridor && corridor.length > 0) {
-      mapInstance.addSource('route-corridor', {
+      try {
+        mapInstance.addSource('route-corridor', {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            properties: {},
+            geometry: {
+              type: 'Polygon',
+              coordinates: corridor,
+            },
+          },
+        });
+
+        mapInstance.addLayer({
+          id: 'route-corridor',
+          type: 'fill',
+          source: 'route-corridor',
+          paint: {
+            'fill-color': VERDICT_COLORS[verdict],
+            'fill-opacity': 0.1,
+          },
+        });
+      } catch (e) {
+        console.error('Failed to add corridor:', e);
+      }
+    }
+
+    // Add route line
+    try {
+      mapInstance.addSource('route-line', {
         type: 'geojson',
         data: {
           type: 'Feature',
           properties: {},
           geometry: {
-            type: 'Polygon',
-            coordinates: corridor,
+            type: 'LineString',
+            coordinates: geoCoordinates,
           },
         },
       });
 
       mapInstance.addLayer({
-        id: 'route-corridor',
-        type: 'fill',
-        source: 'route-corridor',
+        id: 'route-line',
+        type: 'line',
+        source: 'route-line',
         paint: {
-          'fill-color': VERDICT_COLORS[verdict],
-          'fill-opacity': 0.1,
+          'line-color': VERDICT_COLORS[verdict],
+          'line-width': 4,
+          'line-opacity': 0.9,
         },
       });
+      
+      console.log('✓ Route line added successfully');
+    } catch (e) {
+      console.error('Failed to add route line:', e);
     }
 
-    // Add route line
-    mapInstance.addSource('route-line', {
-      type: 'geojson',
-      data: {
-        type: 'Feature',
-        properties: {},
-        geometry: {
-          type: 'LineString',
-          coordinates: coordinates.map(([lat, lng]) => [lng, lat]),
-        },
-      },
-    });
-
-    mapInstance.addLayer({
-      id: 'route-line',
-      type: 'line',
-      source: 'route-line',
-      paint: {
-        'line-color': VERDICT_COLORS[verdict],
-        'line-width': 4,
-      },
-    });
-
     // Fit to route bounds with padding
-    const bounds = coordinates.reduce(
-      (bounds, coord) => bounds.extend([coord[1], coord[0]]),
-      new maplibregl.LngLatBounds(
-        [coordinates[0][1], coordinates[0][0]],
-        [coordinates[0][1], coordinates[0][0]]
-      )
-    );
+    try {
+      const bounds = geoCoordinates.reduce(
+        (bounds, [lng, lat]) => bounds.extend([lng, lat]),
+        new maplibregl.LngLatBounds(geoCoordinates[0], geoCoordinates[0])
+      );
 
-    mapInstance.fitBounds(bounds, {
-      padding: { top: 80, bottom: 80, left: 80, right: 80 },
-      duration: 1000,
-    });
+      mapInstance.fitBounds(bounds, {
+        padding: { top: 80, bottom: 80, left: 80, right: 80 },
+        duration: 1000,
+      });
+      
+      console.log('✓ Fitted to bounds');
+    } catch (e) {
+      console.error('Failed to fit bounds:', e);
+    }
   }, [coordinates, corridor, verdict, mapLoaded]);
 
   // Update markers
@@ -294,4 +339,8 @@ export default function RouteMapGL({
       </div>
     </div>
   );
-}
+});
+
+RouteMapGL.displayName = 'RouteMapGL';
+
+export default RouteMapGL;

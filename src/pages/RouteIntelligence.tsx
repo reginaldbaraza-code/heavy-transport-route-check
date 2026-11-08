@@ -4,7 +4,7 @@ import {
   AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, CircleX, 
   FileUp, Loader2, MapPin, ShieldCheck, Truck, Upload,
 } from 'lucide-react'
-import RouteMapGL from '../components/RouteMapGL'
+import RouteMapGL, { type RouteMapHandle } from '../components/RouteMapGL'
 import { Toast } from '../components/Feedback'
 import { checkRoute, loadTestPermit, readFileAsText, testPermits, type RouteCheckResult } from '../lib/routeCheck'
 import type { RouteEvidence } from '../data/routeChecks'
@@ -33,6 +33,7 @@ export default function RouteIntelligencePolished() {
   const [error, setError] = useState('')
   const [showTestPermits, setShowTestPermits] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+  const mapRef = useRef<RouteMapHandle>(null)
 
   const vehicle = {
     width: parseFloat(vehicleWidth) || 0,
@@ -454,6 +455,7 @@ export default function RouteIntelligencePolished() {
             <div className="results-layout">
               <div className="results-main">
                 <RouteMapGL
+                  ref={mapRef}
                   coordinates={result.route.coordinates}
                   origin={result.route.origin}
                   destination={result.route.destination}
@@ -478,10 +480,22 @@ export default function RouteIntelligencePolished() {
                 </div>
 
                 <div className="evidence-section">
-                  <h3>Evidence ({result.evidence.filter(e => e.category === activeLayer).length})</h3>
+                  <h3>
+                    Evidence ({result.evidence.filter(e => e.category === activeLayer).length})
+                    {result.evidence.filter(e => e.category === activeLayer).length !== result.evidence.length && (
+                      <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', fontSize: '14px' }}>
+                        {' '}· {result.evidence.length} total
+                      </span>
+                    )}
+                  </h3>
                   <div className="evidence-list">
                     {result.evidence.filter(e => e.category === activeLayer).map(item => (
-                      <div key={item.id} className={`evidence-card evidence-${item.state}`}>
+                      <div 
+                        key={item.id} 
+                        className={`evidence-card evidence-${item.state}`}
+                        onClick={() => item.lat != null && item.lng != null && mapRef.current?.flyToEvidence(item)}
+                        style={{ cursor: item.lat != null && item.lng != null ? 'pointer' : 'default' }}
+                      >
                         <div className="evidence-header">
                           <strong>{item.title}</strong>
                           <span className={`confidence-badge confidence-${item.confidence}`}>
@@ -493,6 +507,9 @@ export default function RouteIntelligencePolished() {
                           <span>{item.source}</span>
                           <span>·</span>
                           <span>{item.age}</span>
+                          {item.lat != null && item.lng != null && (
+                            <span style={{ marginLeft: 'auto', fontSize: '12px', opacity: 0.6 }}>📍 Click to view</span>
+                          )}
                         </div>
                       </div>
                     ))}

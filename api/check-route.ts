@@ -234,12 +234,18 @@ async function fetchRoadEvents(road: string, type: 'roadworks' | 'closure' | 'wa
   }
 }
 
-function calculateAge(timestamp?: string): string {
-  if (!timestamp) return 'Recently';
+function calculateAge(timestamp?: string | null): string {
+  if (!timestamp) {
+    const now = new Date();
+    return `Reported (fetched ${now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })})`;
+  }
   
   try {
     const eventTime = new Date(timestamp);
-    if (isNaN(eventTime.getTime())) return 'Recently';
+    if (isNaN(eventTime.getTime())) {
+      const now = new Date();
+      return `Reported (fetched ${now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })})`;
+    }
     
     const now = new Date();
     const diffMs = now.getTime() - eventTime.getTime();
@@ -252,7 +258,8 @@ function calculateAge(timestamp?: string): string {
     if (diffMins > 0) return `${diffMins}m ago`;
     return 'Just now';
   } catch {
-    return 'Recently';
+    const now = new Date();
+    return `Reported (fetched ${now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })})`;
   }
 }
 
@@ -545,7 +552,7 @@ export default async function handler(
           ? `${issueCount} blocking ${issueCount === 1 ? 'issue' : 'issues'} detected on permitted route.`
           : degraded
             ? 'The Autobahn data source is temporarily unavailable. Retry or verify manually.'
-            : `${evidence.length} item${evidence.length === 1 ? '' : 's'} require verification.`,
+            : `${uniqueEvidence.length} item${uniqueEvidence.length === 1 ? '' : 's'} require verification.`,
       impact: `Selected vehicle: ${vehicle.width.toFixed(2)}m W × ${vehicle.height.toFixed(2)}m H × ${vehicle.length.toFixed(1)}m L · ${vehicle.grossWeight}t${degraded ? '. Data source unavailable – cannot confirm route is clear.' : ''}`,
       confidence,
       issueCount,

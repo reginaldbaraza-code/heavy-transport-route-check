@@ -100,13 +100,53 @@ async function testPermit(handler: any, filename: string, shouldPass: boolean) {
         console.log(`  ⚠️  DEGRADED: ${data.summary}`);
       }
       
+      // Validate coordinates are [lng, lat] in Germany bounds
+      const germanBounds = { minLng: 5.8, maxLng: 15.1, minLat: 47.2, maxLat: 55.1 };
+      const coordErrors: string[] = [];
+      
+      if (data.route?.coordinates && data.route.coordinates.length > 0) {
+        // API returns [lat, lng], check if first coord is valid
+        const [first, second] = data.route.coordinates[0];
+        
+        // If first value is latitude (>40), it's in [lat, lng] format (correct for API)
+        if (first > 40 && first < 60) {
+          // Check if coords are within Germany
+          const inBounds = data.route.coordinates.every(([lat, lng]: [number, number]) => 
+            lat >= germanBounds.minLat && lat <= germanBounds.maxLat &&
+            lng >= germanBounds.minLng && lng <= germanBounds.maxLng
+          );
+          if (!inBounds) {
+            coordErrors.push('Some coordinates outside Germany bounds');
+          }
+        } else if (first > 5 && first < 16) {
+          // Likely [lng, lat] - wrong for API
+          coordErrors.push('Coordinates appear to be [lng, lat] instead of [lat, lng]');
+        }
+      }
+      
+      // Validate evidence count for HOLD/VERIFY
+      const evidenceErrors: string[] = [];
+      if ((data.verdict === 'HOLD' || data.verdict === 'VERIFY') && data.issueCount > 0) {
+        const evidenceLength = data.evidence?.length || 0;
+        if (evidenceLength < data.issueCount) {
+          evidenceErrors.push(`Evidence count (${evidenceLength}) < issueCount (${data.issueCount})`);
+        }
+      }
+      
+      const errors = [...coordErrors, ...evidenceErrors];
+      if (errors.length > 0) {
+        errors.forEach(err => console.log(`  ✗ VALIDATION: ${err}`));
+      }
+      
       return {
         filename,
         status,
         verdict: data.verdict,
         distance: data.route?.distance || 0,
         evidenceCount: data.evidence?.length || 0,
-        success: shouldPass && status === 200 && (data.route?.distance || 0) > 0
+        issueCount: data.issueCount || 0,
+        validationErrors: errors,
+        success: shouldPass && status === 200 && (data.route?.distance || 0) > 0 && errors.length === 0
       };
     } else if (status === 400) {
       console.log(`  Error: ${data.error || data.message}`);
@@ -164,7 +204,8 @@ async function main() {
     const details = r.distance 
       ? `${r.distance}km, ${r.evidenceCount} evidence, ${r.verdict}` 
       : r.error || `HTTP ${r.status}`;
-    console.log(`${status} ${r.filename.padEnd(30)} ${details}`);
+    const validation = r.validationErrors?.length ? ` [${r.validationErrors.join('; ')}]` : '';
+    console.log(`${status} ${r.filename.padEnd(30)} ${details}${validation}`);
   });
   
   const passed = results.filter(r => r.success).length;
