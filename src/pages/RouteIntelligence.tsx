@@ -477,7 +477,7 @@ export default function RouteIntelligencePolished() {
                     <div><span>Origin</span><strong>{result.route.origin}</strong></div>
                     <div><span>Destination</span><strong>{result.route.destination}</strong></div>
                     <div><span>Distance</span><strong>{result.route.distance} km</strong></div>
-                    <div><span>Issues found</span><strong>{result.issueCount}</strong></div>
+                    <div><span>Evidence found</span><strong>{result.evidence.length}</strong></div>
                   </div>
                 </div>
 

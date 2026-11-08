@@ -75,18 +75,18 @@ const RouteMapGL = forwardRef<RouteMapHandle, Props>(({
       style: {
         version: 8,
         sources: {
-          'openfree': {
+          'osm-tiles': {
             type: 'raster',
-            tiles: ['https://tiles.openfreemap.com/natural/{z}/{x}/{y}.png'],
+            tiles: ['https://a.tile.openstreetmap.org/{z}/{x}/{y}.png'],
             tileSize: 256,
-            attribution: '© OpenFreeMap contributors',
+            attribution: '© OpenStreetMap contributors',
           },
         },
         layers: [
           {
-            id: 'openfree-tiles',
+            id: 'osm-tiles',
             type: 'raster',
-            source: 'openfree',
+            source: 'osm-tiles',
           },
         ],
       },
@@ -98,30 +98,9 @@ const RouteMapGL = forwardRef<RouteMapHandle, Props>(({
 
     mapInstance.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
 
-    mapInstance.on('load', () => {
+    // Use styledata event to ensure layers are re-added after any style change
+    mapInstance.on('styledata', () => {
       setMapLoaded(true);
-    });
-    
-    // Fallback to OSM raster tiles if OpenFreeMap fails
-    mapInstance.on('error', (e) => {
-      if (e.error?.message?.includes('tiles') || e.error?.message?.includes('style')) {
-        console.warn('Map tiles failed, falling back to OSM:', e.error);
-        try {
-          mapInstance.addSource('osm-fallback', {
-            type: 'raster',
-            tiles: ['https://a.tile.openstreetmap.org/{z}/{x}/{y}.png'],
-            tileSize: 256,
-            attribution: '© OpenStreetMap contributors',
-          });
-          mapInstance.addLayer({
-            id: 'osm-fallback-tiles',
-            type: 'raster',
-            source: 'osm-fallback',
-          }, 'openfree-tiles');
-        } catch (fallbackError) {
-          console.error('Fallback basemap also failed:', fallbackError);
-        }
-      }
     });
 
     map.current = mapInstance;

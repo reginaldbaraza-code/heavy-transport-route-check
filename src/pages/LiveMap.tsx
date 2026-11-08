@@ -68,7 +68,10 @@ export default function LiveMap() {
   const [liveStatus, setLiveStatus] = useState<'ready' | 'refreshing'>('ready')
   const [snowRisk, setSnowRisk] = useState<SnowCell[]>(snowCells.map(([lat, lng, intensity]) => ({ lat, lng, intensity, temperature: -1, snowfall: 0.6 })))
   const [lastUpdated, setLastUpdated] = useState(new Date())
-  const [layerPanelOpen, setLayerPanelOpen] = useState(true)
+  const [layerPanelOpen, setLayerPanelOpen] = useState(() => {
+    // Collapse by default on mobile (< 768px)
+    return typeof window !== 'undefined' ? window.innerWidth >= 768 : true
+  })
 
   const scopeEvents = useMemo(() => events.filter(event =>
     scope === 'national' || (Math.abs(event.lat - 48.14) < 1.15 && Math.abs(event.lng - 11.58) < 1.55),
@@ -114,9 +117,9 @@ export default function LiveMap() {
         sources: {
           'osm-tiles': {
             type: 'raster',
-            tiles: ['https://tiles.openfreemap.com/natural/{z}/{x}/{y}.png'],
+            tiles: ['https://a.tile.openstreetmap.org/{z}/{x}/{y}.png'],
             tileSize: 256,
-            attribution: '© OpenFreeMap contributors',
+            attribution: '© OpenStreetMap contributors',
           },
         },
         layers: [
@@ -137,7 +140,14 @@ export default function LiveMap() {
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
     map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-right')
 
-    map.on('load', () => {
+    // Helper to add cluster layers
+    const addClusterLayers = () => {
+      // Remove existing if present
+      ['unclustered-label', 'unclustered-point', 'cluster-count', 'clusters'].forEach(id => {
+        if (map.getLayer(id)) map.removeLayer(id)
+      })
+      if (map.getSource('events')) map.removeSource('events')
+
       // Add GeoJSON source for clustered events
       map.addSource('events', {
         type: 'geojson',
@@ -304,8 +314,14 @@ export default function LiveMap() {
       map.on('mouseleave', 'unclustered-point', () => {
         map.getCanvas().style.cursor = ''
       })
+    }
 
-      setMapLoaded(true)
+    // Call on styledata to survive style changes
+    map.on('styledata', () => {
+      if (map.isStyleLoaded()) {
+        addClusterLayers()
+        setMapLoaded(true)
+      }
     })
 
     mapRef.current = map
