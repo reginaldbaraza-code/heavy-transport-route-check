@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  AlertTriangle, ArrowLeft, ArrowRight, CalendarClock, CheckCircle2, ChevronUp,
-  CircleX, Download, FileJson, FlaskConical, MapPin, RefreshCw, Route, ShieldCheck, Upload, X,
+  AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, CircleX, 
+  FileUp, Loader2, MapPin, ShieldCheck, Truck, Upload,
 } from 'lucide-react'
 import RouteMapGL from '../components/RouteMapGL'
 import { Toast } from '../components/Feedback'
@@ -12,16 +12,12 @@ import type { RouteEvidence } from '../data/routeChecks'
 const routeLayers = [
   { id: 'roadworks', label: 'Roadworks' },
   { id: 'closures', label: 'Closures' },
-  { id: 'observations', label: 'Observations' },
+  { id: 'observations', label: 'On-site reports' },
 ]
 
-const verdictLabels = {
-  READY: 'Ready',
-  HOLD: 'Hold departure',
-  VERIFY: 'Verify evidence',
-}
-
-export default function RouteIntelligenceNew() {
+export default function RouteIntelligencePolished() {
+  // State
+  const [step, setStep] = useState<'import' | 'vehicle' | 'result'>('import')
   const [checking, setChecking] = useState(false)
   const [result, setResult] = useState<RouteCheckResult | null>(null)
   const [activeLayer, setActiveLayer] = useState('roadworks')
@@ -30,14 +26,12 @@ export default function RouteIntelligenceNew() {
   const [vehicleHeight, setVehicleHeight] = useState('4.0')
   const [vehicleLength, setVehicleLength] = useState('25.0')
   const [vehicleWeight, setVehicleWeight] = useState('52')
-  const [departure, setDeparture] = useState('10.11.2026, 22:00')
   const [permitNumber, setPermitNumber] = useState('')
   const [routeFile, setRouteFile] = useState('')
+  const [gpxContent, setGpxContent] = useState('')
   const [toast, setToast] = useState('')
   const [error, setError] = useState('')
-  const [selectedTestPermit, setSelectedTestPermit] = useState('')
-  const [testPermitOpen, setTestPermitOpen] = useState(false)
-  const [demoOpen, setDemoOpen] = useState(false)
+  const [showTestPermits, setShowTestPermits] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
 
   const vehicle = {
@@ -49,7 +43,7 @@ export default function RouteIntelligenceNew() {
 
   const vehicleValid = vehicle.width > 0 && vehicle.height > 0 && vehicle.length > 0 && vehicle.grossWeight > 0
 
-  const runCheck = async (gpxContent: string, metadata?: any) => {
+  const runCheck = async (content: string, metadata?: any) => {
     if (!vehicleValid || checking) return
 
     setChecking(true)
@@ -58,14 +52,6 @@ export default function RouteIntelligenceNew() {
     try {
       if (metadata) {
         setPermitNumber(metadata.permitNumber || '')
-        setDeparture(new Date(metadata.validFrom).toLocaleString('de-DE', {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false,
-        }))
         setVehicleProfile('custom')
         setVehicleWidth(metadata.vehicle.width.toString())
         setVehicleHeight(metadata.vehicle.height.toString())
@@ -73,15 +59,15 @@ export default function RouteIntelligenceNew() {
         setVehicleWeight(metadata.vehicle.grossWeight.toString())
       }
 
-      const checkResult = await checkRoute(gpxContent, vehicle, permitNumber)
+      const checkResult = await checkRoute(content, vehicle, permitNumber)
       setResult(checkResult)
       setActiveLayer('roadworks')
-      setToast(`Route check complete: ${verdictLabels[checkResult.verdict]}`)
+      setStep('result')
+      setToast(`Route checked: ${checkResult.verdict}`)
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to check route'
       setError(errorMsg)
-      setToast('Route check failed')
-      console.error('Route check error:', err)
+      setToast(errorMsg)
     } finally {
       setChecking(false)
     }
@@ -91,340 +77,410 @@ export default function RouteIntelligenceNew() {
     const permit = testPermits.find(p => p.id === permitId)
     if (!permit) return
 
-    setSelectedTestPermit(permitId)
     setRouteFile(permit.name.split('·')[0].trim())
-    setTestPermitOpen(false)
+    setShowTestPermits(false)
     setError('')
+    setStep('vehicle')
 
     try {
-      const { gpxContent, metadata } = await loadTestPermit(permit)
-      await runCheck(gpxContent, metadata)
+      const { gpxContent: content, metadata } = await loadTestPermit(permit)
+      setGpxContent(content)
+      if (metadata) {
+        setPermitNumber(metadata.permitNumber || '')
+        setVehicleProfile('custom')
+        setVehicleWidth(metadata.vehicle.width.toString())
+        setVehicleHeight(metadata.vehicle.height.toString())
+        setVehicleLength(metadata.vehicle.length.toString())
+        setVehicleWeight(metadata.vehicle.grossWeight.toString())
+      }
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to load test permit'
-      setError(errorMsg)
-      setToast('Failed to load test permit')
+      setError(err instanceof Error ? err.message : 'Failed to load test permit')
     }
   }
 
   const handleFileUpload = async (file: File) => {
     setRouteFile(file.name)
-    setSelectedTestPermit('')
     setError('')
+    setStep('vehicle')
 
     try {
-      const gpxContent = await readFileAsText(file)
-      await runCheck(gpxContent)
+      const content = await readFileAsText(file)
+      setGpxContent(content)
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to read uploaded file'
-      setError(errorMsg)
-      setToast('Failed to read file')
+      setError(err instanceof Error ? err.message : 'Failed to read file')
+      setStep('import')
     }
+  }
+
+  const handleCheckRoute = () => {
+    if (gpxContent && vehicleValid) {
+      runCheck(gpxContent)
+    }
+  }
+
+  const resetFlow = () => {
+    setStep('import')
+    setResult(null)
+    setRouteFile('')
+    setGpxContent('')
+    setError('')
+    setPermitNumber('')
   }
 
   const VerdictIcon = result?.verdict === 'READY' ? CheckCircle2 
     : result?.verdict === 'HOLD' ? CircleX 
     : AlertTriangle
 
-  const visibleEvidence = result?.evidence.filter(e => e.category === activeLayer) || []
+  const verdictConfig = {
+    READY: {
+      label: 'Ready to depart',
+      color: 'green',
+      description: 'No blocking issues on your permitted route',
+    },
+    HOLD: {
+      label: 'Hold departure',
+      color: 'red',
+      description: 'Blocking issue detected – do not depart',
+    },
+    VERIFY: {
+      label: 'Verify before departure',
+      color: 'amber',
+      description: 'Verification required before making dispatch decision',
+    },
+  }
+
+  const currentVerdict = result ? verdictConfig[result.verdict] : null
 
   return (
-    <div className="route-page">
-      <div className="route-header">
-        <div>
-          <Link to="/" className="route-back"><ArrowLeft size={16} /> Operations overview</Link>
-          <h1>Check a permitted route</h1>
-          <p>Check the exact approved route before departure and monitor it for short-notice changes.</p>
+    <div className="route-page-polished">
+      {/* Header */}
+      <div className="route-polished-header">
+        <Link to="/" className="route-polished-back">
+          <ArrowLeft size={20} />
+          <span>Back to overview</span>
+        </Link>
+        <div className="route-polished-header-content">
+          <h1>Route Check</h1>
+          <p>Check your permitted route against live Autobahn conditions</p>
         </div>
       </div>
 
-      <div className="permit-scope-note">
-        <ShieldCheck size={20} />
-        <div>
-          <strong>This tool does not calculate a new route.</strong>
-          <span>Heavy transports may only use the route approved in their permit. We check and monitor that exact route.</span>
+      {/* Progress Steps */}
+      {!result && (
+        <div className="route-polished-steps">
+          <div className={`route-polished-step ${step === 'import' ? 'active' : routeFile ? 'completed' : ''}`}>
+            <div className="step-number">{routeFile ? '✓' : '1'}</div>
+            <div className="step-label">Import route</div>
+          </div>
+          <div className="route-polished-step-connector" />
+          <div className={`route-polished-step ${step === 'vehicle' ? 'active' : result ? 'completed' : ''}`}>
+            <div className="step-number">{result ? '✓' : '2'}</div>
+            <div className="step-label">Vehicle dimensions</div>
+          </div>
+          <div className="route-polished-step-connector" />
+          <div className={`route-polished-step ${step === 'result' ? 'active' : ''}`}>
+            <div className="step-number">3</div>
+            <div className="step-label">Check result</div>
+          </div>
         </div>
-      </div>
-
-      {checking && (
-        <section className="dispatcher-verdict-banner checking" aria-live="polite">
-          <span className="dispatcher-verdict-icon"><RefreshCw size={28} className="spin" /></span>
-          <div>
-            <span>Route check in progress</span>
-            <h2>Checking live Autobahn data…</h2>
-            <p>Comparing the approved route, departure time, and vehicle measurements against live roadworks and closures.</p>
-          </div>
-        </section>
       )}
 
-      {result && !checking && (
-        <section className={`dispatcher-verdict-banner ${result.verdict.toLowerCase()}`} aria-live="polite">
-          <span className="dispatcher-verdict-icon"><VerdictIcon size={30} /></span>
-          <div>
-            <span>{verdictLabels[result.verdict]}</span>
-            <h2>{result.title}</h2>
-            <p>{result.summary}</p>
-            {result.degraded && <small className="stale-verdict-note">Data source unavailable</small>}
-          </div>
-        </section>
-      )}
-
-      <div className="route-workspace">
-        <aside className="route-planner">
-          <div className="route-panel-heading">
-            <span className="eyebrow">Permit route</span>
-            <h2>Import route</h2>
-          </div>
-
-          <input
-            ref={fileInput}
-            className="permit-file-input"
-            type="file"
-            accept=".gpx,application/gpx+xml,text/xml"
-            onChange={event => {
-              const file = event.target.files?.[0]
-              if (file) {
-                handleFileUpload(file)
-                event.target.value = ''
-              }
-            }}
-          />
-
-          <button
-            type="button"
-            className={`permit-upload ${error ? 'invalid' : ''}`}
-            onClick={() => fileInput.current?.click()}
-          >
-            {routeFile ? <FileJson size={20} /> : <Upload size={20} />}
-            <span>
-              <strong>{routeFile || 'Select route file'}</strong>
-              <small>{error || 'GPX file · exact approved route'}</small>
-            </span>
-            <b>{routeFile ? 'Replace' : 'Browse'}</b>
-          </button>
-
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => setTestPermitOpen(true)}
-            style={{ marginTop: '8px' }}
-          >
-            <FlaskConical size={16} />
-            Select test permit
-          </button>
-
-          {result && (
-            <div className="permit-route-summary">
-              <div><MapPin size={16} /><span>Origin</span><strong>{result.route.origin}</strong></div>
-              <ArrowRight size={16} />
-              <div><MapPin size={16} /><span>Destination</span><strong>{result.route.destination}</strong></div>
+      {/* Main Content */}
+      <div className="route-polished-content">
+        {/* Step 1: Import Route */}
+        {step === 'import' && (
+          <div className="route-polished-card">
+            <div className="card-header">
+              <FileUp size={24} />
+              <div>
+                <h2>Import your permitted route</h2>
+                <p>Upload a GPX file with your exact approved route or select a test permit</p>
+              </div>
             </div>
-          )}
 
-          <label>
-            <span>Planned departure</span>
-            <div><CalendarClock size={16} /><input value={departure} onChange={e => setDeparture(e.target.value)} /></div>
-            <small className="field-helper">Use DD.MM.YYYY and 24-hour time (Europe/Berlin).</small>
-          </label>
+            <div className="route-polished-upload-area">
+              <input
+                ref={fileInput}
+                type="file"
+                accept=".gpx,application/gpx+xml,text/xml"
+                onChange={e => {
+                  const file = e.target.files?.[0]
+                  if (file) {
+                    handleFileUpload(file)
+                    e.target.value = ''
+                  }
+                }}
+                className="file-input-hidden"
+                aria-label="Upload GPX file"
+              />
+              
+              {!routeFile ? (
+                <button 
+                  type="button"
+                  className="upload-dropzone"
+                  onClick={() => fileInput.current?.click()}
+                >
+                  <Upload size={32} />
+                  <strong>Choose GPX file</strong>
+                  <span>Or drag and drop your permit route file here</span>
+                </button>
+              ) : (
+                <div className="upload-success">
+                  <CheckCircle2 size={24} />
+                  <div>
+                    <strong>{routeFile}</strong>
+                    <span>Route file loaded</span>
+                  </div>
+                  <button type="button" onClick={() => fileInput.current?.click()} className="btn-text">
+                    Replace file
+                  </button>
+                </div>
+              )}
+            </div>
 
-          {permitNumber && (
-            <label>
-              <span>Permit number</span>
-              <input value={permitNumber} onChange={e => setPermitNumber(e.target.value)} />
-            </label>
-          )}
+            {error && (
+              <div className="error-message" role="alert">
+                <AlertTriangle size={20} />
+                <div>
+                  <strong>Could not read file</strong>
+                  <p>{error}</p>
+                </div>
+              </div>
+            )}
 
-          <div className="route-panel-heading" style={{ marginTop: '20px' }}>
-            <span className="eyebrow">Vehicle profile</span>
-            <h2>Approved dimensions</h2>
-          </div>
+            <div className="divider-text">
+              <span>or select a test permit</span>
+            </div>
 
-          <label>
-            <span>Transport profile</span>
-            <select 
-              value={vehicleProfile} 
-              onChange={e => {
-                setVehicleProfile(e.target.value)
-                if (e.target.value === 'standard') {
-                  setVehicleWidth('3.0')
-                  setVehicleHeight('4.0')
-                  setVehicleLength('25.0')
-                  setVehicleWeight('52')
-                } else if (e.target.value === 'wide') {
-                  setVehicleWidth('3.8')
-                  setVehicleHeight('4.2')
-                  setVehicleLength('32.0')
-                  setVehicleWeight('68')
-                }
-              }}
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => setShowTestPermits(!showTestPermits)}
             >
-              <option value="standard">Standard heavy haulage · 3.0m × 4.0m × 25.0m · 52t</option>
-              <option value="wide">Wide heavy haulage · 3.8m × 4.2m × 32.0m · 68t</option>
-              <option value="custom">Custom vehicle</option>
-            </select>
-            <small className="field-helper">Use the measurements approved in the transport permit.</small>
-          </label>
+              {showTestPermits ? 'Hide' : 'Show'} test permits
+              <ChevronDown size={16} style={{ transform: showTestPermits ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+            </button>
 
-          {vehicleProfile === 'custom' ? (
-            <div className="custom-vehicle-fields">
-              {[
-                ['width', 'Width', 'm', vehicleWidth, setVehicleWidth],
-                ['height', 'Height', 'm', vehicleHeight, setVehicleHeight],
-                ['length', 'Length', 'm', vehicleLength, setVehicleLength],
-                ['grossWeight', 'Gross weight', 't', vehicleWeight, setVehicleWeight],
-              ].map(([field, label, unit, value, setValue]) => {
-                const invalid = parseFloat(value as string) <= 0
-                return (
-                  <label key={field as string}>
-                    <span>{label}</span>
-                    <div className={invalid ? 'invalid' : ''}>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.1"
-                        value={value as string}
-                        onChange={e => (setValue as (v: string) => void)(e.target.value)}
-                      />
-                      <b>{unit}</b>
-                    </div>
-                    {invalid && <small>Enter a value greater than 0 {unit}.</small>}
-                  </label>
-                )
-              })}
-            </div>
-          ) : (
-            <div className="vehicle-profile-facts">
-              <div><span>Width</span><strong>{vehicleWidth} m</strong></div>
-              <div><span>Height</span><strong>{vehicleHeight} m</strong></div>
-              <div><span>Length</span><strong>{vehicleLength} m</strong></div>
-              <div><span>Gross weight</span><strong>{vehicleWeight} t</strong></div>
-            </div>
-          )}
-
-          <div className="route-source-note">
-            <ShieldCheck size={16} />
-            <p><strong>Permit remains authoritative</strong><span>The check supports dispatch decisions. It does not replace VEMAGS or authority approval.</span></p>
-          </div>
-        </aside>
-
-        <main className="route-map-panel">
-          {result ? (
-            <RouteMapGL
-              coordinates={result.route.coordinates}
-              origin={result.route.origin}
-              destination={result.route.destination}
-              evidence={result.evidence}
-              verdict={result.verdict}
-              activeLayer={activeLayer}
-              layers={routeLayers}
-              onLayerChange={setActiveLayer}
-            />
-          ) : (
-            <div className="route-map-placeholder">
-              <Route size={48} />
-              <h3>No route loaded</h3>
-              <p>Upload a GPX file or select a test permit to begin the route check.</p>
-            </div>
-          )}
-
-          {result && !checking && (
-            <div className="route-result" id="route-check-details" style={{ marginTop: '20px' }}>
-              <div className="route-result-top">
-                <div>
-                  <span className="eyebrow">Route check details</span>
-                  <h2>{result.route.origin} <ArrowRight size={18} /> {result.route.destination}</h2>
-                </div>
-              </div>
-              <div className="route-stat-grid">
-                <div><span>Permitted distance</span><strong>{result.route.distance} km</strong></div>
-                <div><span>Route corridor</span><strong>{result.route.corridor}</strong></div>
-                <div><span>Issues detected</span><strong>{result.issueCount}</strong></div>
-              </div>
-
-              <div className="route-detail-summary">
-                <div>
-                  <strong>Why this result?</strong>
-                  <span>{result.impact}</span>
-                </div>
-              </div>
-
-              <div className="route-alert-detail">
-                <div className="verification-heading">
-                  <div><strong>Evidence checked</strong><span>Live data from Autobahn GmbH checked against vehicle dimensions and route corridor.</span></div>
-                  <span className={`verification-confidence ${result.confidence}`}>
-                    {result.confidence === 'high' ? 'High confidence' : 'Medium confidence'}
-                  </span>
-                </div>
-                <div className="verification-evidence">
-                  {visibleEvidence.map(item => (
-                    <div className={`evidence-${item.state}`} key={item.id}>
-                      <span>{item.source}</span>
-                      <strong>{item.title}</strong>
-                      <p>{item.detail}</p>
-                      <small>{item.age} · {item.confidence === 'high' ? 'Confirmed source' : 'Unconfirmed report'}</small>
-                    </div>
-                  ))}
-                  {!visibleEvidence.length && (
-                    <div className="layer-evidence-empty">
-                      <span>No items in this layer</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-        </main>
-      </div>
-
-      {testPermitOpen && (
-        <div className="route-sheet-backdrop" onMouseDown={e => e.target === e.currentTarget && setTestPermitOpen(false)}>
-          <section className="route-sheet" role="dialog" aria-modal="true">
-            <header>
-              <div><span><FlaskConical size={19} /></span><div><h2>Select test permit</h2><p>Choose a test route to check against live Autobahn data.</p></div></div>
-              <button type="button" onClick={() => setTestPermitOpen(false)}><X size={18} /></button>
-            </header>
-            <div className="route-sheet-body">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {testPermits.map(permit => (
+            {showTestPermits && (
+              <div className="test-permits-grid">
+                {testPermits.filter(p => p.id !== 'invalid').map(permit => (
                   <button
                     key={permit.id}
                     type="button"
-                    className={`test-permit-option ${selectedTestPermit === permit.id ? 'selected' : ''}`}
+                    className="test-permit-card"
                     onClick={() => handleTestPermitSelect(permit.id)}
-                    style={{
-                      padding: '14px 16px',
-                      border: '1px solid var(--border)',
-                      borderRadius: '8px',
-                      background: selectedTestPermit === permit.id ? 'var(--accent-light)' : 'white',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      fontSize: '14px',
-                      fontWeight: 500,
-                    }}
                   >
-                    {permit.name}
+                    <MapPin size={20} />
+                    <div>
+                      <strong>{permit.name.split('·')[0].trim()}</strong>
+                      <span>{permit.name.split('·')[1]?.trim()}</span>
+                    </div>
                   </button>
                 ))}
               </div>
-            </div>
-            <footer>
-              <button type="button" className="secondary-button" onClick={() => setTestPermitOpen(false)}>Cancel</button>
-            </footer>
-          </section>
-        </div>
-      )}
+            )}
 
-      <aside className={`demo-controls ${demoOpen ? 'open' : ''}`}>
-        <button type="button" className="demo-controls-trigger" onClick={() => setDemoOpen(current => !current)}>
-          <FlaskConical size={18} />
-          <span><strong>Test scenarios</strong><small>Demo controls (kept from prototype)</small></span>
-          <ChevronUp size={17} />
-        </button>
-        {demoOpen && (
-          <div className="demo-controls-body">
-            <p>The test scenarios from the prototype are preserved for testing workflows. Use test permits above for live data checks.</p>
+            <div className="info-note">
+              <ShieldCheck size={20} />
+              <p>
+                <strong>Your permit remains authoritative.</strong>
+                This check supports dispatch decisions but does not replace VEMAGS or authority approval.
+              </p>
+            </div>
           </div>
         )}
-      </aside>
+
+        {/* Step 2: Vehicle Dimensions */}
+        {step === 'vehicle' && !checking && !result && (
+          <div className="route-polished-card">
+            <div className="card-header">
+              <Truck size={24} />
+              <div>
+                <h2>Vehicle dimensions</h2>
+                <p>Enter the exact measurements approved in your transport permit</p>
+              </div>
+            </div>
+
+            {routeFile && (
+              <div className="route-info-summary">
+                <div className="route-info-item">
+                  <span>Route file</span>
+                  <strong>{routeFile}</strong>
+                </div>
+                {permitNumber && (
+                  <div className="route-info-item">
+                    <span>Permit number</span>
+                    <strong>{permitNumber}</strong>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="form-group">
+              <label htmlFor="vehicle-profile">
+                <span>Transport profile</span>
+                <select 
+                  id="vehicle-profile"
+                  value={vehicleProfile} 
+                  onChange={e => {
+                    setVehicleProfile(e.target.value)
+                    if (e.target.value === 'standard') {
+                      setVehicleWidth('3.0')
+                      setVehicleHeight('4.0')
+                      setVehicleLength('25.0')
+                      setVehicleWeight('52')
+                    } else if (e.target.value === 'wide') {
+                      setVehicleWidth('3.8')
+                      setVehicleHeight('4.2')
+                      setVehicleLength('32.0')
+                      setVehicleWeight('68')
+                    }
+                  }}
+                >
+                  <option value="standard">Standard heavy haulage · 3.0m × 4.0m × 25.0m · 52t</option>
+                  <option value="wide">Wide heavy haulage · 3.8m × 4.2m × 32.0m · 68t</option>
+                  <option value="custom">Custom dimensions</option>
+                </select>
+              </label>
+            </div>
+
+            {vehicleProfile === 'custom' ? (
+              <div className="dimensions-grid">
+                {[
+                  ['Width', 'm', vehicleWidth, setVehicleWidth],
+                  ['Height', 'm', vehicleHeight, setVehicleHeight],
+                  ['Length', 'm', vehicleLength, setVehicleLength],
+                  ['Gross weight', 't', vehicleWeight, setVehicleWeight],
+                ].map(([label, unit, value, setValue], idx) => (
+                  <div className="form-group" key={idx}>
+                    <label>
+                      <span>{label}</span>
+                      <div className="input-with-unit">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={value as string}
+                          onChange={e => (setValue as (v: string) => void)(e.target.value)}
+                          aria-label={`${label} in ${unit}`}
+                        />
+                        <span className="unit">{unit}</span>
+                      </div>
+                    </label>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="dimensions-summary">
+                <div><span>Width</span><strong>{vehicleWidth} m</strong></div>
+                <div><span>Height</span><strong>{vehicleHeight} m</strong></div>
+                <div><span>Length</span><strong>{vehicleLength} m</strong></div>
+                <div><span>Gross weight</span><strong>{vehicleWeight} t</strong></div>
+              </div>
+            )}
+
+            <div className="form-actions">
+              <button type="button" className="btn-secondary" onClick={resetFlow}>
+                Back
+              </button>
+              <button 
+                type="button" 
+                className="btn-primary" 
+                onClick={handleCheckRoute}
+                disabled={!vehicleValid}
+              >
+                Check route
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Checking State */}
+        {checking && (
+          <div className="route-polished-card checking-state">
+            <Loader2 size={48} className="spinner" />
+            <h2>Checking your route...</h2>
+            <p>Comparing your approved route and vehicle dimensions against live Autobahn conditions</p>
+          </div>
+        )}
+
+        {/* Step 3: Results */}
+        {result && !checking && currentVerdict && (
+          <>
+            {/* Verdict Banner */}
+            <div className={`verdict-banner verdict-${currentVerdict.color}`}>
+              <div className="verdict-icon">
+                <VerdictIcon size={40} />
+              </div>
+              <div className="verdict-content">
+                <div className="verdict-label">{currentVerdict.label}</div>
+                <h2>{result.title}</h2>
+                <p>{currentVerdict.description}</p>
+                {result.degraded && (
+                  <div className="degraded-notice">
+                    <AlertTriangle size={16} />
+                    <span>Data source temporarily unavailable – verify manually</span>
+                  </div>
+                )}
+              </div>
+              <button type="button" className="btn-text" onClick={resetFlow}>
+                Check another route
+              </button>
+            </div>
+
+            {/* Map and Evidence */}
+            <div className="results-layout">
+              <div className="results-main">
+                <RouteMapGL
+                  coordinates={result.route.coordinates}
+                  origin={result.route.origin}
+                  destination={result.route.destination}
+                  evidence={result.evidence}
+                  verdict={result.verdict}
+                  activeLayer={activeLayer}
+                  layers={routeLayers}
+                  onLayerChange={setActiveLayer}
+                  className="results-map"
+                />
+              </div>
+
+              <div className="results-sidebar">
+                <div className="results-summary">
+                  <h3>Route details</h3>
+                  <div className="summary-grid">
+                    <div><span>Origin</span><strong>{result.route.origin}</strong></div>
+                    <div><span>Destination</span><strong>{result.route.destination}</strong></div>
+                    <div><span>Distance</span><strong>{result.route.distance} km</strong></div>
+                    <div><span>Issues found</span><strong>{result.issueCount}</strong></div>
+                  </div>
+                </div>
+
+                <div className="evidence-section">
+                  <h3>Evidence ({result.evidence.filter(e => e.category === activeLayer).length})</h3>
+                  <div className="evidence-list">
+                    {result.evidence.filter(e => e.category === activeLayer).map(item => (
+                      <div key={item.id} className={`evidence-card evidence-${item.state}`}>
+                        <div className="evidence-header">
+                          <strong>{item.title}</strong>
+                          <span className={`confidence-badge confidence-${item.confidence}`}>
+                            {item.confidence === 'high' ? 'High confidence' : 'Medium confidence'}
+                          </span>
+                        </div>
+                        <p>{item.detail}</p>
+                        <div className="evidence-meta">
+                          <span>{item.source}</span>
+                          <span>·</span>
+                          <span>{item.age}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
 
       {toast && <Toast message={toast} tone="info" onClose={() => setToast('')} />}
     </div>
