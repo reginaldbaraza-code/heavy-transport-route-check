@@ -1,87 +1,64 @@
-# HTR · Heavy transport route check MVP
+# HTR · Heavy transport route check
 
-This is the **Heavy transport route check** MVP prototype exported from Figma Make. It's a React single-page application demonstrating data marketplace and route intelligence features for heavy transport logistics.
+Check whether a **permitted heavy-transport route** is usable before departure. Upload a VEMAGS GPX (or a labelled sample), enter the approved vehicle, and get READY / VERIFY / HOLD against live Autobahn conditions.
 
-**⚠️ Note: This is a prototype with mock data.** All data, maps, and functionality are simulated for demonstration purposes.
+This is a free-tier MVP. It is not a permit, not MDS, and not a substitute for dispatcher judgement.
 
-## Tech Stack
+## What it does
 
-- **React 19** with TypeScript
-- **Vite 8** (build tool)
-- **Tailwind CSS 4** (styling)
-- **React Router 7** (routing)
-- **Leaflet** (interactive maps)
-- **Lucide React** (icons)
+- Import the exact approved route (GPX) and vehicle dimensions
+- Compare that corridor with current roadworks, closures, warnings, and a few simulated scenarios
+- Save jobs in this browser and re-check them until the planned departure
+- Export PDF / CSV for the current result
 
-## Features
+## Live sources (free, no keys)
 
-- **Data Marketplace**: Discover, publish, and manage transport data offers
-- **Route Intelligence**: Check heavy transport routes with real-time monitoring
-- **Live Map Explorer**: Interactive map with mobility heatmaps and route overlays
-- **Connector Management**: EDR connectors, assets, policies, and negotiations
-- **Data Partners**: Network management and partner profiles
+| Source | Use |
+| --- | --- |
+| Autobahn GmbH API (`verkehr.autobahn.de`) | Roadworks, closures, warnings, lorry parking |
+| MIA DATEX via Mobilithek / MobiData BW | Bundled snapshot of federal roadworks (`public/data/mia-roadworks.json`) |
+| Baden-Württemberg BEMaS | State roadworks (informational; cannot HOLD a federal corridor) |
 
-## Local Development
+Bridge and clearance are **not** in those feeds. READY needs an explicit dispatcher tick.
 
-### Prerequisites
+## Verdict rules (unchanged)
 
-- Node.js 18+ 
-- pnpm (recommended) or npm
+- **HOLD** — confirmed mainline block on the permitted Autobahn (full closure, residual width/height/weight vs the vehicle) within **0.5 km** of the GPX
+- **VERIFY** — uncertain items, nearby (0.5–1.5 km) issues, ramps/AS, opposite direction, long-running works, missing clearance
+- **READY** — no HOLD, no unresolved VERIFY, and dispatcher-confirmed bridge/clearance
 
-### Install Dependencies
+HOLD items cannot be acknowledged away. VERIFY items can be confirmed on site by a named dispatcher.
+
+## Test permits and scenarios
+
+`public/test-permits/` holds snapped GPX samples (Hamburg→Hannover A7, Bremen→Dortmund A1, Leipzig→Nürnberg A9, Duisburg→Köln A3, München→Stuttgart A8, Lübeck→Rostock A20, Hof→Bayreuth A9). Scenario cards skip live feeds so READY / VERIFY / HOLD can be demoed. Tracks were pre-snapped with public OSRM. © OpenStreetMap contributors, ODbL.
+
+## How to run
 
 ```bash
 pnpm install
-```
-
-### Run Development Server
-
-```bash
-pnpm dev
-```
-
-The app will be available at `http://localhost:8443` (or the port specified in your terminal).
-
-### Build for Production
-
-```bash
+pnpm dev          # Vite on $PORT / 8443
+pnpm typecheck
 pnpm build
+pnpm test:verdict
+pnpm test:qa      # Playwright against a local preview of dist/
 ```
 
-The production build outputs to the `dist/` directory.
+## Deploy (Vercel Hobby)
 
-### Preview Production Build
+- Build: `pnpm build`
+- Output: `dist`
+- API routes in `api/` (Node ESM). Relative API imports use `.js`.
+- No paid Vercel features, no API keys, no cron-based monitoring
 
-```bash
-pnpm preview
-```
+## Limitations
 
-## Deployment
-
-This app is configured for deployment on **Vercel** as a static SPA:
-
-- **Build Command**: `pnpm build`
-- **Output Directory**: `dist`
-- **Install Command**: `pnpm install`
-
-The included `vercel.json` ensures client-side routing works correctly (deep links don't 404 on refresh).
-
-## Project Structure
-
-```
-src/
-├── components/     # Reusable UI components
-├── pages/          # Route page components
-├── context/        # React Context providers
-├── data/           # Mock data and utilities
-├── App.tsx         # Main app with routing
-└── main.tsx        # Entry point
-```
-
-## Test permits
-
-Bundled GPX files in `public/test-permits/` (except `invalid-test.gpx`) were pre-snapped to the road network at development time with the public OSRM demo (`https://router.project-osrm.org`) and OpenStreetMap data. They are not live-routed at runtime. © OpenStreetMap contributors, ODbL. Regenerate with `node scripts/snap-test-permits.mjs`.
+- **MDS / marketplace** is out of scope. Data partners is a later-release page only.
+- **Bridge and clearance** are a manual dispatcher verify.
+- **Monitoring** runs only while this tab is open. Keep it open until departure.
+- **MIA snapshot** refreshes on a GitHub schedule (about every 6 hours), not live DATEX.
+- **Free tier** — in-memory rate limits, no email/SMS, jobs stored in this browser only.
 
 ## License
 
-This is a prototype application. All mock data is for demonstration purposes only.
+Prototype for dispatch support. Authority wording stays in German; the UI adds an English summary. Official permits remain authoritative.
