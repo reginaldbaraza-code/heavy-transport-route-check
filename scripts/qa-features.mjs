@@ -249,6 +249,31 @@ async function main() {
   await page.setViewportSize({ width: 400, height: 720 })
   const zoomVisibleOnMobile = await page.locator('.maplibregl-ctrl-bottom-right .maplibregl-ctrl-group').first().isVisible().catch(() => false)
   record('Mobile map zoom control is hidden at 400px', zoomVisibleOnMobile === false)
+
+  await page.setViewportSize({ width: 390, height: 915 })
+  await page.locator('.mobile-route-actions').waitFor({ state: 'visible', timeout: 5000 })
+  await page.locator('.app-page-host').evaluate(el => {
+    el.scrollTop = el.scrollHeight
+  })
+  const mobileScrollClearance = await page.evaluate(() => {
+    const host = document.querySelector('.app-page-host')
+    const bar = document.querySelector('.mobile-route-actions')
+    const details = document.querySelector('.evidence-section') || document.querySelector('.results-sidebar')
+    if (!host || !bar || !details) return { ok: false, detail: 'missing nodes' }
+    const barBox = bar.getBoundingClientRect()
+    const detailsBox = details.getBoundingClientRect()
+    return {
+      ok: detailsBox.bottom <= barBox.top + 1,
+      detailsBottom: Math.round(detailsBox.bottom),
+      barTop: Math.round(barBox.top),
+      paddingBottom: getComputedStyle(host).paddingBottom,
+    }
+  })
+  record(
+    'Mobile results scroll padding clears the action bar',
+    mobileScrollClearance.ok,
+    JSON.stringify(mobileScrollClearance),
+  )
   await page.setViewportSize({ width: 1440, height: 900 })
 
   const csv = await downloadFile(page, 'Export CSV')

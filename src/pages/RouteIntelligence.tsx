@@ -1027,7 +1027,7 @@ export default function RouteIntelligencePolished() {
             </div>
             
             {/* Mobile sticky action bar */}
-            <div className="mobile-route-actions" style={{ display: 'none' }}>
+            <div className="mobile-route-actions">
               <button type="button" className="btn-secondary" onClick={resetFlow}>
                 Re-check
               </button>
