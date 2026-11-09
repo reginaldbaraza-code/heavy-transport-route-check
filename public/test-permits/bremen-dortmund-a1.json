@@ -5,6 +5,7 @@
   "destination": "Dortmund Industrial Park",
   "validFrom": "2026-11-12T00:00:00+01:00",
   "validUntil": "2026-11-18T23:59:59+01:00",
+  "corridor": "A1",
   "vehicle": {
     "width": 3.5,
     "height": 4.2,

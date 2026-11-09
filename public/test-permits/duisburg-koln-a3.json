@@ -5,6 +5,7 @@
   "destination": "Köln Wind Terminal",
   "validFrom": "2026-11-11T00:00:00+01:00",
   "validUntil": "2026-11-16T23:59:59+01:00",
+  "corridor": "A3",
   "vehicle": {
     "width": 3.8,
     "height": 4.5,

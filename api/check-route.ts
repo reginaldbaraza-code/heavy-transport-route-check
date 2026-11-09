@@ -1,5 +1,4 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import type { Feature, MultiPolygon, Polygon } from 'geojson';
 import * as turf from '@turf/turf';
 import * as xml2js from 'xml2js';
 import {
@@ -11,18 +10,25 @@ import {
 import {
   BW_SOURCE,
   MIA_SOURCE,
-  dimConflictFromBw,
-  dimConflictFromMia,
   fetchBwRoadworks,
-  isLocationDuplicate,
   loadMiaSnapshot,
-  miaItemsOnCorridor,
   miaSnapshotAgeMs,
   miaSnapshotIsStale,
-  sampledLineHitsCorridor,
-  corridorBbox,
   type BwRoadwork,
 } from './_lib/openRoadworks.js';
+import { isScenarioId, SCENARIOS } from './_lib/scenarios.js';
+import {
+  classifyCandidate,
+  dedupeClassified,
+  departureWindow,
+  determineVerdict,
+  inferPermittedRoads,
+  routeLineFromPoints,
+  verdictCopy,
+  type CandidateInput,
+  type ClassifiedEvidence,
+  type SiteAcknowledgement,
+} from './_lib/verdict.js';
 
 export const config = {
   maxDuration: 30,
@@ -49,7 +55,7 @@ type RouteEvidence = {
   source: string;
   age: string;
   confidence: 'high' | 'medium';
-  state: 'clear' | 'warning' | 'danger';
+  state: 'clear' | 'info' | 'warning' | 'danger';
   category: 'roadworks' | 'closures' | 'observations';
   lat?: number;
   lng?: number;
@@ -57,6 +63,10 @@ type RouteEvidence = {
   endTimestamp?: string | null;
   retrievedAt?: string;
   longRunning?: boolean;
+  distanceKm?: number | null;
+  reason?: string;
+  locationKind?: string;
+  blocker?: boolean;
 };
 
 type RouteCheckResult = {
@@ -77,6 +87,8 @@ type RouteCheckResult = {
   degraded: boolean;
   retrievedAt: string;
   source: string;
+  mode?: 'live' | 'simulated';
+  clearanceConfirmed?: boolean;
 };
 
 async function parseGPX(gpxContent: string): Promise<GPXPoint[]> {
@@ -139,24 +151,6 @@ async function parseGPX(gpxContent: string): Promise<GPXPoint[]> {
   }
 }
 
-function createRouteCorridor(points: GPXPoint[], bufferKm: number = 5): Feature<Polygon | MultiPolygon> {
-  const line = turf.lineString(points.map(p => [p.lng, p.lat]));
-  const buffered = turf.buffer(line, bufferKm, { units: 'kilometers' });
-  if (!buffered) {
-    throw new Error('Unable to build a corridor from the GPX track');
-  }
-  return buffered as Feature<Polygon | MultiPolygon>;
-}
-
-function checkIntersection(
-  corridor: Feature<Polygon | MultiPolygon>,
-  eventLat: number,
-  eventLng: number
-): boolean {
-  const point = turf.point([eventLng, eventLat]);
-  return turf.booleanPointInPolygon(point, corridor);
-}
-
 function calculateRouteDistance(points: GPXPoint[]): number {
   if (points.length < 2) return 0;
   
@@ -201,47 +195,6 @@ function determineAffectedRoads(points: GPXPoint[]): string[] {
   }
   
   return [...new Set(roads)];
-}
-
-function extractWidthRestriction(description: string): number | null {
-  const patterns = [
-    /(\d+[.,]\d+)\s*m/i,
-    /width[:\s]*(\d+[.,]\d+)/i,
-    /breite[:\s]*(\d+[.,]\d+)/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = description.match(pattern);
-    if (match) {
-      const value = parseFloat(match[1].replace(',', '.'));
-      if (!isNaN(value) && value > 0 && value < 10) {
-        return value;
-      }
-    }
-  }
-  
-  return null;
-}
-
-function checkVehicleAgainstEvent(
-  event: any,
-  vehicle: VehicleDimensions
-): { exceeds: boolean; restriction?: number; type?: string } {
-  const description = [event.title, event.description].join(' ').toLowerCase();
-  
-  const widthRestriction = extractWidthRestriction(description);
-  if (widthRestriction && vehicle.width > widthRestriction) {
-    return { exceeds: true, restriction: widthRestriction, type: 'width' };
-  }
-  
-  if (event.isBlocked && event.isBlocked.length > 0) {
-    const blockedText = event.isBlocked.join(' ').toLowerCase();
-    if (blockedText.includes('all') || blockedText.includes('alle')) {
-      return { exceeds: true, type: 'full closure' };
-    }
-  }
-  
-  return { exceeds: false };
 }
 
 async function fetchRoadEvents(
@@ -380,23 +333,6 @@ async function fetchAutobahnEventsForRoute(roads: string[], retrievedAt: string)
   }
 }
 
-function determineVerdict(
-  evidence: RouteEvidence[],
-  degraded: boolean
-): { verdict: 'READY' | 'HOLD' | 'VERIFY'; confidence: 'high' | 'medium' } {
-  // Unknown bridge/clearance data must never yield READY.
-  if (degraded) {
-    return { verdict: 'VERIFY', confidence: 'medium' };
-  }
-
-  const dangerItems = evidence.filter(e => e.state === 'danger');
-  if (dangerItems.length > 0) {
-    return { verdict: 'HOLD', confidence: 'high' };
-  }
-
-  return { verdict: 'VERIFY', confidence: 'medium' };
-}
-
 function timestampFields(event: {
   startTimestamp?: string | null;
   endTimestamp?: string | null;
@@ -421,6 +357,52 @@ function timestampFields(event: {
   };
 }
 
+function toRouteEvidence(item: ClassifiedEvidence, age: string): RouteEvidence {
+  return {
+    id: item.id,
+    title: item.title,
+    detail: item.detail,
+    source: item.source,
+    age,
+    confidence: item.confidence,
+    state: item.state,
+    category: item.category,
+    lat: item.lat,
+    lng: item.lng,
+    startTimestamp: item.startTimestamp,
+    endTimestamp: item.endTimestamp,
+    retrievedAt: item.retrievedAt,
+    longRunning: item.longRunning,
+    distanceKm: item.distanceKm,
+    reason: item.reason,
+    locationKind: item.locationKind,
+    blocker: item.blocker,
+  };
+}
+
+function pushClassified(
+  collected: ClassifiedEvidence[],
+  input: CandidateInput,
+  ctx: Parameters<typeof classifyCandidate>[1],
+) {
+  const item = classifyCandidate(input, ctx);
+  if (item) collected.push(item);
+}
+
+function parseAcknowledgements(value: unknown): SiteAcknowledgement[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap(item => {
+    if (!item || typeof item !== 'object') return [];
+    const row = item as { evidenceId?: unknown; acknowledgedBy?: unknown; acknowledgedAt?: unknown };
+    if (typeof row.evidenceId !== 'string' || !row.evidenceId) return [];
+    return [{
+      evidenceId: row.evidenceId,
+      acknowledgedBy: typeof row.acknowledgedBy === 'string' ? row.acknowledgedBy : 'Dispatcher',
+      acknowledgedAt: typeof row.acknowledgedAt === 'string' ? row.acknowledgedAt : isoNow(),
+    }];
+  });
+}
+
 export default async function handler(
   req: VercelRequest,
   res: VercelResponse
@@ -438,7 +420,22 @@ export default async function handler(
   }
 
   try {
-    const { gpxContent, vehicle, permitNumber } = req.body;
+    const {
+      gpxContent,
+      vehicle,
+      permitNumber,
+      permittedRoads: requestedRoads,
+      corridor: requestedCorridor,
+      departureStart,
+      departureEnd,
+      validFrom,
+      validUntil,
+      bridgeClearanceConfirmed,
+      clearanceConfirmedBy,
+      confirmedAt,
+      scenario,
+      acknowledgements,
+    } = req.body;
 
     if (!gpxContent) {
       return res.status(400).json({ 
@@ -468,10 +465,65 @@ export default async function handler(
     const origin = routePoints[0].name || 'Start';
     const destination = routePoints[routePoints.length - 1].name || 'End';
     
-    const corridor = createRouteCorridor(routePoints, 5);
-    
-    const affectedRoads = determineAffectedRoads(routePoints);
+    const routeLine = routeLineFromPoints(routePoints);
+    const permittedRoads = inferPermittedRoads(
+      requestedCorridor,
+      Array.isArray(requestedRoads) ? requestedRoads : [],
+    );
+    const affectedRoads = permittedRoads.length ? permittedRoads : determineAffectedRoads(routePoints);
     console.log('Checking roads:', affectedRoads.join(', '));
+    const window = departureWindow({
+      departureStart,
+      departureEnd,
+      validFrom,
+      validUntil,
+    });
+    const classifyCtx = {
+      routeLine,
+      permittedRoads,
+      vehicle,
+      windowStartMs: window.startMs,
+      windowEndMs: window.endMs,
+      nowMs: Date.now(),
+    };
+    const clearanceConfirmed = Boolean(bridgeClearanceConfirmed);
+    const siteAcknowledgements = parseAcknowledgements(acknowledgements);
+
+    if (isScenarioId(scenario)) {
+      const fixture = SCENARIOS[scenario];
+      const classified = fixture.evidence;
+      const decided = determineVerdict(classified, {
+        clearanceConfirmed: fixture.clearanceConfirmed,
+        acknowledgements: siteAcknowledgements,
+      });
+      const copy = verdictCopy(decided.verdict, {
+        issueCount: classified.filter(item => item.state === 'danger').length,
+        distanceKm: distance,
+        clearanceConfirmed: fixture.clearanceConfirmed,
+        acknowledgedCount: decided.acknowledgedCount,
+      });
+      return res.status(200).json({
+        verdict: decided.verdict,
+        title: copy.title,
+        summary: `${copy.summary} Simulated — not live data.`,
+        impact: `Selected vehicle: ${fixture.vehicle.width.toFixed(2)}m W × ${fixture.vehicle.height.toFixed(2)}m H × ${fixture.vehicle.length.toFixed(1)}m L · ${fixture.vehicle.grossWeight}t. ${decided.reasons.join(' ')}`,
+        confidence: decided.confidence,
+        issueCount: classified.filter(item => item.state === 'danger').length,
+        evidence: classified.map(item => toRouteEvidence(item, item.reason)),
+        route: {
+          coordinates: routePoints.map(p => [p.lat, p.lng]),
+          origin: origin || fixture.origin,
+          destination: destination || fixture.destination,
+          distance: distance || fixture.distanceKm,
+          corridor: `${fixture.corridor} · ±0.5 km HOLD / ±1.5 km VERIFY`,
+        },
+        degraded: false,
+        retrievedAt: isoNow(),
+        source: 'Simulated — not live data',
+        mode: 'simulated',
+        clearanceConfirmed: fixture.clearanceConfirmed,
+      });
+    }
 
     const retrievedAt = isoNow();
     const [autobahnData, bwResult] = await Promise.all([
@@ -486,278 +538,246 @@ export default async function handler(
     const degraded = !autobahnData;
     const source = 'Autobahn GmbH + MobiData BW';
     
-    const evidence: RouteEvidence[] = [];
-    
+    const classified: ClassifiedEvidence[] = [];
+    const src = `Autobahn GmbH · ${affectedRoads.join(', ')}`;
+
     if (autobahnData) {
       for (const event of autobahnData.roadworks || []) {
-        if (checkIntersection(corridor, event.lat, event.lng)) {
-          const vehicleCheck = checkVehicleAgainstEvent(event, vehicle);
-          const stamps = timestampFields(event);
-          
-          if (vehicleCheck.exceeds) {
-            evidence.push({
-              id: event.id,
-              title: vehicleCheck.type === 'width' 
-                ? `Width restriction ${vehicleCheck.restriction}m – vehicle exceeds`
-                : 'Roadworks blocking route',
-              detail: event.longRunning
-                ? `${event.description} Long-running / verify on site.`
-                : event.description,
-              source: `Autobahn GmbH · ${autobahnData.roads}`,
-              ...stamps,
-              state: 'danger',
-              category: 'roadworks',
-              lat: event.lat,
-              lng: event.lng,
-            });
-          } else if (event.severity === 'warning' || event.longRunning) {
-            evidence.push({
-              id: event.id,
-              title: event.longRunning ? `${event.title} (long-running / verify on site)` : event.title,
-              detail: event.longRunning
-                ? `${event.description} This item started more than 90 days ago and has no published end date.`
-                : event.description,
-              source: `Autobahn GmbH · ${autobahnData.roads}`,
-              ...stamps,
-              state: 'warning',
-              category: 'roadworks',
-              lat: event.lat,
-              lng: event.lng,
-            });
-          }
-        }
-      }
-
-      for (const event of autobahnData.closures || []) {
-        if (checkIntersection(corridor, event.lat, event.lng)) {
-          evidence.push({
-            id: event.id,
-            title: event.longRunning ? 'Long-running closure – verify on site' : 'Full closure on permitted route',
-            detail: event.description,
-            source: `Autobahn GmbH · ${autobahnData.roads}`,
-            ...timestampFields(event),
-            state: 'danger',
-            category: 'closures',
-            lat: event.lat,
-            lng: event.lng,
-          });
-        }
-      }
-
-      for (const event of autobahnData.warnings || []) {
-        if (checkIntersection(corridor, event.lat, event.lng)) {
-          evidence.push({
-            id: event.id,
-            title: event.longRunning ? `${event.title} (long-running / verify on site)` : event.title,
-            detail: event.description,
-            source: `Autobahn GmbH · ${autobahnData.roads}`,
-            ...timestampFields({ ...event, confidence: 'medium' }),
-            state: 'warning',
-            category: 'roadworks',
-            lat: event.lat,
-            lng: event.lng,
-          });
-        }
-      }
-
-      const parkingOnCorridor = (autobahnData.parking || []).filter((event: { lat: number; lng: number }) =>
-        checkIntersection(corridor, event.lat, event.lng)
-      );
-      for (const event of parkingOnCorridor.slice(0, 5)) {
-        evidence.push({
+        pushClassified(classified, {
           id: event.id,
-          title: event.isBlocked ? 'Lorry parking blocked on corridor' : `Lorry parking · ${event.subtitle || event.title}`,
-          detail: event.description || 'HGV parking site on the permitted Autobahn corridor. Informational only — does not change HOLD/VERIFY.',
-          source: `Autobahn GmbH parking_lorry · ${autobahnData.roads}`,
-          ...timestampFields({ ...event, confidence: 'medium' }),
-          state: event.isBlocked ? 'warning' : 'clear',
-          category: 'observations',
+          title: event.title,
+          description: event.description,
+          source: src,
           lat: event.lat,
           lng: event.lng,
-        });
+          startTimestamp: event.startTimestamp,
+          endTimestamp: event.endTimestamp,
+          retrievedAt: event.retrievedAt,
+          longRunning: event.longRunning,
+          isBlocked: Boolean(event.isBlocked),
+          category: 'roadworks',
+        }, classifyCtx);
+      }
+      for (const event of autobahnData.closures || []) {
+        pushClassified(classified, {
+          id: event.id,
+          title: event.title,
+          description: event.description,
+          source: src,
+          lat: event.lat,
+          lng: event.lng,
+          startTimestamp: event.startTimestamp,
+          endTimestamp: event.endTimestamp,
+          retrievedAt: event.retrievedAt,
+          longRunning: event.longRunning,
+          isBlocked: true,
+          category: 'closures',
+        }, classifyCtx);
+      }
+      for (const event of autobahnData.warnings || []) {
+        pushClassified(classified, {
+          id: event.id,
+          title: event.title,
+          description: event.description,
+          source: src,
+          lat: event.lat,
+          lng: event.lng,
+          startTimestamp: event.startTimestamp,
+          endTimestamp: event.endTimestamp,
+          retrievedAt: event.retrievedAt,
+          longRunning: event.longRunning,
+          category: 'warnings',
+        }, classifyCtx);
+      }
+      let parkingAdded = 0;
+      for (const event of autobahnData.parking || []) {
+        if (parkingAdded >= 5) break;
+        const before = classified.length;
+        pushClassified(classified, {
+          id: event.id,
+          title: event.subtitle ? `Lorry parking · ${event.subtitle}` : event.title,
+          description: event.description || 'HGV parking site.',
+          source: `Autobahn GmbH parking_lorry · ${affectedRoads.join(', ')}`,
+          lat: event.lat,
+          lng: event.lng,
+          startTimestamp: event.startTimestamp,
+          endTimestamp: event.endTimestamp,
+          retrievedAt: event.retrievedAt,
+          isBlocked: Boolean(event.isBlocked),
+          category: 'parking',
+        }, classifyCtx);
+        if (classified.length > before) parkingAdded += 1;
       }
     }
 
-    const bbox = corridorBbox(corridor);
-    const bwOnCorridor = bwResult.items.filter(item => sampledLineHitsCorridor(corridor, item.coordinates, bbox));
-    let bwAdded = 0;
-    for (const item of bwOnCorridor) {
-      if (bwAdded >= 12) break;
-      if (isLocationDuplicate(item.lat, item.lng, evidence, item.id)) continue;
-      const conflict = dimConflictFromBw(item, vehicle);
-      const closed = item.type === 'ROAD_CLOSED' || /ROAD_CLOSED/i.test(item.subtype || '');
-      evidence.push({
+    for (const item of bwResult.items) {
+      pushClassified(classified, {
         id: `bw-${item.id}`,
-        title: conflict.exceeds && conflict.type === 'full closure'
-          ? 'BW state road closed on corridor'
-          : item.description || item.street || 'BW state roadworks',
-        detail: [item.street, item.description, item.subtype].filter(Boolean).join(' · ') || 'BEMaS roadworks on the permitted corridor.',
+        title: item.description || item.street || 'BW state roadworks',
+        description: [item.street, item.description, item.subtype, item.type].filter(Boolean).join(' · '),
         source: BW_SOURCE,
-        ...timestampFields({
-          startTimestamp: item.start,
-          endTimestamp: item.end,
-          retrievedAt: item.retrievedAt,
-          confidence: 'medium',
-        }),
-        state: conflict.exceeds || closed ? 'danger' : 'warning',
-        category: closed ? 'closures' : 'roadworks',
         lat: item.lat,
         lng: item.lng,
-      });
-      bwAdded += 1;
-    }
-    if (bwOnCorridor.length > 0 && bwAdded === 0) {
-      evidence.push({
-        id: 'bw-deduped',
-        title: `BEMaS: ${bwOnCorridor.length} corridor items already listed`,
-        detail: 'Duplicate BW state-road records were omitted where location already matched another source.',
-        source: BW_SOURCE,
-        ...timestampFields({ retrievedAt, confidence: 'medium' }),
-        state: 'clear',
-        category: 'observations',
-      });
+        road: item.street,
+        startTimestamp: item.start,
+        endTimestamp: item.end,
+        retrievedAt: item.retrievedAt,
+        isBlocked: item.type === 'ROAD_CLOSED' || /ROAD_CLOSED/i.test(item.subtype || ''),
+        category: 'bw',
+        isBw: true,
+      }, classifyCtx);
     }
     if (bwResult.error) {
-      evidence.push({
+      classified.push({
         id: 'bw-unavailable',
         title: 'MobiData BW BEMaS feed unavailable',
         detail: bwResult.error,
         source: BW_SOURCE,
-        ...timestampFields({ retrievedAt, confidence: 'medium' }),
+        confidence: 'medium',
         state: 'warning',
         category: 'observations',
+        distanceKm: null,
+        reason: 'BEMaS fetch failed.',
+        locationKind: 'unknown',
+        blocker: false,
+        retrievedAt,
       });
     }
 
     const mia = loadMiaSnapshot();
     if (!mia) {
-      evidence.push({
+      classified.push({
         id: 'mia-snapshot-missing',
         title: 'MIA roadworks snapshot not loaded',
         detail: 'The compact Autobahn MIA snapshot is missing. Route checks still use the live Autobahn GmbH API.',
         source: MIA_SOURCE,
-        ...timestampFields({ retrievedAt, confidence: 'medium' }),
+        confidence: 'medium',
         state: 'warning',
         category: 'observations',
+        distanceKm: null,
+        reason: 'Snapshot file missing.',
+        locationKind: 'unknown',
+        blocker: false,
+        retrievedAt,
       });
     } else {
-      const ageMs = miaSnapshotAgeMs(mia);
-      const ageHours = Math.max(0, Math.round(ageMs / 3600000));
+      const ageHours = Math.max(0, Math.round(miaSnapshotAgeMs(mia) / 3600000));
       if (miaSnapshotIsStale(mia)) {
-        evidence.push({
+        classified.push({
           id: 'mia-snapshot-stale',
           title: 'MIA roadworks snapshot is older than 12 hours',
-          detail: `Snapshot ${mia.snapshotAt} (${ageHours}h old). GitHub Actions refreshes this file every 6 hours. Live Autobahn API events are still used.`,
+          detail: `Snapshot ${mia.snapshotAt} (${ageHours}h old). Live Autobahn API events are still used.`,
           source: MIA_SOURCE,
-          ...timestampFields({ retrievedAt: mia.snapshotAt, confidence: 'medium' }),
+          confidence: 'medium',
           state: 'warning',
           category: 'observations',
+          distanceKm: null,
+          reason: 'Snapshot older than 12h.',
+          locationKind: 'unknown',
+          blocker: false,
+          retrievedAt: mia.snapshotAt,
         });
       }
-      const miaHits = miaItemsOnCorridor(mia, corridor).sort((a, b) => {
-        const ac = dimConflictFromMia(a, vehicle).exceeds ? 0 : 1;
-        const bc = dimConflictFromMia(b, vehicle).exceeds ? 0 : 1;
-        return ac - bc;
-      });
-      let miaAdded = 0;
-      for (const item of miaHits) {
-        if (miaAdded >= 16) break;
-        const conflict = dimConflictFromMia(item, vehicle);
-        const duplicate = isLocationDuplicate(item.lat, item.lng, evidence, item.id);
-        if (duplicate && !conflict.exceeds) continue;
-        if (duplicate && conflict.exceeds && evidence.some(entry => entry.state === 'danger' && isLocationDuplicate(item.lat, item.lng, [entry], item.id))) {
-          continue;
-        }
-        const restrictionLabel = conflict.exceeds
-          ? conflict.type === 'full closure'
-            ? 'MIA full closure on corridor'
-            : `MIA ${conflict.type} restriction${conflict.restriction ? ` ${conflict.restriction}` : ''} – vehicle exceeds`
-          : item.description || `${item.road || 'Autobahn'} MIA roadworks`;
-        evidence.push({
+      for (const item of mia.items) {
+        pushClassified(classified, {
           id: `mia-${item.id}`,
-          title: restrictionLabel,
-          detail: [
-            item.description,
-            item.road && `Road ${item.road}`,
-            item.term === 'long' ? 'Long-term MIA record' : 'Short-term MIA record',
-            `Snapshot ${mia.snapshotAt} (${ageHours}h old)`,
-          ].filter(Boolean).join(' · '),
+          title: item.description || `${item.road || 'Autobahn'} MIA roadworks`,
+          description: `${item.description} ${item.term === 'long' ? 'Long-term MIA record' : 'Short-term MIA record'} · Snapshot ${mia.snapshotAt}`,
           source: MIA_SOURCE,
-          ...timestampFields({
-            startTimestamp: item.start,
-            endTimestamp: item.end,
-            retrievedAt: mia.snapshotAt,
-            confidence: conflict.exceeds ? 'high' : 'medium',
-          }),
-          state: conflict.exceeds ? 'danger' : 'warning',
-          category: conflict.type === 'full closure' ? 'closures' : 'roadworks',
           lat: item.lat,
           lng: item.lng,
-        });
-        miaAdded += 1;
-      }
-      if (miaHits.length > 0 && miaAdded === 0) {
-        evidence.push({
-          id: 'mia-deduped',
-          title: `MIA snapshot: ${miaHits.length} corridor items already covered by Autobahn API`,
-          detail: `Snapshot ${mia.snapshotAt} (${ageHours}h old). Duplicate MIA records were omitted where id or location already matched live Autobahn GmbH events.`,
-          source: MIA_SOURCE,
-          ...timestampFields({ retrievedAt: mia.snapshotAt, confidence: 'medium' }),
-          state: 'clear',
-          category: 'observations',
-        });
+          road: item.road,
+          startTimestamp: item.start,
+          endTimestamp: item.end,
+          retrievedAt: mia.snapshotAt,
+          residualWidth: item.residualWidth,
+          minLaneWidth: item.minLaneWidth,
+          heightLimit: item.height,
+          weightLimit: item.weight,
+          management: item.management,
+          category: item.management === 'roadClosed' ? 'closures' : 'roadworks',
+        }, classifyCtx);
       }
     }
 
-    if (!degraded && !evidence.some(item => item.category === 'roadworks' || item.category === 'closures')) {
-      evidence.push({
+    let uniqueClassified = dedupeClassified(classified).sort((a, b) => {
+      const rank = { danger: 0, warning: 1, info: 2, clear: 3 };
+      return rank[a.state] - rank[b.state];
+    });
+
+    if (!degraded && !uniqueClassified.some(item => item.category === 'roadworks' || item.category === 'closures')) {
+      uniqueClassified.push({
         id: 'route-clear',
         title: 'No active Autobahn roadworks or closures on corridor',
-        detail: `Checked Autobahn routes (${autobahnData?.roads || 'none'}), MIA snapshot, and BW BEMaS show no current disruptions on the permitted corridor. Bridge and clearance data are still unavailable.`,
+        detail: `Checked ${affectedRoads.join(', ')} within 1.5 km of the GPX line.`,
         source: `Autobahn GmbH · retrieved ${retrievedAt}`,
-        ...timestampFields({ retrievedAt, confidence: 'high' }),
+        confidence: 'high',
         state: 'clear',
         category: 'roadworks',
+        distanceKm: 0,
+        reason: 'No HOLD/VERIFY disruptions on the line of travel.',
+        locationKind: 'mainline',
+        blocker: false,
+        retrievedAt,
       });
     }
 
-    evidence.push({
-      id: 'bridge-clearance-unknown',
-      title: 'Bridge and clearance data not available',
-      detail: 'This check does not include verified bridge heights or local clearance limits. Unknown clearance data cannot yield READY — confirm on site before departure.',
-      source: 'Route check system',
-      ...timestampFields({ retrievedAt, confidence: 'medium' }),
-      state: 'warning',
-      category: 'observations',
+    if (clearanceConfirmed) {
+      uniqueClassified.push({
+        id: 'bridge-clearance-confirmed',
+        title: 'Bridge and clearance confirmed by dispatcher',
+        detail: `${clearanceConfirmedBy || 'Dispatcher'} confirmed at ${confirmedAt || retrievedAt}.`,
+        source: 'Dispatcher confirmation',
+        confidence: 'high',
+        state: 'clear',
+        category: 'observations',
+        distanceKm: null,
+        reason: 'Clearance tick present.',
+        locationKind: 'unknown',
+        blocker: false,
+        retrievedAt: confirmedAt || retrievedAt,
+      });
+    } else {
+      uniqueClassified.push({
+        id: 'bridge-clearance-unknown',
+        title: 'Bridge and clearance data not available',
+        detail: 'Unknown clearance cannot yield READY — confirm on site or tick dispatcher confirmation.',
+        source: 'Route check system',
+        confidence: 'medium',
+        state: 'warning',
+        category: 'observations',
+        distanceKm: null,
+        reason: 'Clearance not confirmed.',
+        locationKind: 'unknown',
+        blocker: true,
+        retrievedAt,
+      });
+    }
+
+    const uniqueEvidence = uniqueClassified.map(item => {
+      const stamps = timestampFields(item);
+      return toRouteEvidence(item, stamps.age);
+    });
+    const decided = determineVerdict(uniqueClassified, {
+      degraded,
+      clearanceConfirmed,
+      acknowledgements: siteAcknowledgements,
+    });
+    const issueCount = uniqueEvidence.filter(item => item.state === 'danger').length;
+    const copy = verdictCopy(decided.verdict, {
+      degraded,
+      issueCount,
+      distanceKm: distance,
+      clearanceConfirmed,
+      acknowledgedCount: decided.acknowledgedCount,
     });
 
-    // Deduplicate evidence by ID (same event shouldn't appear twice)
-    const uniqueEvidence = Array.from(
-      new Map(evidence.map(item => [item.id, item])).values()
-    );
-    
-    const { verdict, confidence } = determineVerdict(uniqueEvidence, degraded);
-    const issueCount = uniqueEvidence.filter(e => e.state === 'danger').length;
-    const hasCorridorIssues = uniqueEvidence.some(item => item.state === 'danger' || (item.state === 'warning' && item.id !== 'bridge-clearance-unknown'));
-
     const result: RouteCheckResult = {
-      verdict,
-      title: verdict === 'HOLD'
-        ? 'Hold departure – blocking issue on route'
-        : degraded
-          ? "Can't confirm route – data source unavailable"
-          : hasCorridorIssues
-            ? 'Verification required – potential issue detected'
-            : 'Verification required – bridge and clearance data unavailable',
-      summary: verdict === 'HOLD'
-        ? `${issueCount} blocking ${issueCount === 1 ? 'issue' : 'issues'} detected on permitted route.`
-        : degraded
-          ? 'The Autobahn data source is temporarily unavailable. Retry or verify manually.'
-          : hasCorridorIssues
-            ? `${uniqueEvidence.length} item${uniqueEvidence.length === 1 ? '' : 's'} require verification.`
-            : `No Autobahn disruptions found on ${distance}km route, but bridge and clearance data are unknown.`,
-      impact: `Selected vehicle: ${vehicle.width.toFixed(2)}m W × ${vehicle.height.toFixed(2)}m H × ${vehicle.length.toFixed(1)}m L · ${vehicle.grossWeight}t${degraded ? '. Data source unavailable – cannot confirm route is clear.' : '. Unknown bridge/clearance data cannot yield READY.'}`,
-      confidence,
+      verdict: decided.verdict,
+      title: copy.title,
+      summary: copy.summary,
+      impact: `Selected vehicle: ${vehicle.width.toFixed(2)}m W × ${vehicle.height.toFixed(2)}m H × ${vehicle.length.toFixed(1)}m L · ${vehicle.grossWeight}t. ${decided.reasons.join(' ')}`,
+      confidence: decided.confidence,
       issueCount,
       evidence: uniqueEvidence,
       route: {
@@ -765,11 +785,13 @@ export default async function handler(
         origin,
         destination,
         distance,
-        corridor: `±5km corridor (${distance}km route)`,
+        corridor: `${(permittedRoads.length ? permittedRoads : affectedRoads).join(', ')} · ±0.5 km HOLD / ±1.5 km VERIFY`,
       },
       degraded,
       retrievedAt,
       source,
+      mode: 'live',
+      clearanceConfirmed,
     };
 
     return res.status(200).json(result);

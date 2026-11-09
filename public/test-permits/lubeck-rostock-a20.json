@@ -1,0 +1,19 @@
+{
+  "permitNumber": "DE-SH-2026-01020",
+  "route": "Lübeck → Rostock via A20",
+  "origin": "Lübeck A20",
+  "destination": "Rostock A20",
+  "validFrom": "2026-11-09T00:00:00+01:00",
+  "validUntil": "2026-11-16T23:59:59+01:00",
+  "vehicle": {
+    "width": 2.55,
+    "height": 4.0,
+    "length": 18.0,
+    "grossWeight": 40
+  },
+  "corridor": "A20",
+  "bridgeClearanceConfirmed": true,
+  "clearanceConfirmedBy": "Sample dispatcher",
+  "confirmedAt": "2026-11-09T08:00:00.000Z",
+  "routeDescription": "Short A20 segment Lübeck to Rostock, about 40 km. Sample — expected READY, live data may differ."
+}

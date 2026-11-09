@@ -16,7 +16,7 @@ export type RouteEvidence = {
   source: string
   age: string
   confidence: 'high' | 'medium' | 'High' | 'Medium'
-  state: 'clear' | 'warning' | 'danger' | 'conflict'
+  state: 'clear' | 'info' | 'warning' | 'danger' | 'conflict'
   category: 'roadworks' | 'closures' | 'observations'
   lat?: number
   lng?: number
@@ -24,6 +24,12 @@ export type RouteEvidence = {
   endTimestamp?: string | null
   retrievedAt?: string
   longRunning?: boolean
+  distanceKm?: number | null
+  reason?: string
+  locationKind?: string
+  blocker?: boolean
+  acknowledgedBy?: string
+  acknowledgedAt?: string
 }
 
 export type MapAlert = {

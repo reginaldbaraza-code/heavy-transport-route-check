@@ -87,7 +87,8 @@ async function main() {
   await page.getByRole('button', { name: 'Check route' }).click()
   await page.locator('.verdict-banner').waitFor({ timeout: 90000 })
   record('Route check finished', true, (await page.locator('.verdict-banner').innerText()).replace(/\s+/g, ' ').slice(0, 120))
-  const hamburgEvidence = await page.locator('.evidence-list').innerText()
+  await page.locator('.nearby-off-route-group').evaluateAll(nodes => nodes.forEach(node => { node.open = true })).catch(() => {})
+  const hamburgEvidence = await page.locator('.evidence-section').innerText()
   record(
     'Hamburg→Hannover shows MIA roadworks source',
     /Autobahn GmbH MIA via Mobilithek\/MobiData BW/.test(hamburgEvidence),
@@ -195,7 +196,8 @@ async function main() {
   await page.getByRole('button', { name: /München → Stuttgart|Munchen → Stuttgart/ }).click()
   await page.getByRole('button', { name: 'Check route' }).click()
   await page.locator('.verdict-banner').waitFor({ timeout: 90000 })
-  const stuttgartEvidence = await page.locator('.evidence-list').innerText()
+  await page.locator('.nearby-off-route-group').evaluateAll(nodes => nodes.forEach(node => { node.open = true })).catch(() => {})
+  const stuttgartEvidence = await page.locator('.evidence-section').innerText()
   record(
     'Stuttgart-area route shows MobiData BW BEMaS evidence',
     /MobiData BW \(BEMaS\)/.test(stuttgartEvidence),
