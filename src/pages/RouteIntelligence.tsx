@@ -4,7 +4,7 @@ import {
   AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, CircleX, 
   FileUp, Loader2, MapPin, ShieldCheck, Truck, Upload,
 } from 'lucide-react'
-import RouteMapGL from '../components/RouteMapGL'
+import RouteMapGL, { type RouteMapHandle } from '../components/RouteMapGL'
 import { Toast } from '../components/Feedback'
 import { checkRoute, loadTestPermit, readFileAsText, testPermits, type RouteCheckResult } from '../lib/routeCheck'
 import type { RouteEvidence } from '../data/routeChecks'
@@ -33,6 +33,7 @@ export default function RouteIntelligencePolished() {
   const [error, setError] = useState('')
   const [showTestPermits, setShowTestPermits] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+  const mapRef = useRef<RouteMapHandle>(null)
 
   const vehicle = {
     width: parseFloat(vehicleWidth) || 0,
@@ -380,6 +381,8 @@ export default function RouteIntelligencePolished() {
                       <div className="input-with-unit">
                         <input
                           type="number"
+                          inputMode="decimal"
+                          pattern="[0-9]*[.,]?[0-9]*"
                           min="0"
                           step="0.1"
                           value={value as string}
@@ -454,6 +457,7 @@ export default function RouteIntelligencePolished() {
             <div className="results-layout">
               <div className="results-main">
                 <RouteMapGL
+                  ref={mapRef}
                   coordinates={result.route.coordinates}
                   origin={result.route.origin}
                   destination={result.route.destination}
@@ -473,15 +477,22 @@ export default function RouteIntelligencePolished() {
                     <div><span>Origin</span><strong>{result.route.origin}</strong></div>
                     <div><span>Destination</span><strong>{result.route.destination}</strong></div>
                     <div><span>Distance</span><strong>{result.route.distance} km</strong></div>
-                    <div><span>Issues found</span><strong>{result.issueCount}</strong></div>
+                    <div><span>Evidence found</span><strong>{result.evidence.length}</strong></div>
                   </div>
                 </div>
 
                 <div className="evidence-section">
-                  <h3>Evidence ({result.evidence.filter(e => e.category === activeLayer).length})</h3>
+                  <h3>
+                    Evidence ({result.evidence.length})
+                  </h3>
                   <div className="evidence-list">
-                    {result.evidence.filter(e => e.category === activeLayer).map(item => (
-                      <div key={item.id} className={`evidence-card evidence-${item.state}`}>
+                    {result.evidence.map(item => (
+                      <div 
+                        key={item.id} 
+                        className={`evidence-card evidence-${item.state}`}
+                        onClick={() => item.lat != null && item.lng != null && mapRef.current?.flyToEvidence(item)}
+                        style={{ cursor: item.lat != null && item.lng != null ? 'pointer' : 'default' }}
+                      >
                         <div className="evidence-header">
                           <strong>{item.title}</strong>
                           <span className={`confidence-badge confidence-${item.confidence}`}>
@@ -493,12 +504,25 @@ export default function RouteIntelligencePolished() {
                           <span>{item.source}</span>
                           <span>·</span>
                           <span>{item.age}</span>
+                          {item.lat != null && item.lng != null && (
+                            <span style={{ marginLeft: 'auto', fontSize: '12px', opacity: 0.6 }}>📍 Click to view</span>
+                          )}
                         </div>
                       </div>
                     ))}
                   </div>
                 </div>
               </div>
+            </div>
+            
+            {/* Mobile sticky action bar */}
+            <div className="mobile-route-actions" style={{ display: 'none' }}>
+              <button type="button" className="btn-secondary" onClick={resetFlow}>
+                Re-check
+              </button>
+              <button type="button" className="btn-primary" onClick={() => setToast('Site confirmation feature coming soon')}>
+                Confirm on site
+              </button>
             </div>
           </>
         )}

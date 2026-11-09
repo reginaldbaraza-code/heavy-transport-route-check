@@ -6,6 +6,7 @@ import {
   HelpCircle
 } from 'lucide-react'
 import MdsLogo from './MdsLogo'
+import MobileTabBar from './MobileTabBar'
 import { useRouteMonitoring } from '../context/RouteMonitoringContext'
 import { getPermittedRoute } from '../data/routeChecks'
 
@@ -422,6 +423,9 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+      
+      {/* Mobile bottom tab bar */}
+      <MobileTabBar />
     </div>
   )
 }

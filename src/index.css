@@ -1,6 +1,12 @@
 @import 'tailwindcss';
 
 :root {
+  /* Safe area insets for mobile notches/home indicators */
+  --safe-area-inset-top: env(safe-area-inset-top, 0px);
+  --safe-area-inset-right: env(safe-area-inset-right, 0px);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-inset-left: env(safe-area-inset-left, 0px);
+  
   /* Backgrounds */
   --bg-base: #f5f7fa;
   --bg-card: #ffffff;
@@ -261,7 +267,7 @@ button, a, input, select, textarea {
 .live-event-summary { margin: 7px 10px 10px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }.live-event-summary div { padding: 8px 6px; border: 1px solid var(--divider); border-radius: 8px; background: var(--bg-base); }.live-event-summary strong, .live-event-summary span { display: block; }.live-event-summary strong { color: var(--text-primary); font-size: 16px; line-height: 1; }.live-event-summary span { margin-top: 3px; color: var(--text-tertiary); font-size: 14px; white-space: nowrap; }
 .live-event-list { min-height: 0; flex: 1; overflow-y: auto; border-top: 1px solid var(--divider); }.live-event-list-heading { position: sticky; top: 0; z-index: 2; padding: 10px 12px 8px; display: flex; justify-content: space-between; background: rgba(255,255,255,.94); backdrop-filter: blur(10px); }.live-event-list-heading span { color: var(--text-primary); font-size: 14px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }.live-event-list-heading b { color: var(--text-tertiary); font-size: 14px; font-weight: 500; }
 .live-event-list > button { width: 100%; padding: 10px 11px; display: flex; align-items: flex-start; gap: 8px; border-top: 1px solid var(--divider); background: var(--bg-card); text-align: left; cursor: pointer; }.live-event-list > button:hover, .live-event-list > button.selected { background: var(--accent-soft); }.live-event-list > button > div { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }.live-event-list > button strong { overflow: hidden; color: var(--text-primary); font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }.live-event-list > button span { overflow: hidden; color: var(--text-secondary); font-size: 14px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }.live-event-list > button small { color: var(--text-tertiary); font-size: 14px; }.live-event-list > button > svg { margin-top: 5px; color: var(--text-tertiary); transform: rotate(-90deg); }.event-type-icon { width: 22px; height: 22px; flex: none; display: grid; place-items: center; border-radius: 6px; color: white !important; font-size: 14px !important; font-weight: 800; }.live-event-empty { padding: 28px 14px; color: var(--text-tertiary); font-size: 14px; line-height: 1.5; text-align: center; }
-.live-map-stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; }.leaflet-map { position: absolute; inset: 0; z-index: 0; background: radial-gradient(circle at 52% 45%, #e8f1f6, #d5e3eb); }.leaflet-container { font-family: 'Inter', sans-serif; }.leaflet-tile-pane { display: none !important; }.leaflet-control-attribution { font-size: 14px !important; }.leaflet-control-zoom a { color: var(--navy) !important; }.leaflet-control-scale-line { border-color: var(--navy) !important; color: var(--navy); font-size: 14px; }.vector-city-label { width: auto !important; padding: 2px 4px; color: var(--navy); font-size: 14px; font-weight: 700; text-shadow: 0 1px 0 white, 1px 0 0 white, 0 -1px 0 white, -1px 0 0 white; white-space: nowrap; }.local-road-label { display: grid !important; place-items: center; border: 1px solid white; border-radius: 4px; background: #315b7d; color: white; font: 700 14px/1 'Inter', sans-serif; box-shadow: 0 1px 2px rgba(16,42,67,.18); }
+.live-map-stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; }.maplibre-map, .leaflet-map { position: absolute; inset: 0; z-index: 0; background: radial-gradient(circle at 52% 45%, #e8f1f6, #d5e3eb); }.leaflet-container { font-family: 'Inter', sans-serif; }.leaflet-tile-pane { display: none !important; }.leaflet-control-attribution { font-size: 14px !important; }.leaflet-control-zoom a { color: var(--navy) !important; }.leaflet-control-scale-line { border-color: var(--navy) !important; color: var(--navy); font-size: 14px; }.maplibregl-ctrl-attrib { font-size: 14px !important; }.maplibregl-ctrl-group button { color: var(--navy) !important; }.vector-city-label { width: auto !important; padding: 2px 4px; color: var(--navy); font-size: 14px; font-weight: 700; text-shadow: 0 1px 0 white, 1px 0 0 white, 0 -1px 0 white, -1px 0 0 white; white-space: nowrap; }.local-road-label { display: grid !important; place-items: center; border: 1px solid white; border-radius: 4px; background: #315b7d; color: white; font: 700 14px/1 'Inter', sans-serif; box-shadow: 0 1px 2px rgba(16,42,67,.18); }
 .ops-marker-host, .ops-cluster-host { background: none; border: 0; }
 .ops-map-marker { width: 28px; height: 28px; display: grid; place-items: center; color: var(--marker-color); filter: drop-shadow(0 2px 3px rgba(10,37,64,.28)); }
 .ops-map-marker svg { width: 26px; height: 26px; overflow: visible; fill: white; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
@@ -2323,6 +2329,11 @@ h4 { font-size: 18px !important; line-height: 1.35 !important; }
   .verdict-banner {
     flex-direction: column;
     text-align: center;
+    padding: 20px 16px !important;
+  }
+  
+  .verdict-banner .btn-text {
+    display: none; /* Move to sticky action bar */
   }
   
   .form-actions {
@@ -2331,10 +2342,212 @@ h4 { font-size: 18px !important; line-height: 1.35 !important; }
   
   .form-actions button {
     width: 100%;
+    min-height: 44px;
   }
   
   .summary-grid {
     grid-template-columns: 1fr;
+  }
+  
+  /* Mobile route check layout: verdict → map → evidence */
+  .results-layout {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0 !important;
+  }
+  
+  .results-sidebar {
+    order: 2 !important;
+    padding: 16px !important;
+    max-width: 100% !important;
+  }
+  
+  .results-main {
+    order: 1 !important;
+    height: 45vh !important;
+    min-height: 300px !important;
+  }
+  
+  .results-map {
+    height: 100% !important;
+    border-radius: 0 !important;
+  }
+  
+  .evidence-list {
+    max-height: none !important;
+  }
+  
+  /* Sticky action bar on mobile */
+  .mobile-route-actions {
+    display: flex !important;
+    position: fixed;
+    bottom: calc(56px + var(--safe-area-inset-bottom));
+    left: 0;
+    right: 0;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(20px);
+    border-top: 1px solid var(--border);
+    padding: 12px 16px;
+    padding-bottom: calc(12px + var(--safe-area-inset-bottom));
+    z-index: 90;
+    gap: 8px;
+  }
+  
+  .mobile-route-actions button {
+    flex: 1;
+    min-height: 44px;
+  }
+  
+  /* Full-width permit picker buttons */
+  .test-permits-grid button {
+    min-height: 44px;
+  }
+  
+  /* Numeric input mode for dimensions */
+  .dimensions-grid input[type="number"] {
+    font-size: 16px; /* Prevent zoom on iOS */
+  }
+  
+  /* Map legend collapsible on mobile */
+  .route-map-gl-layers {
+    top: 8px;
+    left: 8px;
+    max-width: calc(100% - 16px);
+  }
+  
+  .route-map-gl-layers:not(.expanded) button:not(.route-map-gl-layers-header) {
+    display: none;
+  }
+  
+  .route-map-gl-layers-header {
+    min-height: 44px;
+  }
+  
+  .route-map-gl-legend {
+    bottom: 8px;
+    left: 8px;
+    right: 8px;
+    font-size: 13px;
+  }
+  
+  .route-map-gl-legend strong {
+    font-size: 14px;
+  }
+  
+  /* Larger marker hit areas */
+  .maplibregl-marker {
+    cursor: pointer;
+  }
+  
+  /* Corridor monitor mobile layout */
+  .live-map-page {
+    flex-direction: column;
+  }
+  
+  .live-map-header {
+    flex-direction: column;
+    gap: 16px;
+    padding: 16px !important;
+  }
+  
+  .live-map-header-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+  
+  .live-map-header-actions button,
+  .live-map-header-actions .market-button {
+    width: 100%;
+    min-height: 44px;
+    justify-content: center;
+  }
+  
+  .live-map-tabs {
+    flex-wrap: wrap;
+    padding: 8px !important;
+    gap: 8px !important;
+  }
+  
+  .live-map-tabs button {
+    min-height: 44px;
+  }
+  
+  .live-map-workspace {
+    flex-direction: column !important;
+  }
+  
+  .live-event-panel {
+    order: 2;
+    width: 100% !important;
+    max-width: 100% !important;
+    border-right: none !important;
+    border-top: 1px solid var(--border);
+  }
+  
+  .live-map-stage {
+    order: 1;
+    height: 45vh !important;
+    min-height: 300px !important;
+  }
+  
+  .live-layer-panel {
+    top: 8px !important;
+    left: 8px !important;
+    max-width: calc(100% - 16px);
+  }
+  
+  .live-map-legend {
+    bottom: 8px !important;
+    left: 8px !important;
+    right: 8px !important;
+    font-size: 13px !important;
+  }
+  
+  .live-map-kpis {
+    flex-direction: column !important;
+    bottom: auto !important;
+    top: 8px !important;
+    right: 8px !important;
+    left: auto !important;
+  }
+  
+  .live-event-list {
+    max-height: none !important;
+  }
+  
+  /* Alerts page mobile */
+  .activity-page-header {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .activity-stats {
+    grid-template-columns: 1fr 1fr !important;
+  }
+  
+  .activity-list {
+    padding: 0 16px !important;
+  }
+  
+  .activity-card {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  /* Settings page mobile */
+  .settings-page-layout {
+    flex-direction: column !important;
+  }
+  
+  .settings-sidebar {
+    width: 100% !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border);
+    padding: 16px !important;
+  }
+  
+  .settings-main {
+    padding: 16px !important;
   }
 }
 
@@ -2349,6 +2562,99 @@ h4 { font-size: 18px !important; line-height: 1.35 !important; }
   
   .route-polished-card {
     padding: 20px 16px;
+  }
+}
+
+/* Mobile Base Styles */
+body, html, #root {
+  height: 100dvh;
+  overflow-x: hidden;
+}
+
+/* Minimum font size enforcement */
+body, button, input, select, textarea {
+  font-size: 14px;
+}
+
+@media (max-width: 768px) {
+  body, button, input, select, textarea {
+    font-size: 14px;
+  }
+  
+  small, .text-sm {
+    font-size: 13px !important;
+  }
+  
+  /* Hide desktop sidebar and help button on mobile */
+  .app-sidebar {
+    position: fixed;
+    top: 0;
+    left: -100%;
+    width: 280px !important;
+    height: 100dvh;
+    z-index: 200;
+    transition: left 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .app-sidebar.mobile-open {
+    left: 0;
+  }
+  
+  .mobile-nav-backdrop {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 199;
+    backdrop-filter: blur(4px);
+  }
+  
+  .topbar-help {
+    display: none !important;
+  }
+  
+  .mobile-nav-trigger {
+    display: flex !important;
+  }
+  
+  /* Show mobile tab bar */
+  .mobile-tab-bar {
+    display: block !important;
+  }
+  
+  /* Adjust main container for bottom tab bar */
+  .app-page-host {
+    padding-bottom: calc(56px + var(--safe-area-inset-bottom)) !important;
+  }
+  
+  /* Topbar adjustments */
+  .app-topbar {
+    padding: 0 12px !important;
+  }
+  
+  .topbar-search {
+    max-width: none !important;
+  }
+  
+  .topbar-org-button > div:last-of-type {
+    display: none;
+  }
+  
+  .topbar-divider {
+    display: none !important;
+  }
+}
+
+@media (min-width: 769px) {
+  .mobile-nav-trigger {
+    display: none;
+  }
+  
+  .mobile-nav-backdrop {
+    display: none;
   }
 }
 
