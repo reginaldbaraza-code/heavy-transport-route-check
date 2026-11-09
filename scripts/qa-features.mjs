@@ -112,6 +112,49 @@ async function main() {
   )
   await page.getByRole('button', { name: 'Expand navigation' }).click()
 
+  await page.locator('.example-data-panel').scrollIntoViewIfNeeded()
+  await page.locator('.permit-leaflet-map.leaflet-container').waitFor({ timeout: 25000 })
+  const heroBadge = await page.locator('.permit-map-badge strong').first().innerText()
+  record('Homepage hero uses 4 monitored routes badge', heroBadge.includes('4 monitored routes'), heroBadge)
+  const osmAttr = await page.locator('.permit-leaflet-map .leaflet-control-attribution').innerText()
+  record('Homepage map keeps OSM attribution', /OpenStreetMap/i.test(osmAttr), osmAttr)
+  const tileDisplay = await page.locator('.permit-leaflet-map .leaflet-tile-pane').evaluate(el => getComputedStyle(el).display)
+  record('Homepage map shows tile layer', tileDisplay !== 'none', tileDisplay)
+  record(
+    'Homepage hero is not the illustrated Germany map',
+    (await page.locator('.transport-readiness-map .shared-leaflet-map').count()) === 0,
+  )
+
+  await page.getByRole('button', { name: 'Test permits' }).click()
+  await page.locator('[data-permit-map="sample"]').waitFor({ timeout: 15000 })
+  record(
+    'Test permits panel defaults to Hamburg→Hannover',
+    (await page.locator('[data-selected-permit="hamburg-hannover"]').count()) > 0,
+  )
+  await page.locator('.transport-readiness-map .permit-endpoint strong').first().waitFor({ timeout: 20000 })
+  const hamburgLabels = await page.locator('.transport-readiness-map .permit-endpoint strong').allInnerTexts()
+  record(
+    'Hamburg→Hannover map labels match the selected permit',
+    hamburgLabels.some(text => /Hamburg/i.test(text))
+      && hamburgLabels.some(text => /Hannover/i.test(text))
+      && !hamburgLabels.some(text => /Munich|München/i.test(text)),
+    hamburgLabels.join(' | '),
+  )
+  record(
+    'Fake Duisburg→Munich sample-corridor caption is gone',
+    (await page.getByText('Hamburg, Bremen, Leipzig, Duisburg, München').count()) === 0,
+  )
+
+  await page.getByRole('button', { name: /Bremen → Dortmund/ }).click()
+  await page.locator('[data-selected-permit="bremen-dortmund"]').waitFor({ timeout: 10000 })
+  await page.locator('.transport-readiness-map .permit-endpoint strong', { hasText: /Bremen/ }).waitFor({ timeout: 20000 })
+  const bremenLabels = await page.locator('.transport-readiness-map .permit-endpoint strong').allInnerTexts()
+  record(
+    'Selecting Bremen→Dortmund updates the sample map labels',
+    bremenLabels.some(text => /Bremen/i.test(text)) && bremenLabels.some(text => /Dortmund/i.test(text)),
+    bremenLabels.join(' | '),
+  )
+
   await page.goto(base + '/discover', { waitUntil: 'domcontentloaded', timeout: 60000 })
   const discoverBanner = await page.getByText(/leftover marketplace example data/i).isVisible()
   const discoverBadge = await page.getByText('Example data', { exact: true }).first().isVisible()
