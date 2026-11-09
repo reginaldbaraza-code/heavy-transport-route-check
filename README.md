@@ -29,9 +29,14 @@ Bridge and clearance are **not** in those feeds. READY needs an explicit dispatc
 
 HOLD items cannot be acknowledged away. VERIFY items can be confirmed on site by a named dispatcher.
 
-## Test permits and scenarios
+## Demo dashboard vs sample permits
 
-`public/test-permits/` holds snapped GPX samples (Hamburg→Hannover A7, Bremen→Dortmund A1, Leipzig→Nürnberg A9, Duisburg→Köln A3, München→Stuttgart A8, Lübeck→Rostock A20, Hof→Bayreuth A9). Scenario cards skip live feeds so READY / VERIFY / HOLD can be demoed. Tracks were pre-snapped with public OSRM. © OpenStreetMap contributors, ODbL.
+The overview page has two modes:
+
+- **Demo dashboard** — a fixed preview of monitoring with made-up routes and verdicts. Never live, never saved.
+- **Try a sample permit** — real GPX files. Opening one runs a live Autobahn check that is saved to this browser’s history.
+
+`public/test-permits/` holds the snapped GPX samples (Hamburg→Hannover A7, Bremen→Dortmund A1, Leipzig→Nürnberg A9, Duisburg→Köln A3, München→Stuttgart A8, Lübeck→Rostock A20, Hof→Bayreuth A9). Scenario cards on Route checks skip live feeds so READY / VERIFY / HOLD can be demoed. Tracks were pre-snapped with public OSRM. © OpenStreetMap contributors, ODbL.
 
 ## How to run
 

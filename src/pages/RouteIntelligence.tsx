@@ -239,7 +239,7 @@ export default function RouteIntelligencePolished() {
       applyPermitVehicle(permit, metadata)
       setPermitNumber(permit.kind === 'scenario' ? permit.permitNumber : (metadata?.permitNumber || permit.permitNumber))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load test permit')
+      setError(err instanceof Error ? err.message : 'Failed to load sample permit')
     }
   }
 
@@ -365,7 +365,7 @@ export default function RouteIntelligencePolished() {
           setStep('vehicle')
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load test permit')
+        setError(err instanceof Error ? err.message : 'Failed to load sample permit')
       }
     })()
   }, [getJob, prefs.intervalMinutes, searchParams])
@@ -592,7 +592,7 @@ export default function RouteIntelligencePolished() {
               <FileUp size={24} />
               <div>
                 <h2>Import your permitted route</h2>
-                <p>Upload a GPX file with your exact approved route or select a test permit</p>
+                <p>Upload a GPX file with your exact approved route or select a sample permit</p>
               </div>
             </div>
 
@@ -653,7 +653,7 @@ export default function RouteIntelligencePolished() {
             )}
 
             <div className="divider-text">
-              <span>or select a test permit</span>
+              <span>or select a sample permit</span>
             </div>
 
             <button
@@ -661,7 +661,7 @@ export default function RouteIntelligencePolished() {
               className="btn-secondary"
               onClick={() => setShowTestPermits(!showTestPermits)}
             >
-              {showTestPermits ? 'Hide' : 'Show'} test permits
+              {showTestPermits ? 'Hide' : 'Show'} sample permits
               <ChevronDown size={16} style={{ transform: showTestPermits ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
             </button>
 

@@ -119,10 +119,19 @@ async function main() {
   )
   await page.getByRole('button', { name: 'Expand navigation' }).click()
 
-  await page.locator('.example-data-panel').scrollIntoViewIfNeeded()
+  await page.locator('.overview-mode-panel').scrollIntoViewIfNeeded()
   await page.locator('.permit-leaflet-map.leaflet-container').waitFor({ timeout: 25000 })
   const heroBadge = await page.locator('.permit-map-badge strong').first().innerText()
-  record('Homepage hero uses 4 monitored routes badge', heroBadge.includes('4 monitored routes'), heroBadge)
+  record('Homepage hero uses Demo: 4 monitored routes badge', heroBadge.includes('Demo: 4 monitored routes'), heroBadge)
+  record(
+    'Demo dashboard tab is selected on load',
+    (await page.getByRole('tab', { name: 'Demo dashboard' }).getAttribute('aria-selected')) === 'true',
+  )
+  record('Demo mode shows DEMO badge', (await page.locator('.overview-mode-badge').innerText()).includes('DEMO'))
+  record(
+    'Demo mode copy explains it is not live',
+    await page.getByText(/Made-up routes and verdicts, never live, never saved/i).isVisible(),
+  )
   const osmAttr = await page.locator('.permit-leaflet-map .leaflet-control-attribution').innerText()
   record('Homepage map keeps OSM attribution', /OpenStreetMap/i.test(osmAttr), osmAttr)
   const tileDisplay = await page.locator('.permit-leaflet-map .leaflet-tile-pane').evaluate(el => getComputedStyle(el).display)
@@ -140,12 +149,25 @@ async function main() {
   const tileFilter = await page.locator('.permit-leaflet-map .leaflet-tile-pane').evaluate(el => getComputedStyle(el).filter)
   record('Homepage tiles are desaturated', /grayscale/i.test(tileFilter), tileFilter)
 
-  await page.getByRole('button', { name: 'Test permits' }).click()
+  await page.getByRole('tab', { name: 'Try a sample permit' }).click()
+  record(
+    'Sample permit tab is selected',
+    (await page.getByRole('tab', { name: 'Try a sample permit' }).getAttribute('aria-selected')) === 'true',
+  )
+  record('Sample mode shows SAMPLE PERMIT badge', (await page.locator('.overview-mode-badge').innerText()).includes('SAMPLE PERMIT'))
+  record(
+    'Sample mode copy explains live check is saved',
+    await page.getByText(/that check is saved to your history/i).isVisible(),
+  )
+  record(
+    'Sample mode CTA runs a live check',
+    await page.getByRole('link', { name: /Run live check on this sample/i }).isVisible(),
+  )
   const sampleMap = page.locator('[data-permit-map="sample"]')
   await sampleMap.waitFor({ timeout: 15000 })
   await page.locator('[data-permit-map="overview"]').waitFor({ state: 'detached', timeout: 10000 }).catch(() => {})
   record(
-    'Test permits panel defaults to Hamburg→Hannover',
+    'Sample permit panel defaults to Hamburg→Hannover',
     (await page.locator('[data-permit-map="sample"][data-selected-permit="hamburg-hannover"]').count()) > 0,
   )
   await sampleMap.locator('.permit-map-pill small', { hasText: /^START$/ }).waitFor({ timeout: 20000 })
@@ -187,7 +209,7 @@ async function main() {
     await page.goto(base + '/', { waitUntil: 'domcontentloaded', timeout: 60000 })
     const skip = page.getByRole('button', { name: /skip/i })
     if (await skip.count()) await skip.first().click()
-    await page.getByRole('button', { name: 'Example data' }).click()
+    await page.getByRole('tab', { name: 'Demo dashboard' }).click()
     await page.locator('[data-permit-map="overview"]').waitFor({ timeout: 25000 })
     await page.locator('.transport-readiness').scrollIntoViewIfNeeded()
     await page.locator('[data-permit-map="overview"] .leaflet-container').waitFor({ timeout: 25000 })
@@ -204,7 +226,7 @@ async function main() {
       hero.tiles > 0 && hero.paths >= 4,
       JSON.stringify(hero),
     )
-    await page.getByRole('button', { name: 'Test permits' }).click()
+    await page.getByRole('tab', { name: 'Try a sample permit' }).click()
     await page.locator('[data-permit-map="sample"]').waitFor({ timeout: 20000 })
     await page.locator('.transport-readiness').scrollIntoViewIfNeeded()
     await page.locator('[data-permit-map="sample"] .leaflet-container').waitFor({ timeout: 20000 })
@@ -217,7 +239,7 @@ async function main() {
     }, { timeout: 25000 })
     const sample = await page.locator('[data-permit-map="sample"]').evaluate(permitMapCounts)
     record(
-      `Test-permits map at ${width}×${height} has tiles and ≥1 route path`,
+      `Sample-permit map at ${width}×${height} has tiles and ≥1 route path`,
       sample.tiles > 0 && sample.paths >= 1,
       JSON.stringify(sample),
     )
@@ -271,7 +293,7 @@ async function main() {
     /valid GPX route/i.test(uploadError) && /Technical details/i.test(uploadError),
     uploadError.replace(/\s+/g, ' ').slice(0, 220),
   )
-  await page.getByRole('button', { name: /show test permits/i }).click()
+  await page.getByRole('button', { name: /show sample permits/i }).click()
   await page.getByRole('button', { name: /Hamburg → Hannover/ }).click()
   await page.locator('.clearance-tick input').waitFor({ timeout: 15000 })
   if (await page.locator('.clearance-tick input').isChecked()) {
@@ -370,13 +392,13 @@ async function main() {
   record('Result CSV download is non-empty', csv.size > 50, `${csv.suggested} ${csv.size} bytes`)
 
   await page.getByRole('button', { name: 'Check another route' }).click()
-  await page.getByRole('button', { name: /show test permits/i }).click()
+  await page.getByRole('button', { name: /show sample permits/i }).click()
   await page.getByRole('button', { name: /Simulated HOLD — A3 residual width/ }).click()
   await page.locator('[data-testid="vehicle-width"]').waitFor({ timeout: 10000 })
   const holdWidth = await page.locator('[data-testid="vehicle-width"]').inputValue()
   record('Scenario dims populate immediately', holdWidth === '3.8', `width=${holdWidth}`)
   await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded' })
-  await page.getByRole('button', { name: /show test permits/i }).click()
+  await page.getByRole('button', { name: /show sample permits/i }).click()
   await page.getByRole('button', { name: /Simulated VERIFY/ }).click()
   await page.getByRole('button', { name: 'Check route' }).click()
   await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
@@ -505,7 +527,7 @@ async function main() {
   record('History CSV download is non-empty', historyCsv.size > 50, `${historyCsv.suggested} ${historyCsv.size} bytes`)
 
   await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded' })
-  await page.getByRole('button', { name: /show test permits/i }).click()
+  await page.getByRole('button', { name: /show sample permits/i }).click()
   await page.getByRole('button', { name: /München → Stuttgart|Munchen → Stuttgart/ }).click()
   await page.getByRole('button', { name: 'Check route' }).click()
   await page.locator('.verdict-banner').waitFor({ timeout: 90000 })
@@ -524,7 +546,7 @@ async function main() {
 
   async function runHoldScenario(nameRe) {
     await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded' })
-    await page.getByRole('button', { name: /show test permits/i }).click()
+    await page.getByRole('button', { name: /show sample permits/i }).click()
     await page.getByRole('button', { name: nameRe }).click()
     await page.getByRole('button', { name: 'Check route' }).click()
     await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
