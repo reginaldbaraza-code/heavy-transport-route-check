@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense } from 'react'
 import { Route } from 'lucide-react'
 import type { PermitLeafletMapProps } from './PermitLeafletMap'
 
@@ -37,34 +37,11 @@ function PermitMapSkeleton({
 }
 
 export default function LazyPermitMap(props: PermitLeafletMapProps) {
-  const hostRef = useRef<HTMLDivElement>(null)
-  const [visible, setVisible] = useState(false)
-
-  useEffect(() => {
-    const node = hostRef.current
-    if (!node || visible) return
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry?.isIntersecting) {
-          setVisible(true)
-          observer.disconnect()
-        }
-      },
-      { rootMargin: '160px' },
-    )
-    observer.observe(node)
-    return () => observer.disconnect()
-  }, [visible])
-
   return (
-    <div ref={hostRef} className="permit-leaflet-host">
-      {visible ? (
-        <Suspense fallback={<PermitMapSkeleton badgeTitle={props.badgeTitle} badgeSubtitle={props.badgeSubtitle} showLegend={props.showLegend} />}>
-          <PermitLeafletMap {...props} />
-        </Suspense>
-      ) : (
-        <PermitMapSkeleton badgeTitle={props.badgeTitle} badgeSubtitle={props.badgeSubtitle} showLegend={props.showLegend} />
-      )}
+    <div className="permit-leaflet-host">
+      <Suspense fallback={<PermitMapSkeleton badgeTitle={props.badgeTitle} badgeSubtitle={props.badgeSubtitle} showLegend={props.showLegend} />}>
+        <PermitLeafletMap {...props} />
+      </Suspense>
     </div>
   )
 }

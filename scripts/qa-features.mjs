@@ -11,6 +11,13 @@ function record(name, ok, detail = '') {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`)
 }
 
+function permitMapCounts(root) {
+  return {
+    tiles: root.querySelectorAll('img.leaflet-tile').length,
+    paths: root.querySelectorAll('.leaflet-overlay-pane path').length,
+  }
+}
+
 async function waitForPreview(child) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('Preview server did not start')), 20000)
@@ -174,6 +181,50 @@ async function main() {
     bremenLabels.some(text => /Bremen/i.test(text)) && bremenLabels.some(text => /Dortmund/i.test(text)),
     bremenLabels.join(' | '),
   )
+
+  async function assertDesktopPermitMaps(width, height) {
+    await page.setViewportSize({ width, height })
+    await page.goto(base + '/', { waitUntil: 'domcontentloaded', timeout: 60000 })
+    const skip = page.getByRole('button', { name: /skip/i })
+    if (await skip.count()) await skip.first().click()
+    await page.getByRole('button', { name: 'Example data' }).click()
+    await page.locator('[data-permit-map="overview"]').waitFor({ timeout: 25000 })
+    await page.locator('.transport-readiness').scrollIntoViewIfNeeded()
+    await page.locator('[data-permit-map="overview"] .leaflet-container').waitFor({ timeout: 25000 })
+    await page.waitForFunction(() => {
+      const root = document.querySelector('[data-permit-map="overview"]')
+      if (!root) return false
+      const tiles = root.querySelectorAll('img.leaflet-tile').length
+      const paths = root.querySelectorAll('.leaflet-overlay-pane path').length
+      return tiles > 0 && paths >= 4
+    }, { timeout: 25000 })
+    const hero = await page.locator('[data-permit-map="overview"]').evaluate(permitMapCounts)
+    record(
+      `Hero map at ${width}×${height} has tiles and ≥4 route paths`,
+      hero.tiles > 0 && hero.paths >= 4,
+      JSON.stringify(hero),
+    )
+    await page.getByRole('button', { name: 'Test permits' }).click()
+    await page.locator('[data-permit-map="sample"]').waitFor({ timeout: 20000 })
+    await page.locator('.transport-readiness').scrollIntoViewIfNeeded()
+    await page.locator('[data-permit-map="sample"] .leaflet-container').waitFor({ timeout: 20000 })
+    await page.waitForFunction(() => {
+      const root = document.querySelector('[data-permit-map="sample"]')
+      if (!root) return false
+      const tiles = root.querySelectorAll('img.leaflet-tile').length
+      const paths = root.querySelectorAll('.leaflet-overlay-pane path').length
+      return tiles > 0 && paths >= 1
+    }, { timeout: 25000 })
+    const sample = await page.locator('[data-permit-map="sample"]').evaluate(permitMapCounts)
+    record(
+      `Test-permits map at ${width}×${height} has tiles and ≥1 route path`,
+      sample.tiles > 0 && sample.paths >= 1,
+      JSON.stringify(sample),
+    )
+  }
+  await assertDesktopPermitMaps(1280, 800)
+  await assertDesktopPermitMaps(1920, 1200)
+  await page.setViewportSize({ width: 1440, height: 900 })
 
   await page.goto(base + '/discover', { waitUntil: 'domcontentloaded', timeout: 60000 })
   const discoverBanner = await page.getByText(/leftover marketplace example data/i).isVisible()

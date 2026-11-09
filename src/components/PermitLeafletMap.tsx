@@ -48,6 +48,9 @@ const SAMPLE_FIT_PAD_X = 100
 const SAMPLE_FIT_PAD_Y = 72
 const OVERVIEW_FIT_PAD_X = 40
 const OVERVIEW_FIT_PAD_Y = 64
+const OVERVIEW_FIT_PAD_TOP = 108
+const GERMANY_CENTER: LatLng = [51.16, 10.45]
+const GERMANY_ZOOM = 6
 const PREFERRED_LABEL: Record<string, { side: 'left' | 'right'; nudgeY: number }> = {
   Lübeck: { side: 'left', nudgeY: 18 },
   Rostock: { side: 'right', nudgeY: 0 },
@@ -124,17 +127,16 @@ function placeLabels(map: LeafletMap, specs: LabelSpec[]): LabelPlacement[] {
   })
 }
 
-function fitMapToTracks(map: LeafletMap, points: LatLng[], padX: number, padY: number) {
-  const size = map.getSize()
-  if (size.x < 80 || size.y < 80) return false
+function fitMapToTracks(map: LeafletMap, points: LatLng[], padX: number, padY: number, padTop = padY) {
   map.invalidateSize({ animate: false })
   const sized = map.getSize()
   if (sized.x < 80 || sized.y < 80) return false
   const x = Math.min(padX, Math.max(28, Math.floor(sized.x / 4)))
   const y = Math.min(padY, Math.max(28, Math.floor(sized.y / 4)))
+  const top = Math.min(Math.max(padTop, y), Math.max(48, Math.floor(sized.y / 2.6)))
   const bounds = L.latLngBounds(points).pad(padX >= 80 ? 0.18 : 0.06)
   map.fitBounds(bounds, {
-    paddingTopLeft: [x, y],
+    paddingTopLeft: [x, top],
     paddingBottomRight: [x, y],
     maxZoom: ROUTE_FIT_MAX_ZOOM,
     animate: false,
@@ -173,6 +175,7 @@ export default function PermitLeafletMap({
   const sampleLine = endpointMode === 'start-dest'
   const fitPadX = sampleLine ? SAMPLE_FIT_PAD_X : OVERVIEW_FIT_PAD_X
   const fitPadY = sampleLine ? SAMPLE_FIT_PAD_Y : OVERVIEW_FIT_PAD_Y
+  const fitPadTop = sampleLine ? SAMPLE_FIT_PAD_Y : OVERVIEW_FIT_PAD_TOP
   const applyFitRef = useRef(() => {})
 
   applyFitRef.current = () => {
@@ -180,8 +183,10 @@ export default function PermitLeafletMap({
     const labelGroup = labelGroupRef.current
     const points = pointsRef.current
     const tracks = tracksRef.current
-    if (!map || !labelGroup || points.length < 2) return
-    const fitted = fitMapToTracks(map, points, fitPadX, fitPadY)
+    if (!map || !labelGroup) return
+    map.invalidateSize({ animate: false })
+    if (points.length < 2) return
+    const fitted = fitMapToTracks(map, points, fitPadX, fitPadY, fitPadTop)
     if (!fitted) return
     labelGroup.clearLayers()
     const cityMode = endpointModeRef.current === 'cities'
@@ -228,6 +233,8 @@ export default function PermitLeafletMap({
       touchZoom: true,
       keyboard: true,
       boxZoom: false,
+      center: GERMANY_CENTER,
+      zoom: GERMANY_ZOOM,
     })
     map.attributionControl?.setPrefix(false)
     L.control.zoom({ position: 'topright' }).addTo(map)
@@ -235,6 +242,7 @@ export default function PermitLeafletMap({
       attribution: OSM_ATTRIBUTION,
       maxZoom: 19,
     }).addTo(map)
+    map.invalidateSize({ animate: false })
 
     map.on('click', () => {
       map.scrollWheelZoom.enable()
@@ -250,13 +258,16 @@ export default function PermitLeafletMap({
     let lastW = 0
     let lastH = 0
     const observer = new ResizeObserver(() => {
+      const live = mapRef.current
+      if (!live) return
+      live.invalidateSize({ animate: false })
       window.clearTimeout(resizeTimer)
       resizeTimer = window.setTimeout(() => {
-        const live = mapRef.current
-        if (!live) return
-        live.invalidateSize({ animate: false })
-        const rect = live.getContainer().getBoundingClientRect()
-        if (Math.abs(rect.width - lastW) < 32 && Math.abs(rect.height - lastH) < 32 && lastW > 0) return
+        const sized = mapRef.current
+        if (!sized) return
+        sized.invalidateSize({ animate: false })
+        const rect = sized.getContainer().getBoundingClientRect()
+        if (Math.abs(rect.width - lastW) < 8 && Math.abs(rect.height - lastH) < 8 && lastW > 0) return
         lastW = rect.width
         lastH = rect.height
         applyFitRef.current()
@@ -264,9 +275,23 @@ export default function PermitLeafletMap({
     })
     observer.observe(mapNode.current)
 
+    let sizeAttempts = 0
+    const waitForSize = () => {
+      const live = mapRef.current
+      if (!live) return
+      live.invalidateSize({ animate: false })
+      const size = live.getSize()
+      if (size.x >= 80 && size.y >= 80) {
+        applyFitRef.current()
+        return
+      }
+      if (sizeAttempts++ < 24) requestAnimationFrame(waitForSize)
+    }
+
     map.whenReady(() => {
       map.invalidateSize({ animate: false })
       applyFitRef.current()
+      requestAnimationFrame(waitForSize)
     })
 
     return () => {
