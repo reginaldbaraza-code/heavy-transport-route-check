@@ -1,5 +1,5 @@
 import { jsPDF, GState } from 'jspdf'
-import { LANE_INNER_PATH, LANE_OUTER_PATH, ROUTE_PATH } from '../components/RouteCheckLogo'
+import { LANE_PATH, ROUTE_PATH } from '../components/RouteCheckLogo'
 
 function parsePath(d: string) {
   const tokens = d.replace(/,/g, ' ').trim().split(/\s+/)
@@ -42,31 +42,22 @@ export function drawRouteCheckLogo(doc: jsPDF, x: number, y: number, size: numbe
   const py = (n: number) => y + n * k
   const rx = 14 * k
 
-  doc.saveGraphicsState()
   doc.setFillColor(10, 26, 51)
   doc.roundedRect(x, y, size, size, rx, rx, 'F')
-  doc.roundedRect(x, y, size, size, rx, rx, null)
-  doc.clip()
 
   doc.setLineCap('round')
   doc.setLineJoin('round')
 
-  doc.setGState(new GState({ 'stroke-opacity': 0.22 }))
-  doc.setDrawColor(245, 197, 24)
-  doc.setLineWidth(7.4 * k)
-  strokePath(doc, px, py, ROUTE_PATH)
-
-  doc.setGState(new GState({ 'stroke-opacity': 0.7 }))
-  doc.setDrawColor(255, 255, 255)
-  doc.setLineWidth(1.25 * k)
-  doc.setLineDashPattern([2.4 * k, 2.75 * k], 0)
-  strokePath(doc, px, py, LANE_INNER_PATH)
-  strokePath(doc, px, py, LANE_OUTER_PATH)
-  doc.setLineDashPattern([], 0)
-
-  doc.setGState(new GState({ 'stroke-opacity': 1 }))
-  doc.setDrawColor(245, 197, 24)
+  doc.setDrawColor(240, 165, 0)
   doc.setLineWidth(5 * k)
   strokePath(doc, px, py, ROUTE_PATH)
+
+  doc.saveGraphicsState()
+  doc.setGState(new GState({ 'stroke-opacity': 0.88 }))
+  doc.setDrawColor(255, 255, 255)
+  doc.setLineWidth(1.15 * k)
+  doc.setLineDashPattern([2.5 * k, 3 * k], 0)
+  strokePath(doc, px, py, LANE_PATH)
+  doc.setLineDashPattern([], 0)
   doc.restoreGraphicsState()
 }

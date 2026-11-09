@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { extname, join } from 'node:path'
 import { test } from 'node:test'
 import { pdfBytesFromSnapshot, type ExportSnapshot } from './exportCheck.ts'
-import { logoDetailForSize } from '../components/RouteCheckLogo.tsx'
+import { LANE_PATH, ROUTE_PATH, ROUTE_PATH_SMALL, logoDetailForSize } from '../components/RouteCheckLogo.tsx'
 
 const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 const LFS_PREFIX = 'version https://git-lfs'
@@ -65,6 +65,30 @@ test('in-app logo and favicon have no Gaussian blur', () => {
   const source = readFileSync('src/components/RouteCheckLogo.tsx', 'utf8')
   assert.doesNotMatch(favicon, /feGaussianBlur/)
   assert.doesNotMatch(source, /feGaussianBlur/)
+  assert.doesNotMatch(favicon, /clipPath|clip-path/)
+})
+
+test('full mark keeps amber gradient and a dashed centre lane', () => {
+  const favicon = readFileSync('public/favicon.svg', 'utf8')
+  const source = readFileSync('src/components/RouteCheckLogo.tsx', 'utf8')
+  assert.match(favicon, /#F5C518/)
+  assert.match(favicon, /#F0A500/)
+  assert.match(favicon, /#13294B/)
+  assert.match(favicon, /#0A1A33/)
+  assert.match(favicon, /stroke-dasharray/)
+  assert.match(source, /LANE_PATH/)
+  assert.ok(favicon.includes(LANE_PATH))
+  assert.ok(favicon.includes(ROUTE_PATH))
+})
+
+test('hand-authored route centreline stays inside a 12% tile margin', () => {
+  for (const d of [ROUTE_PATH, ROUTE_PATH_SMALL, LANE_PATH]) {
+    const nums = d.match(/-?\d+(\.\d+)?/g)?.map(Number) ?? []
+    assert.ok(nums.length >= 4, d)
+    for (const n of nums) {
+      assert.ok(n >= 12 && n <= 52, `coordinate ${n} in ${d} leaves the 12% inset`)
+    }
+  }
 })
 
 test('PDF header draws the mark as vectors, not an LFS/PNG asset', () => {

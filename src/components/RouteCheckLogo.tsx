@@ -9,21 +9,25 @@ export type RouteCheckLogoProps = {
 
 export type LogoDetail = "small" | "medium" | "full"
 
-/** Amber route: left-edge entry, S-curve, then a check (short down, long up). */
+/**
+ * Hand-authored 64×64 mark. Centreline stays in 14–52 (~12% tile margin
+ * after a 5px round-cap stroke). Three G1 cubics form the S; two lines
+ * form the check (round join at the corner, not G1).
+ *
+ * C1 end tangent (4,−6) = C2 start; C2 end (−4,−4) = C3 start.
+ */
 export const ROUTE_PATH =
-  "M2 50 C16 50 22 49.5 28 46 C36.5 41.5 44 38 41.5 32 C38.5 26.5 34 25 32.5 21.5 C31 18 35 14.5 40.5 13 L47 19.5 L57.5 10"
+  "M14 48 C24 48 32 44 36 38 C40 32 44 28 40 24 C36 20 38 17 42 17 L47 24 L52 13"
 
-/** Pixel-snapped 16/24px mark — integer coords on the 64 viewBox (multiples of 4). */
+/** Bold simplified S+check for ≤24px. Two G1 cubics, then the check. */
 export const ROUTE_PATH_SMALL =
-  "M4 48 C16 48 24 48 28 44 C36 40 44 40 40 32 C36 28 32 24 32 20 C32 16 36 12 40 12 L48 20 L60 8"
+  "M14 46 C24 46 30 42 34 36 C38 30 40 24 36 20 L42 26 L52 14"
 
-/** Inner (left) dashed lane — lower/middle S only. */
-export const LANE_INNER_PATH = "M20 42 C26 40 30 36 31 29"
-
-/** Outer (right) dashed lane — lower/middle S only. */
-export const LANE_OUTER_PATH = "M34 52 C42 47 46 41 44 35"
+/** Dashed white centre line along the S only (not the check). Full ≥64px. */
+export const LANE_PATH = "M14 48 C24 48 32 44 36 38 C40 32 44 28 40 24"
 
 const TITLE = "Heavy transport route check"
+const STROKE = { small: 7, medium: 5.5, full: 5 } as const
 
 export function logoDetailForSize(size: number): LogoDetail {
   if (size <= 24) return "small"
@@ -41,11 +45,9 @@ export default function RouteCheckLogo({
   const detail = logoDetailForSize(size)
   const tile = `rc-tile-${uid}`
   const route = `rc-route-${uid}`
-  const clip = `rc-clip-${uid}`
   const routePath = detail === "small" ? ROUTE_PATH_SMALL : ROUTE_PATH
-  const stroke = detail === "small" ? 6.5 : detail === "medium" ? 5.5 : 5
-  const showLanes = detail === "full" || (detail === "medium" && size >= 32)
-  const showGlowStroke = detail === "full"
+  const stroke = STROKE[detail]
+  const showLane = detail === "full"
 
   return (
     <svg
@@ -76,61 +78,35 @@ export default function RouteCheckLogo({
         </linearGradient>
         <linearGradient
           id={route}
-          x1="0"
-          y1="52"
-          x2="56"
-          y2="10"
+          x1="14"
+          y1="48"
+          x2="52"
+          y2="13"
           gradientUnits="userSpaceOnUse"
         >
           <stop stopColor="#F5C518" />
           <stop offset="1" stopColor="#F0A500" />
         </linearGradient>
-        <clipPath id={clip}>
-          <rect width="64" height="64" rx="14" />
-        </clipPath>
       </defs>
-      <g clipPath={`url(#${clip})`}>
-        <rect width="64" height="64" rx="14" fill={`url(#${tile})`} />
-        {showGlowStroke && (
-          <path
-            d={routePath}
-            stroke="#F5C518"
-            strokeWidth={stroke + 2.4}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            opacity="0.22"
-          />
-        )}
-        {showLanes && (
-          <>
-            <path
-              d={LANE_INNER_PATH}
-              stroke="#FFFFFF"
-              strokeOpacity="0.7"
-              strokeWidth="1.25"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeDasharray="2.4 2.75"
-            />
-            <path
-              d={LANE_OUTER_PATH}
-              stroke="#FFFFFF"
-              strokeOpacity="0.7"
-              strokeWidth="1.25"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeDasharray="2.4 2.75"
-            />
-          </>
-        )}
+      <rect width="64" height="64" rx="14" fill={`url(#${tile})`} />
+      <path
+        d={routePath}
+        stroke={`url(#${route})`}
+        strokeWidth={stroke}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {showLane && (
         <path
-          d={routePath}
-          stroke={`url(#${route})`}
-          strokeWidth={stroke}
+          d={LANE_PATH}
+          stroke="#FFFFFF"
+          strokeOpacity="0.88"
+          strokeWidth="1.15"
           strokeLinecap="round"
           strokeLinejoin="round"
+          strokeDasharray="2.5 3"
         />
-      </g>
+      )}
     </svg>
   )
 }

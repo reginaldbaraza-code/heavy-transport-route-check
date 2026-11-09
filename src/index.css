@@ -57,11 +57,11 @@
   --divider: #eef0f3;
 
   /* Shadows — subtle, layered, with offset */
-  --shadow-xs: 0 1px 2px rgba(15,23,40,.05);
-  --shadow-sm: 0 1px 2px rgba(15,23,40,.04), 0 4px 10px rgba(15,23,40,.05);
-  --shadow-md: 0 2px 4px rgba(15,23,40,.04), 0 10px 24px rgba(15,23,40,.07);
-  --shadow-lg: 0 4px 8px rgba(15,23,40,.05), 0 18px 36px rgba(15,23,40,.09);
-  --shadow-xl: 0 8px 16px rgba(15,23,40,.06), 0 28px 48px rgba(15,23,40,.12);
+  --shadow-xs: 0 1px 2px rgba(15,23,40,.06);
+  --shadow-sm: 0 1px 2px rgba(15,23,40,.05), 0 6px 16px rgba(15,23,40,.07);
+  --shadow-md: 0 2px 6px rgba(15,23,40,.05), 0 14px 32px rgba(15,23,40,.1);
+  --shadow-lg: 0 4px 10px rgba(15,23,40,.06), 0 22px 44px rgba(15,23,40,.12);
+  --shadow-xl: 0 8px 18px rgba(15,23,40,.07), 0 32px 56px rgba(15,23,40,.14);
 
   /* Radius — 8 / 12 / 16 */
   --r-sm: 8px;
@@ -3062,7 +3062,7 @@ select:focus-visible {
 .sidebar-lockup {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
   flex: 1;
 }
@@ -3083,10 +3083,10 @@ select:focus-visible {
 }
 .sidebar-wordmark span {
   display: block;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: -.015em;
+  font-size: 13.5px;
+  font-weight: 650;
+  line-height: 1.15;
+  letter-spacing: -.02em;
 }
 .sidebar-htr {
   flex: 1;
@@ -3118,7 +3118,40 @@ select:focus-visible {
 }
 
 h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
-  letter-spacing: -.03em;
+  letter-spacing: -.036em;
+}
+.market-page-header {
+  margin-bottom: 40px;
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--border);
+  gap: 32px;
+}
+.market-page-header h1,
+.offer-detail-hero h1,
+.market-form-page > header h1,
+.publish-page > header h1,
+.request-market-page > header h1,
+.provider-profile-hero h1,
+.need-detail-hero h1 {
+  margin-top: 8px;
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -.038em;
+}
+.market-page-header p,
+.market-form-page > header p,
+.publish-page > header p,
+.request-market-page > header p {
+  margin-top: 10px;
+  font-size: 16px;
+  line-height: 1.5;
+  max-width: 42em;
+}
+.market-eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .14em;
 }
 .route-stat-grid strong,
 .transport-facts strong,
@@ -3135,8 +3168,16 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
 .secondary-button,
 .btn-primary,
 .btn-secondary {
-  min-height: 40px;
-  border-radius: var(--r-sm);
+  height: 44px;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: var(--r-md);
+}
+.btn-text {
+  height: 36px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
 }
 .route-verdict,
 .transport-route-list b,
@@ -3144,21 +3185,138 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
 .job-monitor-pill,
 .feed-status,
 .setup-pill {
-  min-height: 24px;
+  min-height: 26px;
   padding: 0 10px;
   display: inline-flex;
   align-items: center;
   border-radius: 99px;
   font-weight: 700;
 }
-.verdict-banner {
+
+.transport-readiness {
   border-radius: var(--r-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+}
+.transport-readiness-copy { padding: 28px; }
+.transport-workflow {
+  margin-top: 20px;
+  padding: 18px 20px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
 }
-.verdict-banner.verdict-green { background: var(--green-bg); border: 1px solid #86d5a8; }
-.verdict-banner.verdict-red { background: var(--red-bg); border: 1px solid #f5b5b0; }
-.verdict-banner.verdict-amber { background: var(--amber-bg); border: 1px solid #f3d18a; }
-.verdict-label { border-radius: 99px; min-height: 24px; display: inline-flex; align-items: center; }
+.empty-state-card {
+  border-style: solid;
+  border-radius: var(--r-lg);
+  padding: 32px 28px;
+  box-shadow: var(--shadow-sm);
+}
+
+.verdict-banner {
+  padding: 28px 32px;
+  gap: 20px;
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+  margin-bottom: 28px;
+}
+.verdict-banner.verdict-green {
+  background: linear-gradient(180deg, #f4fcf7 0%, #e8f8ef 100%);
+  border: 1px solid rgba(15, 157, 88, .22);
+}
+.verdict-banner.verdict-red {
+  background: linear-gradient(180deg, #fff7f6 0%, #fef2f2 100%);
+  border: 1px solid rgba(180, 35, 24, .18);
+}
+.verdict-banner.verdict-amber {
+  background: linear-gradient(180deg, #fffbf3 0%, #fff7e8 100%);
+  border: 1px solid rgba(217, 119, 6, .22);
+}
+.verdict-icon {
+  width: 56px;
+  height: 56px;
+  box-shadow: var(--shadow-sm);
+}
+.verdict-label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  margin-bottom: 10px;
+}
+.verdict-content h2 {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -.034em;
+  margin-bottom: 8px;
+}
+
+.results-layout { gap: 28px; margin-bottom: 28px; }
+.results-sidebar { gap: 16px; }
+.results-summary,
+.evidence-section {
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+}
+.results-summary h3,
+.evidence-section h3 {
+  margin-bottom: 14px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.summary-grid { gap: 16px; }
+.evidence-list { gap: 10px; }
+.evidence-card {
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+}
+
+.route-map-gl,
+.results-map {
+  border-radius: var(--r-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+.route-map-gl-layers {
+  top: 14px;
+  left: 14px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .78);
+  backdrop-filter: saturate(1.4) blur(16px);
+  -webkit-backdrop-filter: saturate(1.4) blur(16px);
+  border: 1px solid rgba(255, 255, 255, .72);
+  box-shadow: var(--shadow-sm);
+}
+.route-map-gl-layers.expanded {
+  border-radius: 16px;
+  padding: 6px;
+}
+.route-map-gl-layers-header {
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: 999px;
+}
+.route-map-gl-legend {
+  left: 14px;
+  right: 14px;
+  bottom: 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .8);
+  backdrop-filter: saturate(1.4) blur(16px);
+  -webkit-backdrop-filter: saturate(1.4) blur(16px);
+  border: 1px solid rgba(255, 255, 255, .72);
+}
 
 .heatmap-legend,
 .permit-map-legend,
@@ -3211,10 +3369,35 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
 .settings-card,
 .heatmap-shell {
   border-radius: var(--r-lg);
+  border: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
 }
 
+@media (max-width: 1024px) {
+  .market-page-header h1,
+  .offer-detail-hero h1,
+  .market-form-page > header h1,
+  .publish-page > header h1,
+  .request-market-page > header h1 {
+    font-size: 28px;
+  }
+  .verdict-content h2 { font-size: 26px; }
+  .market-page { padding: 28px 24px 48px; }
+}
+
 @media (max-width: 768px) {
+  .market-page-header {
+    margin-bottom: 24px;
+    padding-bottom: 18px;
+  }
+  .market-page-header h1,
+  .offer-detail-hero h1,
+  .market-form-page > header h1,
+  .publish-page > header h1,
+  .request-market-page > header h1 {
+    font-size: 24px;
+  }
+  .market-page-header p { font-size: 15px; }
   .verdict-banner { flex-direction: column; align-items: flex-start; gap: 16px; padding: 20px; }
   .verdict-icon { width: 48px; height: 48px; }
   .verdict-content h2 { font-size: 22px; }
@@ -3222,6 +3405,8 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   .result-actions button, .result-actions a, .history-export-actions button { width: 100%; justify-content: center; }
   .app-page, .route-page, .market-page, .jobs-page { overflow-x: clip; padding-left: 16px; padding-right: 16px; }
   .live-map-legend, .live-map-kpis { max-width: calc(100% - 16px); left: 8px; transform: none; }
+  .results-map, .route-map-gl { border-radius: var(--r-md); }
+  .transport-readiness-copy { padding: 20px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

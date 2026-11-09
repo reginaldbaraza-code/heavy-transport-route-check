@@ -4,12 +4,12 @@
       <stop stop-color="#13294B"/>
       <stop offset="1" stop-color="#0A1A33"/>
     </linearGradient>
-    <clipPath id="rc-clip">
-      <rect width="64" height="64" rx="14"/>
-    </clipPath>
+    <linearGradient id="rc-route" x1="14" y1="48" x2="52" y2="13" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F5C518"/>
+      <stop offset="1" stop-color="#F0A500"/>
+    </linearGradient>
   </defs>
-  <g clip-path="url(#rc-clip)">
-    <rect width="64" height="64" rx="14" fill="url(#rc-tile)"/>
-    <path d="M4 48 C16 48 24 48 28 44 C36 40 44 40 40 32 C36 28 32 24 32 20 C32 16 36 12 40 12 L48 20 L60 8" stroke="#F5C518" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
-  </g>
+  <rect width="64" height="64" rx="14" fill="url(#rc-tile)"/>
+  <path d="M14 48 C24 48 32 44 36 38 C40 32 44 28 40 24 C36 20 38 17 42 17 L47 24 L52 13" stroke="url(#rc-route)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M14 48 C24 48 32 44 36 38 C40 32 44 28 40 24" stroke="#FFFFFF" stroke-opacity="0.88" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="2.5 3"/>
 </svg>
