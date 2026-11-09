@@ -191,6 +191,12 @@ async function main() {
   const csv = await downloadFile(page, 'Export CSV')
   record('Result CSV download is non-empty', csv.size > 50, `${csv.suggested} ${csv.size} bytes`)
 
+  await page.getByRole('button', { name: 'Check another route' }).click()
+  await page.getByRole('button', { name: /show test permits/i }).click()
+  await page.getByRole('button', { name: /Simulated VERIFY/ }).click()
+  await page.getByRole('button', { name: 'Check route' }).click()
+  await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
+
   await page.locator('.confirm-on-site-bar').waitFor({ timeout: 10000 })
   await page.locator('.confirm-on-site-bar input').first().fill('QA Test')
   const resultClearance = page.locator('.confirm-on-site-bar .clearance-tick input')

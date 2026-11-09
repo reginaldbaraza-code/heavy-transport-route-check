@@ -78,6 +78,10 @@ src/
 └── main.tsx        # Entry point
 ```
 
+## Test permits
+
+Bundled GPX files in `public/test-permits/` (except `invalid-test.gpx`) were pre-snapped to the road network at development time with the public OSRM demo (`https://router.project-osrm.org`) and OpenStreetMap data. They are not live-routed at runtime. © OpenStreetMap contributors, ODbL. Regenerate with `node scripts/snap-test-permits.mjs`.
+
 ## License
 
 This is a prototype application. All mock data is for demonstration purposes only.

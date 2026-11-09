@@ -663,6 +663,9 @@ export default function RouteIntelligencePolished() {
                     ))}
                   </div>
                 </div>
+                <p className="test-permit-attribution">
+                  Test routes were pre-snapped to OpenStreetMap roads with OSRM. © OpenStreetMap contributors, ODbL.
+                </p>
               </div>
             )}
 
