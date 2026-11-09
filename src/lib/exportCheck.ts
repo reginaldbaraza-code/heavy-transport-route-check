@@ -5,8 +5,10 @@ import { formatVehicleDims, type VehicleDims } from './jobs'
 import type { RouteCheckResult } from './routeCheck'
 import { drawRouteCheckLogo } from './drawRouteCheckLogo'
 import {
+  confirmOnSiteTitles,
   formatClearanceConfirmationLine,
   formatOnSiteConfirmationLine,
+  isConfirmOnSite,
   withClearanceConfirmation,
 } from './siteAcknowledgements'
 
@@ -69,21 +71,13 @@ export type ExportSnapshot = {
   clearanceConfirmedAt?: string
 }
 
-function isConfirmOnSite(item: Pick<RouteEvidence, 'id' | 'title' | 'detail' | 'longRunning' | 'category' | 'state'>) {
-  if (item.id === 'bridge-clearance-confirmed' || item.state === 'clear') return false
-  const text = `${item.title} ${item.detail}`
-  return Boolean(item.longRunning)
-    || item.id === 'bridge-clearance-unknown'
-    || /verify on site|confirm on site|bridge and clearance data not available/i.test(text)
-}
-
 function evidenceRow(item: RouteEvidence, fallbackRetrieved?: string): ExportEvidence {
   return {
     id: item.id,
     title: item.title,
     detail: item.detail,
     source: item.source,
-    start: item.startTimestamp ? formatBerlinDateTime(item.startTimestamp) : 'Start not published',
+    start: item.startTimestamp ? formatBerlinDateTime(item.startTimestamp) : 'not published',
     retrieved: formatBerlinDateTime(item.retrievedAt || fallbackRetrieved) || 'Not recorded',
     confidence: String(item.confidence),
     category: item.category,
@@ -127,9 +121,7 @@ function readyCopy(
   }
 }
 
-export function confirmOnSiteTitles(evidence: RouteEvidence[]) {
-  return evidence.filter(item => isConfirmOnSite(item)).map(item => item.title)
-}
+export { confirmOnSiteTitles }
 
 export function snapshotFromResult(
   result: RouteCheckResult,
@@ -339,7 +331,8 @@ function drawEvidenceCard(
   const titleLines = wrapLines(doc, item.title, innerW)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
-  const meta = `${item.source} · start ${item.start} · retrieved ${item.retrieved} · ${item.confidence} · ${item.confirmOnSite ? 'confirm on site' : item.state}`
+  const startLabel = !item.start || /not published/i.test(item.start) ? 'Start: not published' : `Start: ${item.start}`
+  const meta = `${item.source} · ${startLabel} · retrieved ${item.retrieved} · ${item.confidence} · ${item.confirmOnSite ? 'confirm on site' : item.state}`
   const metaLines = wrapLines(doc, meta, innerW)
   const detailLines = wrapLines(doc, item.detail, innerW)
   const ackLine = item.acknowledgedBy

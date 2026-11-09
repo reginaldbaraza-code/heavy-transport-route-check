@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import {
   AlertTriangle, Bell, Briefcase, Clock3, Pencil, Play, Trash2,
 } from 'lucide-react'
-import { MarketplacePageHeader } from '../components/MarketplaceUI'
+import PageHeader from '../components/PageHeader'
 import { Toast } from '../components/Feedback'
 import { useJobs } from '../context/JobsContext'
 import { formatBerlinDateTime, relativeFromNow } from '../lib/formatTime'
@@ -13,6 +13,7 @@ import {
   formatVehicleDims,
   fromLocalInput,
   isFutureDeparture,
+  nextCheckIso,
   shouldMonitorJob,
   toLocalInput,
   type SavedJob,
@@ -79,7 +80,7 @@ export default function SavedJobs() {
 
   return (
     <div className="market-page jobs-page">
-      <MarketplacePageHeader
+      <PageHeader
         eyebrow="Dispatch jobs"
         title="Saved jobs"
         description="Save a permit, vehicle, and planned departure in this browser, then re-run the check until departure."
@@ -94,7 +95,7 @@ export default function SavedJobs() {
         <div>
           <strong>{monitoringActive ? `${monitoredCount} job${monitoredCount === 1 ? '' : 's'} monitored in this tab` : 'No jobs currently monitored'}</strong>
           <p>
-            Monitoring re-checks only while this tab is open. Background monitoring would need Vercel cron (Hobby = once/day) or a paid service. Email and SMS stay disabled.
+            Monitoring runs while this tab is open. Keep it open until departure to get alerts. Closing the tab stops monitoring. Email and SMS stay disabled.
           </p>
         </div>
         <button type="button" className="btn-secondary" onClick={() => void requestNotifications()}>
@@ -148,6 +149,13 @@ export default function SavedJobs() {
                     {job.lastVerdict ? ` · Last check ${job.lastVerdict} ${relativeFromNow(job.lastCheckedAt, now)}` : ' · Not checked since save'}
                     {checkingJobId === job.id ? ' · Checking now…' : ''}
                   </p>
+                  {monitoring && (
+                    <p className="job-next-check" data-testid="job-next-check">
+                      Last checked {formatBerlinDateTime(job.lastCheckedAt) || 'not yet'}
+                      {' · '}
+                      Next check {checkingJobId === job.id ? 'now' : (formatBerlinDateTime(nextCheckIso(job)) || relativeFromNow(nextCheckIso(job), now) || 'when this tab is visible')}
+                    </p>
+                  )}
                   <span className={`job-monitor-pill ${monitoring ? 'live' : departed ? 'stopped' : 'idle'}`}>
                     {monitoring ? `Monitoring every ${job.monitorIntervalMinutes} min (tab open)` : departed ? 'Stopped after departure' : 'Not monitored'}
                   </span>

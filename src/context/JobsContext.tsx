@@ -13,7 +13,7 @@ import {
 } from '../lib/jobs'
 import { notificationBody, shouldEscalateAlert, verdictChangeCopy } from '../lib/monitoring'
 import { checkRoute, type RouteCheckResult } from '../lib/routeCheck'
-import { confirmOnSiteTitles, pdfBytesFromSnapshot, sanitizePdfText } from '../lib/exportCheck'
+import { confirmOnSiteTitles } from '../lib/siteAcknowledgements'
 import { useRouteMonitoring } from './RouteMonitoringContext'
 
 export type JobDraft = Omit<SavedJob, 'id' | 'createdAt' | 'updatedAt'>
@@ -144,9 +144,11 @@ export function JobsProvider({ children }: { children: ReactNode }) {
       evidence: result.evidence,
       confirmOnSite: confirmOnSiteTitles(result.evidence),
       jobId: job.id,
+      alertEligible: true,
     })
-    if (kind === 'verdict-change' || (previous && previous !== result.verdict) || result.verdict === 'HOLD' || result.verdict === 'VERIFY') {
-      const change = (previous && previous !== result.verdict)
+    const verdictChanged = Boolean(previous && previous !== result.verdict)
+    if (kind === 'verdict-change' || verdictChanged) {
+      const change = verdictChanged
         ? verdictChangeCopy(previous, result.verdict)
         : `Route check: ${result.verdict}`
       addAlert({
@@ -162,9 +164,9 @@ export function JobsProvider({ children }: { children: ReactNode }) {
         jobId: job.id,
         previousVerdict: previous,
         nextVerdict: result.verdict,
-        kind: previous && previous !== result.verdict ? 'verdict-change' : 'check',
+        kind: 'verdict-change',
       })
-      if (previous && previous !== result.verdict) {
+      if (verdictChanged) {
         showBrowserNotification(change, notificationBody(`${nextJob.origin} → ${nextJob.destination}`, change, result.summary))
       }
     }
@@ -239,6 +241,25 @@ export function JobsProvider({ children }: { children: ReactNode }) {
   }, [applyResult])
 
   useEffect(() => {
+    let hiddenAt = 0
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAt = Date.now()
+        return
+      }
+      if (document.visibilityState !== 'visible' || !hiddenAt) return
+      const hiddenFor = Date.now() - hiddenAt
+      hiddenAt = 0
+      for (const job of jobsRef.current) {
+        const intervalMs = Math.max(1, job.monitorIntervalMinutes || DEFAULT_MONITOR_PREFS.intervalMinutes) * 60 * 1000
+        if (shouldMonitorJob(job) && hiddenFor >= intervalMs) void runJobCheck(job.id)
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [runJobCheck])
+
+  useEffect(() => {
     const tickMs = typeof window !== 'undefined' && window.__HT_TEST__?.tickMs ? window.__HT_TEST__.tickMs : 15000
     const tick = () => {
       const now = Date.now()
@@ -270,8 +291,10 @@ export function JobsProvider({ children }: { children: ReactNode }) {
       getAlerts: () => alertsRef.current,
       simulateVerdictChange: (jobId, verdict) => simulateVerdictChange(jobId, verdict),
       tickMs: window.__HT_TEST__?.tickMs,
-      pdfBytesFromSnapshot,
-      sanitizePdfText,
+      pdfBytesFromSnapshot: window.__HT_TEST__?.pdfBytesFromSnapshot ?? (() => {
+        throw new Error('PDF helper is only available on the route check screen')
+      }),
+      sanitizePdfText: window.__HT_TEST__?.sanitizePdfText ?? (value => String(value ?? '')),
     }
     return () => {
       delete window.__HT_TEST__

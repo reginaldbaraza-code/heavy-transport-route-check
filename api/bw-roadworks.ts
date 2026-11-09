@@ -2,18 +2,14 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { isoNow } from './_lib/autobahnTimes.js'
 import { BW_LICENSE, BW_SOURCE } from './_lib/mobidata.js'
 import { fetchBwRoadworks } from './_lib/openRoadworks.js'
+import { guardApi } from './_lib/httpGuard.js'
 
 export const config = {
   maxDuration: 15,
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
-
-  if (req.method === 'OPTIONS') return res.status(200).end()
-  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
+  if (!guardApi(req, res, 'GET, OPTIONS')) return
 
   try {
     const retrievedAt = isoNow()

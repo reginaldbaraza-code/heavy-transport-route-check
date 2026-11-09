@@ -5,8 +5,9 @@
     }
   },
   "rewrites": [
+    { "source": "/favicon.ico", "destination": "/favicon-32.png" },
     {
-      "source": "/(.*)",
+      "source": "/((?!api(?:/|$)|assets(?:/|$)|test-permits(?:/|$)|data(?:/|$)|favicon|icon-|apple-touch|robots\\.txt|sitemap\\.xml|site\\.webmanifest).*)",
       "destination": "/index.html"
     }
   ]

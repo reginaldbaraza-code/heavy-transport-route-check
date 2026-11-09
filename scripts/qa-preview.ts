@@ -14,6 +14,10 @@ const mime: Record<string, string> = {
   '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.txt': 'text/plain; charset=utf-8',
+  '.xml': 'application/xml; charset=utf-8',
+  '.ico': 'image/x-icon',
+  '.webmanifest': 'application/manifest+json',
   '.gpx': 'application/gpx+xml; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
@@ -59,17 +63,23 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://127.0.0.1:${port}`)
 
   try {
+    const apiReq = {
+      method: req.method,
+      query: Object.fromEntries(url.searchParams),
+      headers: req.headers,
+      socket: { remoteAddress: req.socket.remoteAddress },
+    }
     if (url.pathname === '/api/check-route') {
       const body = req.method === 'POST' ? await readJsonBody(req) : {}
-      await checkRouteHandler({ method: req.method, body, query: Object.fromEntries(url.searchParams) } as any, mockRes(res) as any)
+      await checkRouteHandler({ ...apiReq, body } as any, mockRes(res) as any)
       return
     }
     if (url.pathname === '/api/autobahn-events') {
-      await autobahnEventsHandler({ method: req.method, query: Object.fromEntries(url.searchParams) } as any, mockRes(res) as any)
+      await autobahnEventsHandler(apiReq as any, mockRes(res) as any)
       return
     }
     if (url.pathname === '/api/bw-roadworks') {
-      await bwRoadworksHandler({ method: req.method, query: Object.fromEntries(url.searchParams) } as any, mockRes(res) as any)
+      await bwRoadworksHandler(apiReq as any, mockRes(res) as any)
       return
     }
 

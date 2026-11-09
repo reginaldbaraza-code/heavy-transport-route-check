@@ -226,16 +226,50 @@ async function main() {
   await assertDesktopPermitMaps(1920, 1200)
   await page.setViewportSize({ width: 1440, height: 900 })
 
-  await page.goto(base + '/discover', { waitUntil: 'domcontentloaded', timeout: 60000 })
-  const discoverBanner = await page.getByText(/leftover marketplace example data/i).isVisible()
-  const discoverBadge = await page.getByText('Example data', { exact: true }).first().isVisible()
-  record('Discover example-data banner visible', discoverBanner && discoverBadge)
+  await page.goto(base + '/robots.txt', { waitUntil: 'domcontentloaded', timeout: 15000 })
+  const robots = await page.locator('body').innerText()
+  record('robots.txt is served as text, not the SPA', /User-agent/i.test(robots) && !/Know whether the permitted route/i.test(robots), robots.slice(0, 120))
+
+  await page.goto(base + '/this-route-does-not-exist', { waitUntil: 'domcontentloaded', timeout: 15000 })
+  const notFoundHeading = page.getByRole('heading', { name: /that page is not in this app/i })
+  await notFoundHeading.waitFor({ timeout: 15000 })
+  record(
+    'Unknown routes show a Not Found page',
+    await notFoundHeading.isVisible(),
+  )
+
+  await page.goto(base + '/', { waitUntil: 'domcontentloaded', timeout: 60000 })
+  if (await page.getByRole('button', { name: /skip/i }).count()) await page.getByRole('button', { name: /skip/i }).first().click()
+  await page.getByLabel(/search permits/i).fill('A9')
+  await page.locator('.app-search-dropdown').waitFor({ timeout: 10000 })
+  const searchText = await page.locator('.app-search-dropdown').innerText()
+  record('Top search finds app data for A9', /Leipzig|Nürnberg|A9/i.test(searchText), searchText.replace(/\s+/g, ' ').slice(0, 180))
+
+  await page.goto(base + '/data-partners', { waitUntil: 'domcontentloaded' })
+  await page.getByRole('heading', { name: /^Data partners$/i }).waitFor({ timeout: 15000 })
+  const partners = await page.locator('body').innerText()
+  record(
+    'Data partners explains MDS is later and breadcrumb is Overview',
+    /Coming later/i.test(partners) && /Mobility Data Space/i.test(partners) && !/Operations overview/i.test(partners),
+    partners.replace(/\s+/g, ' ').slice(0, 220),
+  )
 
   await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded' })
   record(
     'Per-page title keeps HTR suffix',
     (await page.title()) === 'Route checks · HTR · Heavy transport route check',
     await page.title(),
+  )
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'not-a-route.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('this is not a GPX file'),
+  })
+  const uploadError = await page.locator('[data-testid="gpx-upload-error"]').innerText()
+  record(
+    'Invalid file fails at upload with a plain-language error',
+    /valid GPX route/i.test(uploadError) && /Technical details/i.test(uploadError),
+    uploadError.replace(/\s+/g, ' ').slice(0, 220),
   )
   await page.getByRole('button', { name: /show test permits/i }).click()
   await page.getByRole('button', { name: /Hamburg → Hannover/ }).click()
@@ -270,8 +304,8 @@ async function main() {
   record('PDF text uses -> not bang-arrow', hasArrow && !hasBangArrow, extracted.compact.replace(/\s+/g, ' ').slice(0, 220))
   record('PDF header is not letter-spaced', headerTogether && !headerSpaced, headerTogether ? 'header intact' : extracted.compact.slice(0, 160))
 
-  const umlautPdf = await page.evaluate(() => {
-    const bytes = window.__HT_TEST__.pdfBytesFromSnapshot({
+  const umlautPdf = await page.evaluate(async () => {
+    const bytes = await window.__HT_TEST__.pdfBytesFromSnapshot({
       verdict: 'HOLD',
       title: 'Prüfung Nürnberg',
       summary: 'München to Nürnberg corridor',
@@ -408,6 +442,12 @@ async function main() {
   )
 
   await page.goto(base + '/jobs', { waitUntil: 'domcontentloaded' })
+  const jobsCopy = await page.locator('.jobs-monitor-banner').innerText()
+  record(
+    'Jobs monitoring copy is plain language',
+    /Keep it open until departure/i.test(jobsCopy) && !/Vercel cron/i.test(jobsCopy) && !/paid service/i.test(jobsCopy),
+    jobsCopy.replace(/\s+/g, ' ').slice(0, 200),
+  )
   const jobVisible = await page.locator('.job-row').count()
   record('Jobs list shows saved job', jobVisible >= 1, `jobs=${jobVisible}`)
 
@@ -415,6 +455,7 @@ async function main() {
   await page.getByRole('button', { name: /Re-run check/i }).click()
   await page.locator('.verdict-banner').waitFor({ timeout: 90000 })
   await page.goto(base + '/jobs', { waitUntil: 'domcontentloaded' })
+  await page.locator('[data-testid="job-last-check"]').waitFor({ timeout: 15000 })
   const lastCheckAfter = await page.evaluate(() => {
     const job = window.__HT_TEST__?.getJobs()?.[0]
     return { lastCheckedAt: job?.lastCheckedAt || '', label: document.querySelector('[data-testid="job-last-check"]')?.textContent || '' }

@@ -1,5 +1,17 @@
 @import 'tailwindcss';
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 :root {
   /* Safe area insets for mobile notches/home indicators */
   --safe-area-inset-top: env(safe-area-inset-top, 0px);
@@ -95,7 +107,7 @@
 html { font-size: 16px; }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Segoe UI', Inter, 'Helvetica Neue', sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
   font-size: 16px;
   line-height: 1.5;
   background: var(--bg-base);
@@ -2487,11 +2499,20 @@ h4 { font-size: 18px !important; line-height: 1.35 !important; }
 }
 
 .evidence-hold-lock {
-  margin: 8px 0 0;
-  font-size: 12px;
-  font-weight: 650;
-  color: #991b1b;
+  margin: 10px 0 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--red-bg);
+  color: var(--red-text);
+  font-size: 15px;
+  line-height: 1.45;
+  font-weight: 550;
 }
+.confirm-on-site-bar .evidence-hold-lock {
+  margin: 0 0 12px;
+  grid-column: 1 / -1;
+}
+.evidence-hold-lock strong { display: block; margin-bottom: 4px; }
 
 .nearby-off-route-group {
   margin-top: 16px;
@@ -3478,3 +3499,56 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   .route-checking-state::after,
   .spin { animation: none !important; }
 }
+
+.setup-pill.quiet { background: var(--bg-grouped); color: var(--text-secondary); }
+.app-search-dropdown {
+  position: absolute;
+  top: 40px;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  padding: 6px;
+  max-height: 360px;
+  overflow: auto;
+}
+.app-search-hit, .app-search-all {
+  display: grid;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: transparent;
+  gap: 2px;
+}
+.app-search-hit small, .search-hit small { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-tertiary); }
+.app-search-hit strong, .search-hit strong { font-size: 14px; }
+.app-search-hit span, .search-hit span { font-size: 13px; color: var(--text-secondary); }
+.app-search-empty { margin: 0; padding: 10px; font-size: 13px; color: var(--text-secondary); }
+.app-search-all { font-size: 13px; font-weight: 600; color: var(--accent); }
+.search-hit-list { display: grid; gap: 8px; }
+.search-hit {
+  display: grid;
+  gap: 2px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-card);
+  text-decoration: none;
+  color: inherit;
+}
+.evidence-en-summary { margin: 6px 0 8px; font-size: 14px; color: var(--text-primary); }
+.evidence-original { margin: 0 0 8px; }
+.evidence-original summary { cursor: pointer; font-size: 13px; color: var(--text-secondary); }
+.evidence-original pre { white-space: pre-wrap; font-size: 13px; color: var(--text-secondary); margin: 6px 0 0; }
+.error-technical { margin-top: 8px; font-size: 13px; }
+.error-technical pre { white-space: pre-wrap; margin: 6px 0 0; color: var(--text-secondary); }
+.job-next-check { font-size: 13px; color: var(--text-secondary); margin: 4px 0 0; }
+.not-found-actions { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+.data-partners-plan { margin-top: 16px; }
+.data-partners-plan ul { margin: 8px 0 12px; padding-left: 18px; }
+.page-fallback { padding: 32px; color: var(--text-secondary); }
+.results-map-fallback { min-height: 240px; display: grid; place-items: center; color: var(--text-secondary); }

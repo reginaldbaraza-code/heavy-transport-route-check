@@ -1,12 +1,13 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import * as turf from '@turf/turf';
-import * as xml2js from 'xml2js';
 import {
   descriptionFromAutobahnItem,
   eventFreshness,
   evidenceAgeLabel,
   isoNow,
 } from './_lib/autobahnTimes.js';
+import { GpxParseError, parseGpxDocument } from './_lib/gpxParse.js';
+import { guardApi, rejectOversizedBody } from './_lib/httpGuard.js';
 import {
   BW_SOURCE,
   MIA_SOURCE,
@@ -91,64 +92,9 @@ type RouteCheckResult = {
   clearanceConfirmed?: boolean;
 };
 
-async function parseGPX(gpxContent: string): Promise<GPXPoint[]> {
-  try {
-    const parser = new xml2js.Parser({
-      explicitArray: false,
-      mergeAttrs: true,
-    });
-    
-    const parsed = await parser.parseStringPromise(gpxContent);
-
-    const points: GPXPoint[] = [];
-    const track = parsed?.gpx?.trk;
-    
-    if (!track) {
-      throw new Error('No track data found in GPX file');
-    }
-
-    const segment = Array.isArray(track) ? track[0]?.trkseg : track?.trkseg;
-    const trackPoints = Array.isArray(segment) ? segment[0]?.trkpt : segment?.trkpt;
-    
-    if (!trackPoints) {
-      throw new Error('No track points found in GPX file');
-    }
-
-    const pointsArray = Array.isArray(trackPoints) ? trackPoints : [trackPoints];
-    
-    for (const pt of pointsArray) {
-      const lat = parseFloat(pt.lat || pt.$.lat);
-      const lon = parseFloat(pt.lon || pt.$.lon || pt.long);
-      
-      if (isNaN(lat) || isNaN(lon)) {
-        continue;
-      }
-
-      points.push({
-        lat,
-        lng: lon,
-        ele: pt.ele ? parseFloat(pt.ele) : undefined,
-        name: pt.name || undefined,
-      });
-    }
-
-    if (points.length < 2) {
-      throw new Error('GPX file must contain at least 2 valid track points');
-    }
-
-    return points;
-  } catch (error) {
-    console.error('GPX parsing error:', error);
-    
-    if (error instanceof Error) {
-      if (error.message.includes('track') || error.message.includes('points')) {
-        throw error;
-      }
-      throw new Error(`Invalid GPX file format: ${error.message}`);
-    }
-    
-    throw new Error('Invalid GPX file: Unable to parse XML structure');
-  }
+function parseGPX(gpxContent: string): GPXPoint[] {
+  const parsed = parseGpxDocument(gpxContent)
+  return parsed.points
 }
 
 function calculateRouteDistance(points: GPXPoint[]): number {
@@ -314,7 +260,7 @@ async function fetchAutobahnEventsForRoute(roads: string[], retrievedAt: string)
         type: 'parking' as const,
         severity: String(item.isBlocked) === 'true' ? 'warning' as const : 'info' as const,
         isBlocked: String(item.isBlocked) === 'true',
-        subtitle: Array.isArray(item.subtitle) ? item.subtitle.join(' ') : String(item.subtitle || ''),
+        subtitle: Array.isArray(item.subtitle) ? item.subtitle.map(String).join(' / ') : String(item.subtitle || ''),
       }))
     ).filter(isUsableEvent);
 
@@ -407,17 +353,7 @@ export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (!guardApi(req, res, 'POST, OPTIONS')) return
 
   try {
     const {
@@ -437,6 +373,9 @@ export default async function handler(
       acknowledgements,
     } = req.body;
 
+    const gpxBytes = typeof gpxContent === 'string' ? Buffer.byteLength(gpxContent, 'utf8') : 0
+    if (!rejectOversizedBody(req, res, gpxBytes)) return
+
     if (!gpxContent) {
       return res.status(400).json({ 
         error: 'GPX content is required',
@@ -453,11 +392,13 @@ export default async function handler(
 
     let routePoints: GPXPoint[];
     try {
-      routePoints = await parseGPX(gpxContent);
+      routePoints = parseGPX(gpxContent);
     } catch (parseError) {
+      const technical = parseError instanceof GpxParseError ? parseError.technical : ''
       return res.status(400).json({ 
         error: parseError instanceof Error ? parseError.message : 'Invalid GPX file',
         hint: 'Please upload a valid GPX file with track points containing latitude and longitude coordinates.',
+        technical,
       });
     }
     
@@ -471,7 +412,6 @@ export default async function handler(
       Array.isArray(requestedRoads) ? requestedRoads : [],
     );
     const affectedRoads = permittedRoads.length ? permittedRoads : determineAffectedRoads(routePoints);
-    console.log('Checking roads:', affectedRoads.join(', '));
     const window = departureWindow({
       departureStart,
       departureEnd,
@@ -802,7 +742,7 @@ export default async function handler(
     let fallbackRoute;
     try {
       const fallbackGpx = typeof req.body?.gpxContent === 'string' ? req.body.gpxContent : ''
-      const points = await parseGPX(fallbackGpx);
+      const points = parseGPX(fallbackGpx);
       const distance = calculateRouteDistance(points);
       const origin = points[0]?.name || `${points[0]?.lat.toFixed(4)}, ${points[0]?.lng.toFixed(4)}`;
       const destination = points[points.length - 1]?.name || `${points[points.length - 1]?.lat.toFixed(4)}, ${points[points.length - 1]?.lng.toFixed(4)}`;
