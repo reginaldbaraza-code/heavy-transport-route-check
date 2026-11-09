@@ -1,4 +1,4 @@
-import { sampleTestPermits, type TestPermit } from './routeCheck'
+import { sampleTestPermits, type TestPermit } from './testPermitCatalog'
 
 export type OverviewVerdict = 'READY' | 'HOLD' | 'VERIFY'
 

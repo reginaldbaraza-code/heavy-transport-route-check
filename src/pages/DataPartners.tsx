@@ -1,4 +1,5 @@
 import { ArrowLeft, DatabaseZap, ShieldAlert } from 'lucide-react'
+import '../styles/pages.css'
 import { Link } from 'react-router-dom'
 import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert'
 import { Button } from '../components/ui/button'

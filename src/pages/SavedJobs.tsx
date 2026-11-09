@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
+import '../styles/pages.css'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   AlertTriangle, Bell, Briefcase, Clock3, Pencil, Play, Trash2,
 } from 'lucide-react'
 import PageHeader from '../components/PageHeader'
-import { Toast } from '../components/Feedback'
+import { Toast } from '../components/Toast'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import {

@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import '../styles/pages.css'
 import { Compass } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader } from '../components/ui/card'

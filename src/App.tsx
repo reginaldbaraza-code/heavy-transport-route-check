@@ -5,10 +5,6 @@ import AppErrorBoundary from './components/AppErrorBoundary'
 import { RouteMonitoringProvider } from './context/RouteMonitoringContext'
 import { JobsProvider } from './context/JobsContext'
 import { OrgSettingsProvider } from './context/OrgSettingsContext'
-import { TooltipProvider } from './components/ui/tooltip'
-import { Toaster } from './components/ui/sonner'
-import { Skeleton } from './components/ui/skeleton'
-import NotFound from './pages/NotFound'
 
 const MarketplaceOverview = lazy(() => import('./pages/MarketplaceOverview'))
 const RouteIntelligence = lazy(() => import('./pages/RouteIntelligence'))
@@ -18,13 +14,15 @@ const DataPartners = lazy(() => import('./pages/DataPartners'))
 const SavedJobs = lazy(() => import('./pages/SavedJobs'))
 const MarketplaceActivity = lazy(() => import('./pages/MarketplaceActivity'))
 const SearchResults = lazy(() => import('./pages/SearchResults'))
+const NotFound = lazy(() => import('./pages/NotFound'))
+const Toaster = lazy(() => import('./components/ui/sonner').then(module => ({ default: module.Toaster })))
 
 function PageFallback() {
   return (
     <div className="page-fallback flex flex-col gap-3 p-8" role="status">
-      <Skeleton className="h-7 w-48" />
-      <Skeleton className="h-4 w-80" />
-      <Skeleton className="mt-4 h-40 w-full rounded-xl" />
+      <div className="h-7 w-48 animate-pulse rounded-md bg-muted" />
+      <div className="h-4 w-80 animate-pulse rounded-md bg-muted" />
+      <div className="mt-4 h-40 w-full animate-pulse rounded-xl bg-muted" />
       <span className="sr-only">Loading…</span>
     </div>
   )
@@ -33,7 +31,6 @@ function PageFallback() {
 export default function App() {
   return (
     <AppErrorBoundary>
-      <TooltipProvider>
       <OrgSettingsProvider>
         <RouteMonitoringProvider>
         <JobsProvider>
@@ -49,15 +46,16 @@ export default function App() {
           <Route path="live-map" element={<Navigate to="/map-explorer" replace />} />
           <Route path="activity" element={<Suspense fallback={<PageFallback />}><MarketplaceActivity /></Suspense>} />
           <Route path="settings" element={<Suspense fallback={<PageFallback />}><Settings /></Suspense>} />
-          <Route path="*" element={<NotFound />} />
+          <Route path="*" element={<Suspense fallback={<PageFallback />}><NotFound /></Suspense>} />
           </Route>
           </Routes>
           </BrowserRouter>
-          <Toaster position="bottom-right" />
+          <Suspense fallback={null}>
+            <Toaster position="bottom-right" />
+          </Suspense>
         </JobsProvider>
         </RouteMonitoringProvider>
       </OrgSettingsProvider>
-      </TooltipProvider>
     </AppErrorBoundary>
   )
 }

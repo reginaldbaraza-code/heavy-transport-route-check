@@ -1,6 +1,6 @@
 import type { CheckHistoryRecord, MonitoringAlert } from '../context/RouteMonitoringContext'
 import type { SavedJob } from './jobs'
-import { sampleTestPermits, scenarioTestPermits, type TestPermit } from './routeCheck'
+import { sampleTestPermits, scenarioTestPermits, type TestPermit } from './testPermitCatalog'
 
 export type SearchHitKind = 'job' | 'check' | 'permit' | 'scenario' | 'alert'
 
@@ -105,5 +105,4 @@ export function searchAppData(opts: {
   }).slice(0, 24)
 }
 
-export const SEARCH_EMPTY_HELP =
-  'Try a permit ID (DE-HH-2026-01845), a place (Hamburg, München), a road (A9), a job name, or an alert verdict (HOLD).'
+export { SEARCH_EMPTY_HELP } from './searchCopy'

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import '../styles/pages.css'
 import { useNavigate } from 'react-router-dom'
 import {
   AlertTriangle, BellRing, CheckCircle2, ChevronRight, CircleX, Download, History, Route,

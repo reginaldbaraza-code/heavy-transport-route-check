@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import '../styles/pages.css'
 import { Link } from 'react-router-dom'
 import {
   AlertTriangle, ArrowRight, CheckCircle2, CircleX, FileJson, FileText, Map,
@@ -14,7 +15,7 @@ import {
 import { useRouteMonitoring } from '../context/RouteMonitoringContext'
 import { useJobs } from '../context/JobsContext'
 import { formatBerlinDateTime } from '../lib/formatTime'
-import { sampleTestPermits } from '../lib/routeCheck'
+import { sampleTestPermits } from '../lib/testPermitCatalog'
 import {
   OVERVIEW_FEATURED_COPY,
   OVERVIEW_FEATURED_PERMIT_ID,

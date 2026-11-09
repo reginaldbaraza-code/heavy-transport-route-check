@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import '../styles/pages.css'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import PageHeader from '../components/PageHeader'

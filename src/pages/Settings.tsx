@@ -1,6 +1,7 @@
 import { useState } from 'react'
+import '../styles/pages.css'
 import { Bell, Building2, Database, Save, Timer, User } from 'lucide-react'
-import { Toast } from '../components/Feedback'
+import { Toast } from '../components/Toast'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { useOrgSettings } from '../context/OrgSettingsContext'

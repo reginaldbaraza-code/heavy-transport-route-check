@@ -1,20 +1,19 @@
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Home, Settings, Map, DatabaseZap, Route, ShieldAlert,
   Bell, Search, ChevronDown, X, Menu, HelpCircle, Briefcase,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Separator } from '@/components/ui/separator'
 import RouteCheckLogo from './RouteCheckLogo'
 import MobileTabBar from './MobileTabBar'
 import { useRouteMonitoring } from '../context/RouteMonitoringContext'
 import { useJobs } from '../context/JobsContext'
 import { useOrgSettings } from '../context/OrgSettingsContext'
-import { SEARCH_EMPTY_HELP, searchAppData } from '../lib/appSearch'
+import type { SearchHit } from '../lib/appSearch'
+import { SEARCH_EMPTY_HELP } from '../lib/searchCopy'
 import { formatBerlinDateTime, orgInitials } from '../lib/formatTime'
+import { applyBootLcp } from '../lib/lcpHeading'
 
 const navItems = [
   { path: '/', label: 'Overview', icon: Home, exact: true },
@@ -108,10 +107,23 @@ export default function Layout() {
   const { alerts, history, unreadCount, acknowledgeAlert } = useRouteMonitoring()
   const { jobs } = useJobs()
   const { displayName, orgTypeLabel, complete } = useOrgSettings()
-  const searchHits = useMemo(
-    () => searchAppData({ query: searchQuery, jobs, history, alerts }),
-    [alerts, history, jobs, searchQuery],
-  )
+  const [searchHits, setSearchHits] = useState<SearchHit[]>([])
+
+  useEffect(() => {
+    const query = searchQuery.trim()
+    if (!query) {
+      setSearchHits([])
+      return
+    }
+    let cancelled = false
+    void import('../lib/appSearch').then(({ searchAppData }) => {
+      if (cancelled) return
+      setSearchHits(searchAppData({ query, jobs, history, alerts }))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [alerts, history, jobs, searchQuery])
   const notifications = alerts.slice(0, 4).map(alert => ({
     id: alert.id,
     title: alert.escalated ? `Escalated · ${alert.change}` : alert.change,
@@ -123,7 +135,19 @@ export default function Layout() {
 
   useEffect(() => {
     document.title = documentTitleFor(location.pathname)
+    applyBootLcp(location.pathname)
   }, [location.pathname])
+
+  useEffect(() => {
+    const host = document.querySelector('.app-page-host')
+    const boot = document.getElementById('boot-lcp')
+    if (!host || !boot) return
+    const onScroll = () => {
+      document.documentElement.classList.toggle('lcp-scrolled', host.scrollTop > 12)
+    }
+    host.addEventListener('scroll', onScroll, { passive: true })
+    return () => host.removeEventListener('scroll', onScroll)
+  }, [])
 
   useEffect(() => {
     const closeMenus = (event: KeyboardEvent) => {
@@ -194,7 +218,7 @@ export default function Layout() {
             {navItems.map(item => (
               <NavItem key={item.path} {...item} collapsed={collapsed} onClick={closeMobile} />
             ))}
-            <Separator className="my-3 bg-white/10" />
+            <div className="my-3 h-px bg-white/10" role="separator" />
             {!collapsed && (
               <div className="px-2.5 pt-1 pb-1.5 text-[11px] font-semibold tracking-[0.08em] text-white/55 uppercase">
                 Coming later
@@ -213,20 +237,18 @@ export default function Layout() {
 
       <div className="app-main flex min-w-0 flex-1 flex-col overflow-hidden">
         <header className="app-topbar flex h-14 shrink-0 items-center gap-3 border-b border-border bg-white/90 px-4 backdrop-blur-xl">
-          <Button
+          <button
             type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="mobile-nav-trigger"
+            className="mobile-nav-trigger inline-flex size-7 items-center justify-center rounded-lg"
             aria-label="Open navigation"
             onClick={() => { setCollapsed(false); setMobileOpen(true) }}
           >
             <Menu size={17} />
-          </Button>
+          </button>
 
           <div className="topbar-search relative flex h-9 max-w-md min-w-0 flex-1 items-center gap-2 rounded-xl border border-border bg-muted/70 px-3" ref={searchRef}>
             <Search size={15} className="shrink-0 text-muted-foreground" />
-            <Input
+            <input
               type="search"
               aria-label="Search permits, routes, roads, and alerts"
               value={searchQuery}
@@ -237,7 +259,7 @@ export default function Layout() {
               onFocus={() => setSearchOpen(true)}
               onKeyDown={handleSearch}
               placeholder="Search"
-              className="h-8 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
+              className="h-8 min-w-0 flex-1 border-0 bg-transparent px-0 text-sm outline-none"
             />
             {searchQuery && (
               <button type="button" onClick={() => setSearchQuery('')} aria-label="Clear search" className="text-muted-foreground">
@@ -271,10 +293,9 @@ export default function Layout() {
 
           <div className="ml-auto flex items-center gap-1">
             <div className="topbar-notifications relative">
-              <Button
+              <button
                 type="button"
-                variant="ghost"
-                size="icon-sm"
+                className="relative inline-flex size-7 items-center justify-center rounded-lg"
                 onClick={() => setNotifOpen(!notifOpen)}
                 aria-label="Notifications"
                 aria-expanded={notifOpen}
@@ -283,7 +304,7 @@ export default function Layout() {
                 {unreadCount > 0 && (
                   <span className="notification-count">{unreadCount > 9 ? '9+' : unreadCount}</span>
                 )}
-              </Button>
+              </button>
               {notifOpen && (
                 <div className="notification-popover">
                   <div className="flex items-center justify-between border-b border-border px-4 py-3">
@@ -321,18 +342,16 @@ export default function Layout() {
               )}
             </div>
 
-            <Button
+            <button
               type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="topbar-help"
+              className="topbar-help inline-flex size-7 items-center justify-center rounded-lg"
               onClick={() => navigate('/settings')}
               aria-label="Help and settings"
             >
               <HelpCircle size={17} />
-            </Button>
+            </button>
 
-            <Separator orientation="vertical" className="topbar-divider mx-1.5 h-5" />
+            <span className="topbar-divider mx-1.5 h-5 w-px bg-border" aria-hidden="true" />
 
             <button
               type="button"

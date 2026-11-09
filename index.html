@@ -11,12 +11,53 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
+    <link rel="preload" href="/fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preconnect" href="https://tile.openstreetmap.org" crossorigin />
     <link rel="dns-prefetch" href="https://tile.openstreetmap.org" />
     <link rel="preconnect" href="https://a.tile.openstreetmap.org" crossorigin />
+    <link rel="dns-prefetch" href="https://a.tile.openstreetmap.org" />
   </head>
   <body>
+    <div id="boot-lcp">
+      <span id="boot-lcp-eyebrow">Heavy transport operations</span>
+      <h1 id="boot-lcp-title">Know whether the permitted route is usable</h1>
+      <p id="boot-lcp-desc">Check the exact approved route against current roadworks, closures, and trusted on-site reports before the transport departs.</p>
+    </div>
     <div id="root"></div>
+    <script>
+      (function () {
+        var path = location.pathname
+        var title = document.getElementById('boot-lcp-title')
+        var desc = document.getElementById('boot-lcp-desc')
+        var eye = document.getElementById('boot-lcp-eyebrow')
+        if (!title || !desc || !eye) return
+        var root = document.documentElement
+        if (path.indexOf('/jobs') === 0) {
+          root.dataset.route = 'jobs'
+          eye.textContent = 'Dispatch jobs'
+          title.textContent = 'Saved jobs'
+          desc.textContent = 'Save a permit, vehicle, and planned departure in this browser, then re-run the check until departure.'
+        } else if (path.indexOf('/settings') === 0) {
+          root.dataset.route = 'settings'
+          eye.textContent = 'Settings'
+          title.textContent = 'Organisation profile'
+          desc.textContent = 'Manage the operator identity shown in this browser, in-tab monitoring, and which free data sources this check uses. Settings are saved in this browser only.'
+        } else if (path.indexOf('/route-checks') === 0) {
+          root.dataset.route = 'checks'
+          eye.textContent = ''
+          eye.style.display = 'none'
+          if (/[?&]run=1(?:&|$)/.test(location.search)) {
+            title.textContent = 'Ready to depart – no confirmed mainline block'
+            desc.textContent = 'No HOLD-level disruption on the 121 km route. Dispatcher confirmed bridge/clearance. Check the approved corridor against roadworks, closures, and trusted on-site reports before the transport departs.'
+          } else {
+            title.textContent = 'Route Check'
+            desc.textContent = 'Check your permitted route against live Autobahn conditions'
+          }
+        } else {
+          root.dataset.route = 'overview'
+        }
+      })()
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

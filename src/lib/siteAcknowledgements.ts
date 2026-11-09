@@ -24,17 +24,7 @@ export function isAcknowledgeable(item: Pick<RouteEvidence, 'id' | 'state' | 'bl
   return !SYSTEM_NOTE.test(item.id)
 }
 
-export function isConfirmOnSite(item: Pick<RouteEvidence, 'id' | 'title' | 'detail' | 'longRunning' | 'category' | 'state'>) {
-  if (item.id === 'bridge-clearance-confirmed' || item.state === 'clear') return false
-  const text = `${item.title} ${item.detail}`
-  return Boolean(item.longRunning)
-    || item.id === 'bridge-clearance-unknown'
-    || /verify on site|confirm on site|bridge and clearance data not available/i.test(text)
-}
-
-export function confirmOnSiteTitles(evidence: RouteEvidence[]) {
-  return evidence.filter(item => isConfirmOnSite(item)).map(item => item.title)
-}
+export { confirmOnSiteTitles, isConfirmOnSite } from './confirmOnSite'
 
 export type ClearanceMeta = {
   by?: string

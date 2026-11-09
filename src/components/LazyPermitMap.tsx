@@ -1,5 +1,6 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Route } from 'lucide-react'
+import { afterFirstPaintIdle } from '../lib/deferIdle'
 import type { PermitLeafletMapProps } from './PermitLeafletMap'
 
 const PermitLeafletMap = lazy(() => import('./PermitLeafletMap'))
@@ -11,8 +12,8 @@ function PermitMapSkeleton({
 }: Pick<PermitLeafletMapProps, 'badgeTitle' | 'badgeSubtitle' | 'showLegend'>) {
   return (
     <div className="heatmap-shell heatmap-compact permit-leaflet-shell">
-      <div className="heatmap-canvas">
-        <div className="permit-leaflet-fallback">Loading map…</div>
+      <div className="heatmap-canvas" style={{ width: '100%', height: '100%', minHeight: 240 }}>
+        <div className="permit-leaflet-fallback">Map ready after first paint</div>
         <div className="permit-map-badge">
           <Route size={16} />
           <span>
@@ -37,11 +38,19 @@ function PermitMapSkeleton({
 }
 
 export default function LazyPermitMap(props: PermitLeafletMapProps) {
+  const [ready, setReady] = useState(false)
+
+  useEffect(() => afterFirstPaintIdle(() => setReady(true)), [])
+
   return (
-    <div className="permit-leaflet-host">
-      <Suspense fallback={<PermitMapSkeleton badgeTitle={props.badgeTitle} badgeSubtitle={props.badgeSubtitle} showLegend={props.showLegend} />}>
-        <PermitLeafletMap {...props} />
-      </Suspense>
+    <div className="permit-leaflet-host" style={{ width: '100%', height: '100%', minHeight: 240 }}>
+      {!ready ? (
+        <PermitMapSkeleton badgeTitle={props.badgeTitle} badgeSubtitle={props.badgeSubtitle} showLegend={props.showLegend} />
+      ) : (
+        <Suspense fallback={<PermitMapSkeleton badgeTitle={props.badgeTitle} badgeSubtitle={props.badgeSubtitle} showLegend={props.showLegend} />}>
+          <PermitLeafletMap {...props} />
+        </Suspense>
+      )}
     </div>
   )
 }

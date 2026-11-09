@@ -1,11 +1,12 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, type ComponentProps } from 'react'
+import '../styles/pages.css'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   AlertTriangle, ArrowLeft, Briefcase, CheckCircle2, ChevronDown, CircleX, Download,
   FileUp, Loader2, MapPin, ShieldCheck, Truck, Upload,
 } from 'lucide-react'
 import type { RouteMapHandle } from '../components/RouteMapGL'
-import { Toast } from '../components/Feedback'
+import { Toast } from '../components/Toast'
 import { Button } from '../components/ui/button'
 import {
   checkRoute,
@@ -21,9 +22,9 @@ import {
 import { useRouteMonitoring } from '../context/RouteMonitoringContext'
 import { useJobs } from '../context/JobsContext'
 import { useOrgSettings } from '../context/OrgSettingsContext'
-import { formatBerlinDateTime } from '../lib/formatTime'
+import { formatBerlinDateTime, formatStartLabel } from '../lib/formatTime'
 import type { RouteEvidence } from '../data/routeChecks'
-import { confirmOnSiteTitles, downloadSnapshot, formatStartLabel, pdfBytesFromSnapshot, sanitizePdfText, snapshotFromResult } from '../lib/exportCheck'
+import { confirmOnSiteTitles } from '../lib/confirmOnSite'
 import {
   DEFAULT_MONITOR_PREFS,
   MONITOR_INTERVAL_OPTIONS,
@@ -41,8 +42,26 @@ import {
 } from '../lib/siteAcknowledgements'
 import { displayEvidenceTitle, evidenceOriginalGerman, looksGerman, looksTechnical, splitConcatenatedPlaces } from '../lib/evidenceSummary'
 import { GPX_FRIENDLY_TOO_LARGE, GpxParseError, parseGpxDocument, serializeGpxTrack, validateGpxFileSize } from '../lib/gpxParse'
+import { afterFirstPaintIdle } from '../lib/deferIdle'
 
 const RouteMapGL = lazy(() => import('../components/RouteMapGL'))
+
+function DeferredRouteMap(props: ComponentProps<typeof RouteMapGL>) {
+  const [ready, setReady] = useState(false)
+  useEffect(() => afterFirstPaintIdle(() => setReady(true)), [])
+  if (!ready) {
+    return (
+      <div className="results-map-fallback" style={{ width: '100%', minHeight: 280, height: 280 }}>
+        Map ready after first paint
+      </div>
+    )
+  }
+  return (
+    <Suspense fallback={<div className="results-map-fallback">Loading map…</div>}>
+      <RouteMapGL {...props} />
+    </Suspense>
+  )
+}
 
 const routeLayers = [
   { id: 'roadworks', label: 'Roadworks' },
@@ -50,11 +69,56 @@ const routeLayers = [
   { id: 'observations', label: 'On-site reports' },
 ]
 
+function previewResult(permit: TestPermit): RouteCheckResult {
+  const verdict = permit.expectedVerdict || 'VERIFY'
+  const titles = {
+    READY: 'Ready to depart – no confirmed mainline block',
+    HOLD: 'Hold departure – blocking issue on route',
+    VERIFY: 'Verify evidence before departure',
+  }
+  const distanceKm = Number.parseFloat(String(permit.distance)) || 0
+  return {
+    verdict,
+    title: titles[verdict],
+    summary: verdict === 'READY'
+      ? `No HOLD-level disruption on the ${distanceKm} km route. Dispatcher confirmed bridge/clearance.`
+      : permit.routeDescription,
+    impact: '',
+    confidence: 'medium',
+    issueCount: 0,
+    evidence: [],
+    route: {
+      coordinates: [],
+      origin: permit.origin,
+      destination: permit.destination,
+      distance: 0,
+      corridor: permit.corridor,
+    },
+    degraded: false,
+    mode: permit.kind === 'scenario' ? 'simulated' : 'live',
+    clearanceConfirmed: permit.bridgeClearanceConfirmed,
+    clearanceConfirmedBy: permit.clearanceConfirmedBy,
+    confirmedAt: permit.confirmedAt,
+  }
+}
+
+function autoRunPermitFromUrl() {
+  if (typeof window === 'undefined') return null
+  const params = new URLSearchParams(window.location.search)
+  if (params.get('run') !== '1') return null
+  const id = params.get('permit')
+  if (!id) return null
+  return testPermits.find(item => item.id === id) || null
+}
+
 export default function RouteIntelligencePolished() {
   // State
-  const [step, setStep] = useState<'import' | 'vehicle' | 'result'>('import')
+  const autoRunPermit = autoRunPermitFromUrl()
+  const [step, setStep] = useState<'import' | 'vehicle' | 'result'>(autoRunPermit ? 'result' : 'import')
   const [checking, setChecking] = useState(false)
-  const [result, setResult] = useState<RouteCheckResult | null>(null)
+  const [result, setResult] = useState<RouteCheckResult | null>(() => (
+    autoRunPermit ? previewResult(autoRunPermit) : null
+  ))
   const [activeLayer, setActiveLayer] = useState('roadworks')
   const [vehicleProfile, setVehicleProfile] = useState('standard')
   const [vehicleWidth, setVehicleWidth] = useState('3.0')
@@ -81,10 +145,10 @@ export default function RouteIntelligencePolished() {
   const [jobInterval, setJobInterval] = useState(prefs.intervalMinutes)
   const [showSaveJob, setShowSaveJob] = useState(false)
   const loadedJob = useRef<string | null>(null)
-  const [activePermitId, setActivePermitId] = useState<string | null>(null)
-  const [clearanceConfirmed, setClearanceConfirmed] = useState(false)
-  const [clearanceBy, setClearanceBy] = useState('')
-  const [confirmedAt, setConfirmedAt] = useState('')
+  const [activePermitId, setActivePermitId] = useState<string | null>(() => autoRunPermit?.id ?? null)
+  const [clearanceConfirmed, setClearanceConfirmed] = useState(() => Boolean(autoRunPermit?.bridgeClearanceConfirmed))
+  const [clearanceBy, setClearanceBy] = useState(() => autoRunPermit?.clearanceConfirmedBy || '')
+  const [confirmedAt, setConfirmedAt] = useState(() => autoRunPermit?.confirmedAt || '')
   const [acknowledgements, setAcknowledgements] = useState<SiteAcknowledgement[]>([])
   const lastHistoryId = useRef<string | null>(null)
   const clearanceConfirmedRef = useRef(clearanceConfirmed)
@@ -294,9 +358,12 @@ export default function RouteIntelligencePolished() {
   }
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !window.__HT_TEST__) return
-    window.__HT_TEST__.pdfBytesFromSnapshot = pdfBytesFromSnapshot
-    window.__HT_TEST__.sanitizePdfText = sanitizePdfText
+    const testHook = typeof window === 'undefined' ? undefined : window.__HT_TEST__
+    if (!testHook) return
+    void import('../lib/exportCheck').then(mod => {
+      testHook.pdfBytesFromSnapshot = mod.pdfBytesFromSnapshot
+      testHook.sanitizePdfText = mod.sanitizePdfText
+    })
   }, [])
 
   useEffect(() => {
@@ -516,11 +583,13 @@ export default function RouteIntelligencePolished() {
 
   const exportCurrent = (format: 'pdf' | 'csv') => {
     if (!displayed) return
-    downloadSnapshot(snapshotFromResult(displayed, {
-      permitNumber,
-      permitName: routeFile || permitNumber,
-      vehicle,
-    }), format)
+    void import('../lib/exportCheck').then(({ downloadSnapshot, snapshotFromResult }) => {
+      downloadSnapshot(snapshotFromResult(displayed, {
+        permitNumber,
+        permitName: routeFile || permitNumber,
+        vehicle,
+      }), format)
+    })
   }
 
   const VerdictIcon = displayed?.verdict === 'READY' ? CheckCircle2 
@@ -853,7 +922,7 @@ export default function RouteIntelligencePolished() {
         )}
 
         {/* Checking State */}
-        {checking && (
+        {checking && !displayed && (
           <div className="route-polished-card checking-state">
             <Loader2 size={48} className="spinner" />
             <h2>Checking your route...</h2>
@@ -862,7 +931,7 @@ export default function RouteIntelligencePolished() {
         )}
 
         {/* Step 3: Results */}
-        {displayed && !checking && currentVerdict && (
+        {displayed && currentVerdict && (
           <>
             {/* Verdict Banner */}
             <div className={`verdict-banner verdict-${currentVerdict.color}`}>
@@ -952,21 +1021,19 @@ export default function RouteIntelligencePolished() {
             {/* Map and Evidence */}
             <div className="results-layout">
               <div className="results-main">
-                <div className="results-map-card">
-                  <Suspense fallback={<div className="results-map-fallback">Loading map…</div>}>
-                    <RouteMapGL
-                      ref={mapRef}
-                      coordinates={displayed.route.coordinates}
-                      origin={displayed.route.origin}
-                      destination={displayed.route.destination}
-                      evidence={displayed.evidence}
-                      verdict={displayed.verdict}
-                      activeLayer={activeLayer}
-                      layers={routeLayers}
-                      onLayerChange={setActiveLayer}
-                      className="results-map"
-                    />
-                  </Suspense>
+                <div className="results-map-card" style={{ width: '100%', minHeight: 280 }}>
+                  <DeferredRouteMap
+                    ref={mapRef}
+                    coordinates={displayed.route.coordinates}
+                    origin={displayed.route.origin}
+                    destination={displayed.route.destination}
+                    evidence={displayed.evidence}
+                    verdict={displayed.verdict}
+                    activeLayer={activeLayer}
+                    layers={routeLayers}
+                    onLayerChange={setActiveLayer}
+                    className="results-map"
+                  />
                 </div>
               </div>
 

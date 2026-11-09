@@ -51,3 +51,13 @@ export function orgInitials(name: string): string {
   if (words.length === 1) return words[0].slice(0, 2).toUpperCase()
   return `${words[0][0] ?? ''}${words[1][0] ?? ''}`.toUpperCase()
 }
+
+export const START_NOT_PUBLISHED = 'Start: not published'
+
+export function formatStartLabel(value?: string | null): string {
+  const raw = String(value || '').trim()
+  if (!raw) return START_NOT_PUBLISHED
+  const stripped = raw.replace(/^starts?\s*:?\s*/i, '').trim()
+  if (!stripped || /not published/i.test(stripped)) return START_NOT_PUBLISHED
+  return `Start: ${stripped}`
+}
