@@ -77,6 +77,12 @@ export default function RouteIntelligencePolished() {
   const [confirmedAt, setConfirmedAt] = useState('')
   const [acknowledgements, setAcknowledgements] = useState<SiteAcknowledgement[]>([])
   const lastHistoryId = useRef<string | null>(null)
+  const clearanceConfirmedRef = useRef(clearanceConfirmed)
+  const clearanceByRef = useRef(clearanceBy)
+  const confirmedAtRef = useRef(confirmedAt)
+  clearanceConfirmedRef.current = clearanceConfirmed
+  clearanceByRef.current = clearanceBy
+  confirmedAtRef.current = confirmedAt
 
   const vehicle = {
     width: parseFloat(vehicleWidth) || 0,
@@ -397,13 +403,71 @@ export default function RouteIntelligencePolished() {
   }
 
   const displayed = result
-    ? applySiteAcknowledgements(result, acknowledgements, clearanceConfirmed)
+    ? applySiteAcknowledgements(result, acknowledgements, clearanceConfirmed, {
+      by: clearanceBy,
+      at: confirmedAt,
+    })
     : null
+
+  const persistOverlay = (
+    acks: typeof acknowledgements,
+    nextClearance: boolean,
+    by: string,
+    at?: string,
+  ) => {
+    if (!result) return null
+    const overlaid = applySiteAcknowledgements(result, acks, nextClearance, {
+      by,
+      at,
+    })
+    if (lastHistoryId.current) {
+      patchHistory(lastHistoryId.current, {
+        verdict: overlaid.verdict,
+        title: overlaid.title,
+        summary: overlaid.summary,
+        impact: overlaid.impact,
+        evidence: overlaid.evidence,
+        siteAcknowledgements: acks,
+      })
+    }
+    if (loadedJob.current) {
+      updateJob(loadedJob.current, {
+        siteAcknowledgements: acks,
+        lastVerdict: overlaid.verdict,
+        lastSummary: overlaid.summary,
+        bridgeClearanceConfirmed: nextClearance,
+        clearanceConfirmedBy: by,
+        confirmedAt: at,
+      })
+    }
+    return overlaid
+  }
+
+  const setResultClearance = (next: boolean) => {
+    const by = clearanceByRef.current.trim() || clearanceBy.trim() || 'Dispatcher'
+    const at = next ? (confirmedAtRef.current || confirmedAt || new Date().toISOString()) : (confirmedAtRef.current || confirmedAt)
+    clearanceConfirmedRef.current = next
+    if (next) {
+      if (!clearanceByRef.current.trim()) {
+        clearanceByRef.current = by
+        setClearanceBy(by)
+      }
+      if (!confirmedAtRef.current) {
+        confirmedAtRef.current = at
+        setConfirmedAt(at)
+      }
+    }
+    setClearanceConfirmed(next)
+    persistOverlay(acknowledgements, next, by, at)
+  }
 
   const confirmOnSite = (ids: string[]) => {
     if (!result) return
-    const name = clearanceBy.trim() || 'Dispatcher'
-    if (!clearanceBy.trim()) setClearanceBy(name)
+    const name = clearanceByRef.current.trim() || clearanceBy.trim() || 'Dispatcher'
+    if (!clearanceByRef.current.trim()) {
+      clearanceByRef.current = name
+      setClearanceBy(name)
+    }
     const at = new Date().toISOString()
     const next = [...acknowledgements]
     let skippedHold = 0
@@ -424,24 +488,12 @@ export default function RouteIntelligencePolished() {
       return
     }
     setAcknowledgements(next)
-    const overlaid = applySiteAcknowledgements(result, next, clearanceConfirmed)
-    if (lastHistoryId.current) {
-      patchHistory(lastHistoryId.current, {
-        verdict: overlaid.verdict,
-        title: overlaid.title,
-        summary: overlaid.summary,
-        evidence: overlaid.evidence,
-        siteAcknowledgements: next,
-      })
-    }
-    if (loadedJob.current) {
-      updateJob(loadedJob.current, {
-        siteAcknowledgements: next,
-        lastVerdict: overlaid.verdict,
-        lastSummary: overlaid.summary,
-      })
-    }
-    setToast(overlaid.verdict === 'READY' ? overlaid.title : `Confirmed ${added} item${added === 1 ? '' : 's'} on site`)
+    const clearance = clearanceConfirmedRef.current
+    const confirmed = clearance
+      ? (confirmedAtRef.current || new Date().toISOString())
+      : confirmedAtRef.current
+    const overlaid = persistOverlay(next, clearance, name, confirmed)
+    setToast(overlaid?.verdict === 'READY' ? overlaid.title : `Confirmed ${added} item${added === 1 ? '' : 's'} on site`)
   }
 
   const exportCurrent = (format: 'pdf' | 'csv') => {
@@ -907,16 +959,30 @@ export default function RouteIntelligencePolished() {
                   <h3>
                     Evidence ({displayed.evidence.length})
                   </h3>
-                  {pendingVerify.length > 0 && (
-                    <div className="confirm-on-site-bar">
-                      <label>
-                        <span>Dispatcher name</span>
+                  <div className="confirm-on-site-bar">
+                    <label>
+                      <span>Dispatcher name</span>
                         <input
                           value={clearanceBy}
-                          onChange={event => setClearanceBy(event.target.value)}
+                          onChange={event => {
+                            clearanceByRef.current = event.target.value
+                            setClearanceBy(event.target.value)
+                          }}
                           placeholder="Name stored with each confirmation"
                         />
-                      </label>
+                    </label>
+                    <label className="clearance-tick">
+                      <input
+                        type="checkbox"
+                        checked={clearanceConfirmed}
+                        onChange={event => setResultClearance(event.target.checked)}
+                      />
+                      <span>
+                        <strong>Bridge and clearance confirmed</strong>
+                        Tick here on the result — no need to re-run the check.
+                      </span>
+                    </label>
+                    {pendingVerify.length > 0 && (
                       <button
                         type="button"
                         className="btn-primary"
@@ -924,8 +990,8 @@ export default function RouteIntelligencePolished() {
                       >
                         Confirm remaining VERIFY on site ({pendingVerify.length})
                       </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                   <div className="evidence-list">
                     {primaryEvidence.map(item => (
                       <EvidenceCard

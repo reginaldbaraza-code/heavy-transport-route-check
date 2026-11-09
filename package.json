@@ -11,7 +11,7 @@
     "preview": "vite preview",
     "format": "oxfmt",
     "test:qa": "node scripts/qa-features.mjs",
-    "test:verdict": "tsx --test api/_lib/verdict.test.ts src/lib/siteAcknowledgements.test.ts",
+    "test:verdict": "tsx --test api/_lib/verdict.test.ts src/lib/siteAcknowledgements.test.ts src/lib/exportCheck.test.ts src/lib/formatTime.test.ts",
     "data:mia": "node scripts/refresh-mia-roadworks.mjs"
   },
   "dependencies": {

@@ -1,8 +1,13 @@
 import { jsPDF } from 'jspdf'
 import type { RouteEvidence, RouteVerdict } from '../data/routeChecks'
-import type { RouteCheckResult } from './routeCheck'
 import { formatBerlinDateTime } from './formatTime'
 import { formatVehicleDims, type VehicleDims } from './jobs'
+import type { RouteCheckResult } from './routeCheck'
+import {
+  formatClearanceConfirmationLine,
+  formatOnSiteConfirmationLine,
+  stripUnresolvedVerifyCopy,
+} from './siteAcknowledgements'
 
 export type HistoryExportRecord = {
   verdict: RouteVerdict | string
@@ -22,6 +27,7 @@ export type HistoryExportRecord = {
 }
 
 export type ExportEvidence = {
+  id?: string
   title: string
   detail: string
   source: string
@@ -31,6 +37,14 @@ export type ExportEvidence = {
   category: string
   state: string
   confirmOnSite: boolean
+  acknowledgedBy?: string
+  acknowledgedAt?: string
+}
+
+export type ExportAcknowledgement = {
+  title: string
+  acknowledgedBy: string
+  acknowledgedAt: string
 }
 
 export type ExportSnapshot = {
@@ -48,17 +62,23 @@ export type ExportSnapshot = {
   confidence: string
   evidence: ExportEvidence[]
   confirmOnSite: string[]
+  onSiteConfirmations: ExportAcknowledgement[]
+  clearanceConfirmed?: boolean
+  clearanceConfirmedBy?: string
+  clearanceConfirmedAt?: string
 }
 
-function isConfirmOnSite(item: Pick<RouteEvidence, 'id' | 'title' | 'detail' | 'longRunning' | 'category'>) {
+function isConfirmOnSite(item: Pick<RouteEvidence, 'id' | 'title' | 'detail' | 'longRunning' | 'category' | 'state'>) {
+  if (item.id === 'bridge-clearance-confirmed' || item.state === 'clear') return false
   const text = `${item.title} ${item.detail}`
   return Boolean(item.longRunning)
     || item.id === 'bridge-clearance-unknown'
-    || /verify on site|confirm on site|bridge and clearance/i.test(text)
+    || /verify on site|confirm on site|bridge and clearance data not available/i.test(text)
 }
 
 function evidenceRow(item: RouteEvidence, fallbackRetrieved?: string): ExportEvidence {
   return {
+    id: item.id,
     title: item.title,
     detail: item.detail,
     source: item.source,
@@ -68,6 +88,42 @@ function evidenceRow(item: RouteEvidence, fallbackRetrieved?: string): ExportEvi
     category: item.category,
     state: item.state,
     confirmOnSite: isConfirmOnSite(item),
+    acknowledgedBy: item.acknowledgedBy || '',
+    acknowledgedAt: item.acknowledgedAt || '',
+  }
+}
+
+function acknowledgementRows(evidence: RouteEvidence[]): ExportAcknowledgement[] {
+  return evidence
+    .filter(item => item.acknowledgedBy && item.acknowledgedAt && item.id !== 'bridge-clearance-confirmed')
+    .map(item => ({
+      title: item.title,
+      acknowledgedBy: item.acknowledgedBy || '',
+      acknowledgedAt: item.acknowledgedAt || '',
+    }))
+}
+
+function displayAckTime(value?: string) {
+  return formatBerlinDateTime(value) || value || ''
+}
+
+function readyCopy(
+  result: Pick<RouteCheckResult, 'verdict' | 'summary' | 'impact' | 'clearanceConfirmed' | 'clearanceConfirmedBy' | 'confirmedAt'>,
+  acks: Array<{ acknowledgedBy?: string; acknowledgedAt?: string }>,
+) {
+  const impact = stripUnresolvedVerifyCopy(result.impact || '')
+  const clearanceLine = result.clearanceConfirmed
+    ? formatClearanceConfirmationLine(result.clearanceConfirmedBy, result.confirmedAt)
+    : ''
+  if (result.verdict !== 'READY') {
+    return {
+      summary: result.summary,
+      impact: result.clearanceConfirmed ? [impact, clearanceLine].filter(Boolean).join(' ') : result.impact,
+    }
+  }
+  return {
+    summary: acks.length ? formatOnSiteConfirmationLine(acks) : result.summary,
+    impact: [impact, clearanceLine].filter(Boolean).join(' '),
   }
 }
 
@@ -84,12 +140,15 @@ export function snapshotFromResult(
     runAt?: string
   } = {},
 ): ExportSnapshot {
-  const evidence = (result.evidence || []).map(item => evidenceRow(item, result.retrievedAt))
+  const sourceEvidence = result.evidence || []
+  const evidence = sourceEvidence.map(item => evidenceRow(item, result.retrievedAt))
+  const onSiteConfirmations = acknowledgementRows(sourceEvidence)
+  const copy = readyCopy(result, sourceEvidence.filter(item => item.acknowledgedBy && item.id !== 'bridge-clearance-confirmed'))
   return {
     verdict: result.verdict,
     title: result.title,
-    summary: result.summary,
-    impact: result.impact,
+    summary: copy.summary,
+    impact: copy.impact,
     permitNumber: meta.permitNumber || '',
     permitName: meta.permitName || `${result.route.origin} → ${result.route.destination}`,
     routeLabel: `${result.route.origin} → ${result.route.destination}`,
@@ -99,17 +158,31 @@ export function snapshotFromResult(
     retrievedAt: result.retrievedAt || meta.runAt || new Date().toISOString(),
     confidence: result.confidence,
     evidence,
-    confirmOnSite: confirmOnSiteTitles(result.evidence || []),
+    confirmOnSite: confirmOnSiteTitles(sourceEvidence),
+    onSiteConfirmations,
+    clearanceConfirmed: Boolean(result.clearanceConfirmed),
+    clearanceConfirmedBy: result.clearanceConfirmedBy || '',
+    clearanceConfirmedAt: result.confirmedAt || '',
   }
 }
 
 export function snapshotFromHistory(record: HistoryExportRecord): ExportSnapshot {
-  const evidence = (record.evidence || []).map(item => evidenceRow(item as RouteEvidence, record.retrievedAt))
+  const sourceEvidence = (record.evidence || []) as RouteEvidence[]
+  const evidence = sourceEvidence.map(item => evidenceRow(item, record.retrievedAt))
+  const onSiteConfirmations = acknowledgementRows(sourceEvidence)
+  const copy = readyCopy({
+    verdict: record.verdict as RouteCheckResult['verdict'],
+    summary: record.summary,
+    impact: record.impact || '',
+    clearanceConfirmed: sourceEvidence.some(item => item.id === 'bridge-clearance-confirmed'),
+    clearanceConfirmedBy: sourceEvidence.find(item => item.id === 'bridge-clearance-confirmed')?.acknowledgedBy,
+    confirmedAt: sourceEvidence.find(item => item.id === 'bridge-clearance-confirmed')?.acknowledgedAt,
+  }, sourceEvidence.filter(item => item.acknowledgedBy && item.id !== 'bridge-clearance-confirmed'))
   return {
     verdict: record.verdict,
     title: record.title || `Route check: ${record.verdict}`,
-    summary: record.summary,
-    impact: record.impact || '',
+    summary: copy.summary,
+    impact: copy.impact,
     permitNumber: record.permitNumber || '',
     permitName: record.permitName,
     routeLabel: record.routeLabel,
@@ -120,6 +193,10 @@ export function snapshotFromHistory(record: HistoryExportRecord): ExportSnapshot
     confidence: record.confidence || 'medium',
     evidence,
     confirmOnSite: record.confirmOnSite || evidence.filter(item => item.confirmOnSite).map(item => item.title),
+    onSiteConfirmations,
+    clearanceConfirmed: copy.impact.includes('Clearance confirmed') || sourceEvidence.some(item => item.id === 'bridge-clearance-confirmed'),
+    clearanceConfirmedBy: sourceEvidence.find(item => item.id === 'bridge-clearance-confirmed')?.acknowledgedBy || '',
+    clearanceConfirmedAt: sourceEvidence.find(item => item.id === 'bridge-clearance-confirmed')?.acknowledgedAt || '',
   }
 }
 
@@ -127,8 +204,9 @@ function slug(value: string) {
   return value.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'route-check'
 }
 
-function filename(snapshot: ExportSnapshot, ext: string) {
-  return `route-check-${slug(snapshot.permitNumber || snapshot.permitName)}-${snapshot.verdict}.${ext}`
+export function exportFilename(snapshot: Pick<ExportSnapshot, 'permitNumber' | 'permitName' | 'verdict'>, ext: string) {
+  const verdict = String(snapshot.verdict || 'VERIFY').toUpperCase().replace(/[^A-Z]/g, '') || 'VERIFY'
+  return `route-check-${slug(snapshot.permitNumber || snapshot.permitName)}-${verdict}.${ext}`
 }
 
 function triggerDownload(blob: Blob, name: string) {
@@ -161,9 +239,17 @@ export function snapshotToCsv(snapshot: ExportSnapshot) {
     ['Run at', formatBerlinDateTime(snapshot.runAt) || snapshot.runAt],
     ['Retrieved', formatBerlinDateTime(snapshot.retrievedAt) || snapshot.retrievedAt],
     ['Confidence', snapshot.confidence],
-    ['Confirm on site', snapshot.confirmOnSite.join('; ') || 'None listed'],
+    ['Confirm on site', snapshot.clearanceConfirmed
+      ? formatClearanceConfirmationLine(snapshot.clearanceConfirmedBy, snapshot.clearanceConfirmedAt)
+      : (snapshot.confirmOnSite.join('; ') || 'None listed')],
+    ['On-site confirmations', snapshot.onSiteConfirmations?.length
+      ? formatOnSiteConfirmationLine(snapshot.onSiteConfirmations)
+      : 'None listed'],
     [],
-    ['Evidence title', 'Source', 'Start', 'Retrieved', 'Confidence', 'Category', 'State', 'Confirm on site', 'Detail'],
+    ['On-site confirmation title', 'Confirmed by', 'Confirmed at'],
+    ...(snapshot.onSiteConfirmations || []).map(item => [item.title, item.acknowledgedBy, displayAckTime(item.acknowledgedAt)]),
+    [],
+    ['Evidence title', 'Source', 'Start', 'Retrieved', 'Confidence', 'Category', 'State', 'Confirm on site', 'Confirmed by', 'Confirmed at', 'Detail'],
   ]
   const evidenceRows = snapshot.evidence.map(item => [
     item.title,
@@ -174,6 +260,8 @@ export function snapshotToCsv(snapshot: ExportSnapshot) {
     item.category,
     item.state,
     item.confirmOnSite ? 'yes' : 'no',
+    item.acknowledgedBy || '',
+    displayAckTime(item.acknowledgedAt),
     item.detail,
   ])
   return [...header, ...evidenceRows].map(row => row.map(csvCell).join(',')).join('\n')
@@ -181,7 +269,7 @@ export function snapshotToCsv(snapshot: ExportSnapshot) {
 
 export function downloadCsv(snapshot: ExportSnapshot) {
   const blob = new Blob([snapshotToCsv(snapshot)], { type: 'text/csv;charset=utf-8' })
-  triggerDownload(blob, filename(snapshot, 'csv'))
+  triggerDownload(blob, exportFilename(snapshot, 'csv'))
 }
 
 /** jsPDF Helvetica is WinAnsi. Keep German umlauts; replace arrows and other Unicode. */
@@ -207,11 +295,104 @@ function pdfText(doc: jsPDF, text: string | string[], x: number, y: number) {
   doc.text(value, x, y)
 }
 
-function wrap(doc: jsPDF, text: string, x: number, y: number, maxWidth: number, lineHeight = 5) {
+const PAGE_TOP = 16
+const PAGE_BOTTOM = 282
+
+function wrapLines(doc: jsPDF, text: string, maxWidth: number) {
+  return doc.splitTextToSize(sanitizePdfText(text || '-'), maxWidth) as string[]
+}
+
+function startPage(doc: jsPDF) {
+  doc.addPage()
   doc.setCharSpace(0)
-  const lines = doc.splitTextToSize(sanitizePdfText(text || '-'), maxWidth) as string[]
-  doc.text(lines, x, y)
-  return y + lines.length * lineHeight
+  return PAGE_TOP
+}
+
+function writeLines(doc: jsPDF, lines: string[], x: number, y: number, lineHeight: number, paginate = true) {
+  if (!paginate) {
+    pdfText(doc, lines, x, y)
+    return y + lines.length * lineHeight
+  }
+  for (const line of lines) {
+    if (y + lineHeight > PAGE_BOTTOM) y = startPage(doc)
+    pdfText(doc, line, x, y)
+    y += lineHeight
+  }
+  return y
+}
+
+function wrap(doc: jsPDF, text: string, x: number, y: number, maxWidth: number, lineHeight = 5) {
+  return writeLines(doc, wrapLines(doc, text, maxWidth), x, y, lineHeight)
+}
+
+function drawEvidenceCard(
+  doc: jsPDF,
+  item: ExportEvidence,
+  index: number,
+  y: number,
+  margin: number,
+  width: number,
+) {
+  const innerW = width - 8
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(9)
+  const titleLines = wrapLines(doc, item.title, innerW)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8)
+  const meta = `${item.source} · start ${item.start} · retrieved ${item.retrieved} · ${item.confidence} · ${item.confirmOnSite ? 'confirm on site' : item.state}`
+  const metaLines = wrapLines(doc, meta, innerW)
+  const detailLines = wrapLines(doc, item.detail, innerW)
+  const ackLine = item.acknowledgedBy
+    ? `Confirmed on site by ${item.acknowledgedBy} at ${displayAckTime(item.acknowledgedAt)}`
+    : ''
+  const ackLines = ackLine ? wrapLines(doc, ackLine, innerW) : []
+  const titleH = 4.8
+  const bodyH = 4.2
+  const padTop = 5.5
+  const padBottom = 4
+  const textHeight = titleLines.length * titleH
+    + metaLines.length * bodyH
+    + detailLines.length * bodyH
+    + ackLines.length * bodyH
+  const cardHeight = padTop + textHeight + padBottom
+  const usable = PAGE_BOTTOM - PAGE_TOP
+  const even = index % 2 === 0
+  const fill: [number, number, number] = even ? [255, 255, 255] : [250, 251, 252]
+
+  const paintCard = (top: number, height: number) => {
+    doc.setDrawColor(228, 231, 236)
+    doc.setFillColor(...fill)
+    doc.roundedRect(margin, top, width, height, 1.5, 1.5, 'FD')
+  }
+
+  const writeBody = (startY: number, paginate: boolean) => {
+    let ty = startY
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(9)
+    doc.setTextColor(16, 24, 40)
+    ty = writeLines(doc, titleLines, margin + 4, ty, titleH, paginate)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    doc.setTextColor(71, 84, 103)
+    ty = writeLines(doc, metaLines, margin + 4, ty, bodyH, paginate)
+    ty = writeLines(doc, detailLines, margin + 4, ty, bodyH, paginate)
+    if (ackLines.length) {
+      doc.setTextColor(22, 101, 52)
+      ty = writeLines(doc, ackLines, margin + 4, ty, bodyH, paginate)
+    }
+    return ty
+  }
+
+  if (cardHeight + 2 <= usable) {
+    if (y + cardHeight > PAGE_BOTTOM) y = startPage(doc)
+    paintCard(y, cardHeight)
+    writeBody(y + padTop, false)
+    return y + cardHeight + 3
+  }
+
+  if (y + 24 > PAGE_BOTTOM) y = startPage(doc)
+  const after = writeBody(y + padTop, true)
+  return after + 4
 }
 
 export function createPdfDocument(snapshot: ExportSnapshot) {
@@ -220,6 +401,12 @@ export function createPdfDocument(snapshot: ExportSnapshot) {
   const margin = 16
   const width = 210 - margin * 2
   let y = 18
+  const confirmations = snapshot.onSiteConfirmations
+    || snapshot.evidence.filter(item => item.acknowledgedBy).map(item => ({
+      title: item.title,
+      acknowledgedBy: item.acknowledgedBy || '',
+      acknowledgedAt: item.acknowledgedAt || '',
+    }))
 
   doc.setFillColor(16, 42, 67)
   doc.rect(0, 0, 210, 28, 'F')
@@ -229,7 +416,7 @@ export function createPdfDocument(snapshot: ExportSnapshot) {
   pdfText(doc, 'Heavy transport route check', margin, 12)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(11)
-  pdfText(doc, `${snapshot.verdict}  ·  ${snapshot.permitName}`, margin, 20)
+  pdfText(doc, wrapLines(doc, `${snapshot.verdict}  ·  ${snapshot.permitName}`, width)[0], margin, 20)
 
   y = 38
   doc.setTextColor(16, 24, 40)
@@ -243,7 +430,6 @@ export function createPdfDocument(snapshot: ExportSnapshot) {
 
   y += 6
   doc.setFillColor(245, 247, 250)
-  doc.roundedRect(margin, y, width, 42, 2, 2, 'F')
   doc.setFontSize(9)
   const facts: Array<[string, string]> = [
     ['Permit', snapshot.permitNumber || 'Not recorded'],
@@ -253,53 +439,71 @@ export function createPdfDocument(snapshot: ExportSnapshot) {
     ['Run at', formatBerlinDateTime(snapshot.runAt) || snapshot.runAt],
     ['Retrieved', formatBerlinDateTime(snapshot.retrievedAt) || snapshot.retrievedAt],
     ['Confidence', snapshot.confidence],
-    ['Confirm on site', snapshot.confirmOnSite.join('; ') || 'Bridge/clearance still a manual verify item'],
+    ['Confirm on site', snapshot.clearanceConfirmed
+      ? formatClearanceConfirmationLine(snapshot.clearanceConfirmedBy, snapshot.clearanceConfirmedAt)
+      : (snapshot.confirmOnSite.join('; ') || 'Bridge/clearance still a manual verify item')],
   ]
-  facts.forEach((fact, index) => {
-    const col = index % 2
-    const row = Math.floor(index / 2)
-    const x = margin + 4 + col * (width / 2)
-    const fy = y + 6 + row * 9
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(71, 84, 103)
-    pdfText(doc, fact[0], x, fy)
-    doc.setFont('helvetica', 'normal')
-    doc.setTextColor(16, 24, 40)
-    const lines = doc.splitTextToSize(sanitizePdfText(fact[1]), width / 2 - 10) as string[]
-    pdfText(doc, lines[0] || '-', x, fy + 4)
+  const colW = width / 2 - 10
+  const factRows: Array<Array<{ label: string; lines: string[] }>> = []
+  for (let i = 0; i < facts.length; i += 2) {
+    const left = facts[i]
+    const right = facts[i + 1]
+    factRows.push([
+      { label: left[0], lines: wrapLines(doc, left[1], colW) },
+      ...(right ? [{ label: right[0], lines: wrapLines(doc, right[1], colW) }] : []),
+    ])
+  }
+  const factHeight = factRows.reduce((sum, row) => {
+    const lines = Math.max(...row.map(cell => cell.lines.length), 1)
+    return sum + 7 + lines * 4
+  }, 8)
+  if (y + factHeight > PAGE_BOTTOM) y = startPage(doc)
+  doc.roundedRect(margin, y, width, factHeight, 2, 2, 'F')
+  let fy = y + 6
+  factRows.forEach(row => {
+    row.forEach((cell, col) => {
+      const x = margin + 4 + col * (width / 2)
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(71, 84, 103)
+      pdfText(doc, cell.label, x, fy)
+      doc.setFont('helvetica', 'normal')
+      doc.setTextColor(16, 24, 40)
+      pdfText(doc, cell.lines, x, fy + 4)
+    })
+    const lines = Math.max(...row.map(cell => cell.lines.length), 1)
+    fy += 7 + lines * 4
   })
-  y += 50
+  y += factHeight + 8
 
+  if (confirmations.length) {
+    if (y + 16 > PAGE_BOTTOM) y = startPage(doc)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(12)
+    doc.setTextColor(16, 24, 40)
+    pdfText(doc, 'On-site confirmations', margin, y)
+    y += 6
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    const summaryLine = formatOnSiteConfirmationLine(confirmations)
+    if (summaryLine) y = wrap(doc, summaryLine, margin, y, width, 4.5)
+    confirmations.forEach(item => {
+      y = wrap(doc, `${item.title} - confirmed by ${item.acknowledgedBy} at ${displayAckTime(item.acknowledgedAt)}`, margin, y, width, 4.2)
+    })
+    y += 4
+  }
+
+  if (y + 12 > PAGE_BOTTOM) y = startPage(doc)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(12)
+  doc.setTextColor(16, 24, 40)
   pdfText(doc, 'Evidence', margin, y)
   y += 6
-  doc.setFontSize(9)
 
   snapshot.evidence.forEach((item, index) => {
-    if (y > 270) {
-      doc.addPage()
-      y = 18
-    }
-    doc.setDrawColor(228, 231, 236)
-    doc.setFillColor(index % 2 === 0 ? 255 : 250, index % 2 === 0 ? 255 : 251, index % 2 === 0 ? 255 : 252)
-    const blockHeight = 22
-    doc.roundedRect(margin, y, width, blockHeight, 1.5, 1.5, 'FD')
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(16, 24, 40)
-    pdfText(doc, item.title.slice(0, 90), margin + 3, y + 5)
-    doc.setFont('helvetica', 'normal')
-    doc.setTextColor(71, 84, 103)
-    const meta = `${item.source} · start ${item.start} · retrieved ${item.retrieved} · ${item.confidence} · ${item.confirmOnSite ? 'confirm on site' : item.state}`
-    y = wrap(doc, meta, margin + 3, y + 10, width - 6, 4)
-    y = wrap(doc, item.detail, margin + 3, y, width - 6, 4)
-    y += 6
+    y = drawEvidenceCard(doc, item, index, y, margin, width)
   })
 
-  if (y > 270) {
-    doc.addPage()
-    y = 18
-  }
+  if (y + 16 > PAGE_BOTTOM) y = startPage(doc)
   doc.setFontSize(8)
   doc.setTextColor(102, 112, 133)
   wrap(
@@ -315,11 +519,16 @@ export function createPdfDocument(snapshot: ExportSnapshot) {
 }
 
 export function pdfBytesFromSnapshot(snapshot: ExportSnapshot): ArrayBuffer {
-  return createPdfDocument(snapshot).output('arraybuffer')
+  return createPdfDocument({
+    ...snapshot,
+    evidence: snapshot.evidence || [],
+    confirmOnSite: snapshot.confirmOnSite || [],
+    onSiteConfirmations: snapshot.onSiteConfirmations || [],
+  }).output('arraybuffer')
 }
 
 export function downloadPdf(snapshot: ExportSnapshot) {
-  createPdfDocument(snapshot).save(filename(snapshot, 'pdf'))
+  createPdfDocument(snapshot).save(exportFilename(snapshot, 'pdf'))
 }
 
 export function downloadSnapshot(snapshot: ExportSnapshot, format: 'pdf' | 'csv') {

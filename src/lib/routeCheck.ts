@@ -20,6 +20,8 @@ export type RouteCheckResult = {
   source?: string;
   mode?: 'live' | 'simulated';
   clearanceConfirmed?: boolean;
+  clearanceConfirmedBy?: string;
+  confirmedAt?: string;
 };
 
 export type RouteCheckOptions = {
