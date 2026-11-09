@@ -71,7 +71,6 @@ export default function LiveMap() {
   const [scope, setScope] = useState<'national' | 'munich'>('national')
   const [baseMap, setBaseMap] = useState<'road' | 'contrast'>('road')
   const [mapLoaded, setMapLoaded] = useState(false)
-  const [styleLoadCount, setStyleLoadCount] = useState(0)
   const [liveStatus, setLiveStatus] = useState<'ready' | 'refreshing'>('ready')
   const [snowRisk, setSnowRisk] = useState<SnowCell[]>(snowCells.map(([lat, lng, intensity]) => ({ lat, lng, intensity, temperature: -1, snowfall: 0.6 })))
   const [lastUpdated, setLastUpdated] = useState(new Date())
@@ -323,13 +322,10 @@ export default function LiveMap() {
       })
     }
 
-    // Call on styledata to survive style changes
-    map.on('styledata', () => {
-      if (map.isStyleLoaded()) {
-        addClusterLayers()
-        setMapLoaded(true)
-        setStyleLoadCount(prev => prev + 1)
-      }
+    // Add cluster layers once on load
+    map.on('load', () => {
+      addClusterLayers()
+      setMapLoaded(true)
     })
 
     mapRef.current = map
@@ -379,7 +375,7 @@ export default function LiveMap() {
     }
 
     source.setData(geojson)
-  }, [visibleEvents, mapLoaded, styleLoadCount])
+  }, [visibleEvents, mapLoaded])
 
   // Handle scope changes
   useEffect(() => {
