@@ -13,7 +13,7 @@ import {
 } from '../lib/jobs'
 import { notificationBody, shouldEscalateAlert, verdictChangeCopy } from '../lib/monitoring'
 import { checkRoute, type RouteCheckResult } from '../lib/routeCheck'
-import { confirmOnSiteTitles } from '../lib/exportCheck'
+import { confirmOnSiteTitles, pdfBytesFromSnapshot, sanitizePdfText } from '../lib/exportCheck'
 import { useRouteMonitoring } from './RouteMonitoringContext'
 
 export type JobDraft = Omit<SavedJob, 'id' | 'createdAt' | 'updatedAt'>
@@ -262,6 +262,8 @@ export function JobsProvider({ children }: { children: ReactNode }) {
       getAlerts: () => alertsRef.current,
       simulateVerdictChange: (jobId, verdict) => simulateVerdictChange(jobId, verdict),
       tickMs: window.__HT_TEST__?.tickMs,
+      pdfBytesFromSnapshot,
+      sanitizePdfText,
     }
     return () => {
       delete window.__HT_TEST__

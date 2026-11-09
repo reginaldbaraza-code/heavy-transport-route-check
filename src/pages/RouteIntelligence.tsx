@@ -48,7 +48,7 @@ export default function RouteIntelligencePolished() {
   const loadedPermit = useRef<string | null>(null)
   const [searchParams] = useSearchParams()
   const { recordCheck } = useRouteMonitoring()
-  const { saveJob, getJob, prefs, requestNotifications } = useJobs()
+  const { saveJob, getJob, updateJob, prefs, requestNotifications } = useJobs()
   const [plannedDeparture, setPlannedDeparture] = useState(toLocalInput(defaultDepartureIso(8)))
   const [jobName, setJobName] = useState('')
   const [jobInterval, setJobInterval] = useState(prefs.intervalMinutes)
@@ -112,6 +112,18 @@ export default function RouteIntelligencePolished() {
         confirmOnSite: confirmOnSiteTitles(checkResult.evidence),
         jobId: loadedJob.current || undefined,
       })
+      if (loadedJob.current) {
+        updateJob(loadedJob.current, {
+          lastCheckedAt: runAt,
+          lastVerdict: checkResult.verdict,
+          lastSummary: checkResult.summary,
+          lastRetrievedAt: checkResult.retrievedAt || runAt,
+          lastSource: checkResult.source,
+          origin: checkResult.route.origin,
+          destination: checkResult.route.destination,
+          corridor: checkResult.route.corridor,
+        })
+      }
       setJobName(defaultJobName(routeFile, checkResult.route.origin, checkResult.route.destination, permit))
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to check route'

@@ -2692,6 +2692,20 @@ body, button, input, select, textarea {
   .topbar-divider {
     display: none !important;
   }
+
+  /* MapLibre zoom is a floating round control at the right edge and overlaps
+     the full-width legend / tab bar around 400px. Pinch-zoom still works. */
+  .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group,
+  .maplibregl-ctrl-top-right .maplibregl-ctrl-group,
+  .heatmap-zoom,
+  .leaflet-control-zoom {
+    display: none !important;
+  }
+
+  .maplibregl-ctrl-bottom-right {
+    bottom: calc(64px + var(--safe-area-inset-bottom)) !important;
+    right: 8px !important;
+  }
 }
 
 @media (min-width: 769px) {

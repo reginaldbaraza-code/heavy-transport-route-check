@@ -184,14 +184,39 @@ export function downloadCsv(snapshot: ExportSnapshot) {
   triggerDownload(blob, filename(snapshot, 'csv'))
 }
 
+/** jsPDF Helvetica is WinAnsi. Keep German umlauts; replace arrows and other Unicode. */
+export function sanitizePdfText(value: string | number | boolean | null | undefined): string {
+  let text = String(value ?? '')
+  text = text
+    .replace(/\u2192|\u21D2|\u2794|\u279C|\u27A1|\uFFEB/g, '->')
+    .replace(/\u2190|\u21D0/g, '<-')
+    .replace(/\u2013|\u2014|\u2212/g, '-')
+    .replace(/\u00D7/g, 'x')
+    .replace(/\u2026/g, '...')
+    .replace(/\u2018|\u2019/g, "'")
+    .replace(/\u201C|\u201D/g, '"')
+    .replace(/\u00A0/g, ' ')
+  // Keep Latin-1 (ä ö ü ß ·) and ASCII; drop the rest so jsPDF does not emit '!' or char spacing.
+  text = text.replace(/[^\t\n\r\x20-\x7E\u00A0-\u00FF]/g, '')
+  return text
+}
+
+function pdfText(doc: jsPDF, text: string | string[], x: number, y: number) {
+  doc.setCharSpace(0)
+  const value = Array.isArray(text) ? text.map(sanitizePdfText) : sanitizePdfText(text)
+  doc.text(value, x, y)
+}
+
 function wrap(doc: jsPDF, text: string, x: number, y: number, maxWidth: number, lineHeight = 5) {
-  const lines = doc.splitTextToSize(text || '—', maxWidth) as string[]
+  doc.setCharSpace(0)
+  const lines = doc.splitTextToSize(sanitizePdfText(text || '-'), maxWidth) as string[]
   doc.text(lines, x, y)
   return y + lines.length * lineHeight
 }
 
-export function downloadPdf(snapshot: ExportSnapshot) {
+export function createPdfDocument(snapshot: ExportSnapshot) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+  doc.setCharSpace(0)
   const margin = 16
   const width = 210 - margin * 2
   let y = 18
@@ -201,10 +226,10 @@ export function downloadPdf(snapshot: ExportSnapshot) {
   doc.setTextColor(255, 255, 255)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(16)
-  doc.text('Heavy transport route check', margin, 12)
+  pdfText(doc, 'Heavy transport route check', margin, 12)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(11)
-  doc.text(`${snapshot.verdict}  ·  ${snapshot.permitName}`, margin, 20)
+  pdfText(doc, `${snapshot.verdict}  ·  ${snapshot.permitName}`, margin, 20)
 
   y = 38
   doc.setTextColor(16, 24, 40)
@@ -237,17 +262,17 @@ export function downloadPdf(snapshot: ExportSnapshot) {
     const fy = y + 6 + row * 9
     doc.setFont('helvetica', 'bold')
     doc.setTextColor(71, 84, 103)
-    doc.text(fact[0], x, fy)
+    pdfText(doc, fact[0], x, fy)
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(16, 24, 40)
-    const lines = doc.splitTextToSize(fact[1], width / 2 - 10) as string[]
-    doc.text(lines[0] || '—', x, fy + 4)
+    const lines = doc.splitTextToSize(sanitizePdfText(fact[1]), width / 2 - 10) as string[]
+    pdfText(doc, lines[0] || '-', x, fy + 4)
   })
   y += 50
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(12)
-  doc.text('Evidence', margin, y)
+  pdfText(doc, 'Evidence', margin, y)
   y += 6
   doc.setFontSize(9)
 
@@ -262,7 +287,7 @@ export function downloadPdf(snapshot: ExportSnapshot) {
     doc.roundedRect(margin, y, width, blockHeight, 1.5, 1.5, 'FD')
     doc.setFont('helvetica', 'bold')
     doc.setTextColor(16, 24, 40)
-    doc.text(item.title.slice(0, 90), margin + 3, y + 5)
+    pdfText(doc, item.title.slice(0, 90), margin + 3, y + 5)
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(71, 84, 103)
     const meta = `${item.source} · start ${item.start} · retrieved ${item.retrieved} · ${item.confidence} · ${item.confirmOnSite ? 'confirm on site' : item.state}`
@@ -277,7 +302,7 @@ export function downloadPdf(snapshot: ExportSnapshot) {
   }
   doc.setFontSize(8)
   doc.setTextColor(102, 112, 133)
-  y = wrap(
+  wrap(
     doc,
     'Informational snapshot only. It does not grant permission to depart. Bridge and clearance remain a manual verify item. Monitoring while a tab is open does not replace on-site confirmation.',
     margin,
@@ -286,7 +311,15 @@ export function downloadPdf(snapshot: ExportSnapshot) {
     4,
   )
 
-  doc.save(filename(snapshot, 'pdf'))
+  return doc
+}
+
+export function pdfBytesFromSnapshot(snapshot: ExportSnapshot): ArrayBuffer {
+  return createPdfDocument(snapshot).output('arraybuffer')
+}
+
+export function downloadPdf(snapshot: ExportSnapshot) {
+  createPdfDocument(snapshot).save(filename(snapshot, 'pdf'))
 }
 
 export function downloadSnapshot(snapshot: ExportSnapshot, format: 'pdf' | 'csv') {
