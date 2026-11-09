@@ -34,8 +34,9 @@ const VERDICT_COLORS = {
   VERIFY: '#e59b24',
 };
 
-const EVIDENCE_COLORS = {
+const EVIDENCE_COLORS: Record<string, string> = {
   clear: '#12b76a',
+  info: '#64748b',
   warning: '#e59b24',
   danger: '#dc3f52',
   conflict: '#e59b24',
@@ -248,7 +249,7 @@ const RouteMapGL = forwardRef<RouteMapHandle, Props>(({
       el.style.width = '32px';
       el.style.height = '32px';
       el.style.borderRadius = '50%';
-      el.style.backgroundColor = EVIDENCE_COLORS[item.state];
+      el.style.backgroundColor = EVIDENCE_COLORS[item.state] || EVIDENCE_COLORS.info;
       el.style.border = '3px solid white';
       el.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.2)';
       el.style.cursor = 'pointer';

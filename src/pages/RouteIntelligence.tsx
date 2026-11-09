@@ -19,6 +19,7 @@ import {
 import { useRouteMonitoring } from '../context/RouteMonitoringContext'
 import { useJobs } from '../context/JobsContext'
 import { formatBerlinDateTime } from '../lib/formatTime'
+import type { RouteEvidence } from '../data/routeChecks'
 import { confirmOnSiteTitles, downloadSnapshot, snapshotFromResult } from '../lib/exportCheck'
 import {
   DEFAULT_MONITOR_PREFS,
@@ -28,6 +29,13 @@ import {
   fromLocalInput,
   toLocalInput,
 } from '../lib/jobs'
+import {
+  applySiteAcknowledgements,
+  isAcknowledgeable,
+  isHoldItem,
+  isNearbyOffRoute,
+  type SiteAcknowledgement,
+} from '../lib/siteAcknowledgements'
 
 const routeLayers = [
   { id: 'roadworks', label: 'Roadworks' },
@@ -56,8 +64,8 @@ export default function RouteIntelligencePolished() {
   const mapRef = useRef<RouteMapHandle>(null)
   const loadedPermit = useRef<string | null>(null)
   const [searchParams] = useSearchParams()
-  const { recordCheck } = useRouteMonitoring()
-  const { saveJob, getJob, prefs, requestNotifications } = useJobs()
+  const { recordCheck, patchHistory } = useRouteMonitoring()
+  const { saveJob, getJob, updateJob, prefs, requestNotifications } = useJobs()
   const [plannedDeparture, setPlannedDeparture] = useState(toLocalInput(defaultDepartureIso(8)))
   const [jobName, setJobName] = useState('')
   const [jobInterval, setJobInterval] = useState(prefs.intervalMinutes)
@@ -67,6 +75,8 @@ export default function RouteIntelligencePolished() {
   const [clearanceConfirmed, setClearanceConfirmed] = useState(false)
   const [clearanceBy, setClearanceBy] = useState('')
   const [confirmedAt, setConfirmedAt] = useState('')
+  const [acknowledgements, setAcknowledgements] = useState<SiteAcknowledgement[]>([])
+  const lastHistoryId = useRef<string | null>(null)
 
   const vehicle = {
     width: parseFloat(vehicleWidth) || 0,
@@ -84,7 +94,12 @@ export default function RouteIntelligencePolished() {
     setConfirmedAt(metadata?.confirmedAt || permit?.confirmedAt || (confirmed ? new Date().toISOString() : ''))
   }
 
-  const runCheck = async (content: string, metadata?: any, permitOverride?: TestPermit) => {
+  const runCheck = async (
+    content: string,
+    metadata?: any,
+    permitOverride?: TestPermit,
+    acks: SiteAcknowledgement[] = acknowledgements,
+  ) => {
     const dims = metadata?.vehicle ? {
       width: Number(metadata.vehicle.width),
       height: Number(metadata.vehicle.height),
@@ -128,13 +143,14 @@ export default function RouteIntelligencePolished() {
           ? (metadata?.confirmedAt || permitOverride.confirmedAt)
           : (metadata?.confirmedAt || confirmedAt || undefined),
         scenario: activePermit?.scenario,
+        acknowledgements: acks,
       })
       setResult(checkResult)
       setActiveLayer('roadworks')
       setStep('result')
       setToast(`Route checked: ${checkResult.verdict}`)
       const runAt = new Date().toISOString()
-      recordCheck({
+      const history = recordCheck({
         permitName: permit || routeFile || `${checkResult.route.origin} → ${checkResult.route.destination}`,
         routeLabel: `${checkResult.route.origin} → ${checkResult.route.destination}`,
         runAt,
@@ -152,7 +168,9 @@ export default function RouteIntelligencePolished() {
         evidence: checkResult.evidence,
         confirmOnSite: confirmOnSiteTitles(checkResult.evidence),
         jobId: loadedJob.current || undefined,
+        siteAcknowledgements: acks,
       })
+      lastHistoryId.current = history.id
       setJobName(defaultJobName(routeFile, checkResult.route.origin, checkResult.route.destination, permit))
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to check route'
@@ -173,6 +191,7 @@ export default function RouteIntelligencePolished() {
     setError('')
     setStep('vehicle')
     applyPermitClearance(permit)
+    setAcknowledgements([])
 
     try {
       const { gpxContent: content, metadata } = await loadTestPermit(permit)
@@ -267,6 +286,7 @@ export default function RouteIntelligencePolished() {
       setClearanceConfirmed(Boolean(job.bridgeClearanceConfirmed))
       setClearanceBy(job.clearanceConfirmedBy || '')
       setConfirmedAt(job.confirmedAt || '')
+      setAcknowledgements(job.siteAcknowledgements || [])
       if (searchParams.get('run') === '1') {
         void runCheck(job.gpxContent, {
           permitNumber: job.permitNumber,
@@ -275,7 +295,7 @@ export default function RouteIntelligencePolished() {
           bridgeClearanceConfirmed: job.bridgeClearanceConfirmed,
           clearanceConfirmedBy: job.clearanceConfirmedBy,
           confirmedAt: job.confirmedAt,
-        })
+        }, undefined, job.siteAcknowledgements || [])
       } else {
         setStep('vehicle')
       }
@@ -329,6 +349,8 @@ export default function RouteIntelligencePolished() {
     setClearanceConfirmed(false)
     setClearanceBy('')
     setConfirmedAt('')
+    setAcknowledgements([])
+    lastHistoryId.current = null
   }
 
   const handleSaveJob = () => {
@@ -346,32 +368,81 @@ export default function RouteIntelligencePolished() {
       plannedDeparture: fromLocalInput(plannedDeparture),
       monitorIntervalMinutes: jobInterval || prefs.intervalMinutes,
       lastCheckedAt: new Date().toISOString(),
-      lastVerdict: result?.verdict,
-      lastSummary: result?.summary,
+      lastVerdict: displayed?.verdict || result?.verdict,
+      lastSummary: displayed?.summary || result?.summary,
       lastRetrievedAt: result?.retrievedAt,
       lastSource: result?.source,
       monitoringStoppedReason: null,
       bridgeClearanceConfirmed: clearanceConfirmed,
       clearanceConfirmedBy: clearanceBy,
       confirmedAt: confirmedAt || (clearanceConfirmed ? new Date().toISOString() : undefined),
+      siteAcknowledgements: acknowledgements,
     }, loadedJob.current || undefined)
     loadedJob.current = saved.id
     setShowSaveJob(false)
     setToast('Job saved in this browser only.')
   }
 
-  const exportCurrent = (format: 'pdf' | 'csv') => {
+  const displayed = result
+    ? applySiteAcknowledgements(result, acknowledgements, clearanceConfirmed)
+    : null
+
+  const confirmOnSite = (ids: string[]) => {
     if (!result) return
-    downloadSnapshot(snapshotFromResult(result, {
+    const name = clearanceBy.trim() || 'Dispatcher'
+    if (!clearanceBy.trim()) setClearanceBy(name)
+    const at = new Date().toISOString()
+    const next = [...acknowledgements]
+    let skippedHold = 0
+    let added = 0
+    for (const id of ids) {
+      const item = result.evidence.find(entry => entry.id === id)
+      if (!item) continue
+      if (isHoldItem(item)) {
+        skippedHold += 1
+        continue
+      }
+      if (!isAcknowledgeable(item) || next.some(ack => ack.evidenceId === id)) continue
+      next.push({ evidenceId: id, acknowledgedBy: name, acknowledgedAt: at })
+      added += 1
+    }
+    if (!added) {
+      setToast(skippedHold ? 'HOLD items cannot be acknowledged away.' : 'No VERIFY items left to confirm.')
+      return
+    }
+    setAcknowledgements(next)
+    const overlaid = applySiteAcknowledgements(result, next, clearanceConfirmed)
+    if (lastHistoryId.current) {
+      patchHistory(lastHistoryId.current, {
+        verdict: overlaid.verdict,
+        title: overlaid.title,
+        summary: overlaid.summary,
+        evidence: overlaid.evidence,
+        siteAcknowledgements: next,
+      })
+    }
+    if (loadedJob.current) {
+      updateJob(loadedJob.current, {
+        siteAcknowledgements: next,
+        lastVerdict: overlaid.verdict,
+        lastSummary: overlaid.summary,
+      })
+    }
+    setToast(overlaid.verdict === 'READY' ? overlaid.title : `Confirmed ${added} item${added === 1 ? '' : 's'} on site`)
+  }
+
+  const exportCurrent = (format: 'pdf' | 'csv') => {
+    if (!displayed) return
+    downloadSnapshot(snapshotFromResult(displayed, {
       permitNumber,
       permitName: routeFile || permitNumber,
       vehicle,
-      runAt: result.retrievedAt,
+      runAt: displayed.retrievedAt,
     }), format)
   }
 
-  const VerdictIcon = result?.verdict === 'READY' ? CheckCircle2 
-    : result?.verdict === 'HOLD' ? CircleX 
+  const VerdictIcon = displayed?.verdict === 'READY' ? CheckCircle2 
+    : displayed?.verdict === 'HOLD' ? CircleX 
     : AlertTriangle
 
   const verdictConfig = {
@@ -392,7 +463,10 @@ export default function RouteIntelligencePolished() {
     },
   }
 
-  const currentVerdict = result ? verdictConfig[result.verdict] : null
+  const currentVerdict = displayed ? verdictConfig[displayed.verdict] : null
+  const primaryEvidence = displayed?.evidence.filter(item => !isNearbyOffRoute(item)) || []
+  const nearbyOffRoute = displayed?.evidence.filter(isNearbyOffRoute) || []
+  const pendingVerify = primaryEvidence.filter(item => isAcknowledgeable(item) && !item.acknowledgedAt)
 
   return (
     <div className="route-page-polished">
@@ -699,7 +773,7 @@ export default function RouteIntelligencePolished() {
         )}
 
         {/* Step 3: Results */}
-        {result && !checking && currentVerdict && (
+        {displayed && !checking && currentVerdict && (
           <>
             {/* Verdict Banner */}
             <div className={`verdict-banner verdict-${currentVerdict.color}`}>
@@ -708,25 +782,25 @@ export default function RouteIntelligencePolished() {
               </div>
               <div className="verdict-content">
                 <div className="verdict-label">{currentVerdict.label}</div>
-                <h2>{result.title}</h2>
-                <p>{currentVerdict.description}</p>
-                {result.degraded && (
+                <h2>{displayed.title}</h2>
+                <p>{displayed.summary || currentVerdict.description}</p>
+                {displayed.degraded && (
                   <div className="degraded-notice">
                     <AlertTriangle size={16} />
                     <span>Data source temporarily unavailable – verify manually</span>
                   </div>
                 )}
-                {result.mode === 'simulated' && (
+                {displayed.mode === 'simulated' && (
                   <div className="scenario-banner">Simulated — not live data</div>
                 )}
                 {(() => {
                   const permit = testPermits.find(item => item.id === activePermitId)
                   if (!permit?.expectedVerdict) return null
-                  const matched = result.verdict === permit.expectedVerdict
+                  const matched = displayed.verdict === permit.expectedVerdict
                   return (
                     <div className={`outcome-match ${matched ? 'matched' : 'differed'}`}>
                       Expected {permit.expectedVerdict}
-                      {matched ? ' — actual matched' : ` — actual ${result.verdict}${permit.liveMayDiffer ? ' (live data may differ)' : ''}`}
+                      {matched ? ' — actual matched' : ` — actual ${displayed.verdict}${permit.liveMayDiffer ? ' (live data may differ)' : ''}`}
                     </div>
                   )
                 })()}
@@ -791,11 +865,11 @@ export default function RouteIntelligencePolished() {
               <div className="results-main">
                 <RouteMapGL
                   ref={mapRef}
-                  coordinates={result.route.coordinates}
-                  origin={result.route.origin}
-                  destination={result.route.destination}
-                  evidence={result.evidence}
-                  verdict={result.verdict}
+                  coordinates={displayed.route.coordinates}
+                  origin={displayed.route.origin}
+                  destination={displayed.route.destination}
+                  evidence={displayed.evidence}
+                  verdict={displayed.verdict}
                   activeLayer={activeLayer}
                   layers={routeLayers}
                   onLayerChange={setActiveLayer}
@@ -807,62 +881,65 @@ export default function RouteIntelligencePolished() {
                 <div className="results-summary">
                   <h3>Route details</h3>
                   <div className="summary-grid">
-                    <div><span>Origin</span><strong>{result.route.origin}</strong></div>
-                    <div><span>Destination</span><strong>{result.route.destination}</strong></div>
-                    <div><span>Distance</span><strong>{result.route.distance} km</strong></div>
-                    <div><span>Evidence found</span><strong>{result.evidence.length}</strong></div>
-                    <div><span>Retrieved</span><strong>{formatBerlinDateTime(result.retrievedAt) || 'Just now'}</strong></div>
-                    <div><span>Source</span><strong>{result.source || 'Autobahn GmbH'}</strong></div>
+                    <div><span>Origin</span><strong>{displayed.route.origin}</strong></div>
+                    <div><span>Destination</span><strong>{displayed.route.destination}</strong></div>
+                    <div><span>Distance</span><strong>{displayed.route.distance} km</strong></div>
+                    <div><span>Evidence found</span><strong>{displayed.evidence.length}</strong></div>
+                    <div><span>Retrieved</span><strong>{formatBerlinDateTime(displayed.retrievedAt) || 'Just now'}</strong></div>
+                    <div><span>Source</span><strong>{displayed.source || 'Autobahn GmbH'}</strong></div>
                   </div>
                 </div>
 
                 <div className="evidence-section">
                   <h3>
-                    Evidence ({result.evidence.length})
+                    Evidence ({displayed.evidence.length})
                   </h3>
-                  <div className="evidence-list">
-                    {result.evidence.map(item => (
-                      <div 
-                        key={item.id} 
-                        className={`evidence-card evidence-${item.state}`}
-                        onClick={() => item.lat != null && item.lng != null && mapRef.current?.flyToEvidence(item)}
-                        style={{ cursor: item.lat != null && item.lng != null ? 'pointer' : 'default' }}
+                  {pendingVerify.length > 0 && (
+                    <div className="confirm-on-site-bar">
+                      <label>
+                        <span>Dispatcher name</span>
+                        <input
+                          value={clearanceBy}
+                          onChange={event => setClearanceBy(event.target.value)}
+                          placeholder="Name stored with each confirmation"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        onClick={() => confirmOnSite(pendingVerify.map(item => item.id))}
                       >
-                        <div className="evidence-header">
-                          <strong>{item.title}</strong>
-                          <span className={`confidence-badge confidence-${String(item.confidence).toLowerCase()}`}>
-                            {String(item.confidence).toLowerCase() === 'high' ? 'High confidence' : 'Medium confidence'}
-                          </span>
-                        </div>
-                        <p>{item.detail}</p>
-                        {(item.reason || item.distanceKm != null) && (
-                          <p className="evidence-reason">
-                            {item.distanceKm != null && (
-                              <span className="evidence-distance">{item.distanceKm.toFixed(2)} km from route · </span>
-                            )}
-                            {item.reason}
-                          </p>
-                        )}
-                        <div className="evidence-meta">
-                          <span>{item.source}</span>
-                          <span>·</span>
-                          <span>{item.startTimestamp ? `Started ${formatBerlinDateTime(item.startTimestamp)}` : 'Start not published'}</span>
-                          {item.endTimestamp && (
-                            <>
-                              <span>·</span>
-                              <span>Until {formatBerlinDateTime(item.endTimestamp)}</span>
-                            </>
-                          )}
-                          <span>·</span>
-                          <span>Retrieved {formatBerlinDateTime(item.retrievedAt || result.retrievedAt) || 'just now'}</span>
-                          {item.longRunning && <span className="evidence-long-running">Long-running / verify on site</span>}
-                          {item.lat != null && item.lng != null && (
-                            <span style={{ marginLeft: 'auto', fontSize: '12px', opacity: 0.6 }}>📍 Click to view</span>
-                          )}
-                        </div>
-                      </div>
+                        Confirm remaining VERIFY on site ({pendingVerify.length})
+                      </button>
+                    </div>
+                  )}
+                  <div className="evidence-list">
+                    {primaryEvidence.map(item => (
+                      <EvidenceCard
+                        key={item.id}
+                        item={item}
+                        retrievedAt={displayed.retrievedAt}
+                        onFly={() => item.lat != null && item.lng != null && mapRef.current?.flyToEvidence(item)}
+                        onConfirm={() => confirmOnSite([item.id])}
+                      />
                     ))}
                   </div>
+                  {nearbyOffRoute.length > 0 && (
+                    <details className="nearby-off-route-group">
+                      <summary>Nearby, not on route ({nearbyOffRoute.length})</summary>
+                      <p className="nearby-off-route-note">Other Autobahn, off-corridor ramps/AS, or BW state roads more than 0.5 km from the GPX line. Informational only — they do not block READY.</p>
+                      <div className="evidence-list">
+                        {nearbyOffRoute.map(item => (
+                          <EvidenceCard
+                            key={item.id}
+                            item={item}
+                            retrievedAt={displayed.retrievedAt}
+                            onFly={() => item.lat != null && item.lng != null && mapRef.current?.flyToEvidence(item)}
+                          />
+                        ))}
+                      </div>
+                    </details>
+                  )}
                 </div>
               </div>
             </div>
@@ -872,7 +949,13 @@ export default function RouteIntelligencePolished() {
               <button type="button" className="btn-secondary" onClick={resetFlow}>
                 Re-check
               </button>
-              <button type="button" className="btn-primary" onClick={() => setToast('Site confirmation feature coming soon')}>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => pendingVerify.length
+                  ? confirmOnSite(pendingVerify.map(item => item.id))
+                  : setToast(displayed.verdict === 'HOLD' ? 'HOLD items cannot be acknowledged away.' : 'No VERIFY items left to confirm.')}
+              >
                 Confirm on site
               </button>
             </div>
@@ -881,6 +964,79 @@ export default function RouteIntelligencePolished() {
       </div>
 
       {toast && <Toast message={toast} tone="info" onClose={() => setToast('')} />}
+    </div>
+  )
+}
+
+function EvidenceCard({
+  item,
+  retrievedAt,
+  onFly,
+  onConfirm,
+}: {
+  item: RouteEvidence
+  retrievedAt?: string
+  onFly: () => void
+  onConfirm?: () => void
+}) {
+  const canConfirm = onConfirm && isAcknowledgeable(item) && !item.acknowledgedAt
+  const holdLocked = isHoldItem(item)
+  return (
+    <div
+      className={`evidence-card evidence-${item.state}`}
+      onClick={() => item.lat != null && item.lng != null && onFly()}
+      style={{ cursor: item.lat != null && item.lng != null ? 'pointer' : 'default' }}
+    >
+      <div className="evidence-header">
+        <strong>{item.title}</strong>
+        <span className={`confidence-badge confidence-${String(item.confidence).toLowerCase()}`}>
+          {String(item.confidence).toLowerCase() === 'high' ? 'High confidence' : 'Medium confidence'}
+        </span>
+      </div>
+      <p>{item.detail}</p>
+      {(item.reason || item.distanceKm != null) && (
+        <p className="evidence-reason">
+          {item.distanceKm != null && (
+            <span className="evidence-distance">{item.distanceKm.toFixed(2)} km from route · </span>
+          )}
+          {item.reason}
+        </p>
+      )}
+      <div className="evidence-meta">
+        <span>{item.source}</span>
+        <span>·</span>
+        <span>{item.startTimestamp ? `Started ${formatBerlinDateTime(item.startTimestamp)}` : 'Start not published'}</span>
+        {item.endTimestamp && (
+          <>
+            <span>·</span>
+            <span>Until {formatBerlinDateTime(item.endTimestamp)}</span>
+          </>
+        )}
+        <span>·</span>
+        <span>Retrieved {formatBerlinDateTime(item.retrievedAt || retrievedAt) || 'just now'}</span>
+        {item.longRunning && <span className="evidence-long-running">Long-running / verify on site</span>}
+        {item.lat != null && item.lng != null && (
+          <span style={{ marginLeft: 'auto', fontSize: '12px', opacity: 0.6 }}>📍 Click to view</span>
+        )}
+      </div>
+      {item.acknowledgedBy && (
+        <p className="evidence-ack">Confirmed on site by {item.acknowledgedBy} · {formatBerlinDateTime(item.acknowledgedAt)}</p>
+      )}
+      {canConfirm && (
+        <button
+          type="button"
+          className="btn-secondary evidence-confirm-btn"
+          onClick={event => {
+            event.stopPropagation()
+            onConfirm?.()
+          }}
+        >
+          Confirm on site
+        </button>
+      )}
+      {holdLocked && (
+        <p className="evidence-hold-lock">HOLD items cannot be acknowledged away.</p>
+      )}
     </div>
   )
 }

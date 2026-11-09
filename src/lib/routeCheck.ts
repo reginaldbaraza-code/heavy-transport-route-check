@@ -34,6 +34,11 @@ export type RouteCheckOptions = {
   clearanceConfirmedBy?: string;
   confirmedAt?: string;
   scenario?: string;
+  acknowledgements?: Array<{
+    evidenceId: string;
+    acknowledgedBy: string;
+    acknowledgedAt: string;
+  }>;
 };
 
 export type TestPermitKind = 'live' | 'scenario';

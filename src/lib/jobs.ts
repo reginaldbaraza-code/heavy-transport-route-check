@@ -31,6 +31,11 @@ export type SavedJob = {
   bridgeClearanceConfirmed?: boolean
   clearanceConfirmedBy?: string
   confirmedAt?: string
+  siteAcknowledgements?: Array<{
+    evidenceId: string
+    acknowledgedBy: string
+    acknowledgedAt: string
+  }>
 }
 
 export type MonitorPrefs = {
@@ -95,6 +100,7 @@ export function applyCheckToJob(job: SavedJob, result: RouteCheckResult, nowIso:
     destination: result.route.destination || job.destination,
     corridor: result.route.corridor || job.corridor,
     monitoringStoppedReason: departed ? 'departed' : null,
+    siteAcknowledgements: job.siteAcknowledgements,
   }
 }
 

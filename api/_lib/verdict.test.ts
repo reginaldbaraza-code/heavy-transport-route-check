@@ -12,6 +12,7 @@ import {
   distanceToRouteKm,
   extractHardWidthLimit,
   inferPermittedRoads,
+  isAcknowledgeable,
   routeLineFromPoints,
   startsAfterWindow,
   type CandidateInput,
@@ -76,7 +77,8 @@ test('distance: HOLD-eligible only within 0.5 km; 0.5-1.5 nearby VERIFY; farther
   assert.ok((nearby.distanceKm || 0) > HOLD_DISTANCE_KM)
   assert.ok((nearby.distanceKm || 0) <= VERIFY_DISTANCE_KM)
   assert.equal(nearby.state, 'warning')
-  assert.match(nearby.reason, /Nearby/)
+  assert.equal(nearby.blocker, true)
+  assert.match(nearby.reason, /permitted corridor|VERIFY nearby/)
 
   const far = classifyCandidate(candidate({
     lat: 53.2,
@@ -255,6 +257,105 @@ test('departure window defaults to now plus 24h', () => {
   const now = Date.parse('2026-11-09T13:00:00Z')
   const win = departureWindow({ nowMs: now })
   assert.equal(win.endMs - win.startMs, 24 * 60 * 60 * 1000)
+})
+
+test('off-route nearby items are info, not VERIFY blockers', () => {
+  const nearbyPoint = turfOffset(line, 0.9)
+  const other = classifyCandidate(candidate({
+    road: 'A27',
+    title: 'Vollsperrung A27',
+    description: 'Vollsperrung A27',
+    category: 'closures',
+    isBlocked: true,
+    lat: nearbyPoint.lat,
+    lng: nearbyPoint.lng,
+  }), baseCtx)
+  assert.ok(other)
+  assert.equal(other.state, 'info')
+  assert.equal(other.blocker, false)
+  assert.match(other.reason, /not on route/)
+
+  const bw = classifyCandidate(candidate({
+    isBw: true,
+    category: 'bw',
+    title: 'B14 ROAD_CLOSED',
+    description: 'ROAD_CLOSED Stuttgart',
+    road: 'B14',
+    lat: nearbyPoint.lat,
+    lng: nearbyPoint.lng,
+  }), baseCtx)
+  assert.equal(bw?.state, 'info')
+  assert.equal(bw?.blocker, false)
+
+  const rampOther = classifyCandidate(candidate({
+    road: 'A261',
+    title: 'AS Marmstorf Auffahrt',
+    description: 'Sperrung der Auffahrt AS Marmstorf A261',
+    category: 'closures',
+    isBlocked: true,
+    lat: nearbyPoint.lat,
+    lng: nearbyPoint.lng,
+  }), baseCtx)
+  assert.equal(rampOther?.state, 'info')
+  assert.equal(rampOther?.blocker, false)
+
+  const ready = determineVerdict([
+    { id: 'off-route', state: 'info', blocker: false, category: 'closures' },
+    { id: 'route-clear', state: 'clear', blocker: false, category: 'roadworks' },
+  ], { clearanceConfirmed: true })
+  assert.equal(ready.verdict, 'READY')
+})
+
+test('unclear geometry stays VERIFY, never HOLD', () => {
+  const item = classifyCandidate(candidate({
+    title: 'Vollsperrung A7',
+    description: 'Vollsperrung beide Richtungen',
+    category: 'closures',
+    isBlocked: true,
+    lat: undefined,
+    lng: undefined,
+  }), baseCtx)
+  assert.ok(item)
+  assert.equal(item.state, 'warning')
+  assert.match(item.reason, /unclear/i)
+})
+
+test('dispatcher acknowledgements can clear VERIFY but never HOLD', () => {
+  const verifyItem = { id: 'nearby-a7', state: 'warning' as const, blocker: true, category: 'closures' as const }
+  const holdItem = { id: 'hold-a7', state: 'danger' as const, blocker: true, category: 'closures' as const }
+  assert.equal(isAcknowledgeable(verifyItem), true)
+  assert.equal(isAcknowledgeable(holdItem), false)
+
+  const stillVerify = determineVerdict([verifyItem], {
+    clearanceConfirmed: true,
+    acknowledgements: [],
+  })
+  assert.equal(stillVerify.verdict, 'VERIFY')
+
+  const ready = determineVerdict([verifyItem, {
+    id: 'info-off', state: 'info', blocker: false, category: 'roadworks',
+  }], {
+    clearanceConfirmed: true,
+    acknowledgements: [{ evidenceId: 'nearby-a7', acknowledgedBy: 'Ada', acknowledgedAt: '2026-11-09T12:00:00Z' }],
+  })
+  assert.equal(ready.verdict, 'READY')
+  assert.equal(ready.acknowledgedCount, 1)
+  assert.match(ready.reasons.join(' '), /Dispatcher confirmed 1/)
+
+  const hold = determineVerdict([holdItem, verifyItem], {
+    clearanceConfirmed: true,
+    acknowledgements: [
+      { evidenceId: 'hold-a7', acknowledgedBy: 'Ada', acknowledgedAt: '2026-11-09T12:00:00Z' },
+      { evidenceId: 'nearby-a7', acknowledgedBy: 'Ada', acknowledgedAt: '2026-11-09T12:00:00Z' },
+    ],
+  })
+  assert.equal(hold.verdict, 'HOLD')
+
+  const noClearance = determineVerdict([verifyItem], {
+    clearanceConfirmed: false,
+    acknowledgements: [{ evidenceId: 'nearby-a7', acknowledgedBy: 'Ada', acknowledgedAt: '2026-11-09T12:00:00Z' }],
+  })
+  assert.equal(noClearance.verdict, 'VERIFY')
 })
 
 test('distance helper returns ~0 on the line', () => {

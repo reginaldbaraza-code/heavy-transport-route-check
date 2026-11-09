@@ -24,6 +24,11 @@ export type CheckHistoryRecord = {
   evidence?: RouteEvidence[]
   confirmOnSite?: string[]
   jobId?: string
+  siteAcknowledgements?: Array<{
+    evidenceId: string
+    acknowledgedBy: string
+    acknowledgedAt: string
+  }>
 }
 
 export type MonitoringAlert = {
@@ -100,6 +105,7 @@ type RouteMonitoringValue = {
   onSiteReports: Record<string, RouteEvidence[]>
   onSiteOutcomes: Record<string, OnSiteOutcome | undefined>
   recordCheck: (record: Omit<CheckHistoryRecord, 'id'> & { id?: string }) => CheckHistoryRecord
+  patchHistory: (id: string, patch: Partial<CheckHistoryRecord>) => void
   addAlert: (alert: NewAlertInput) => MonitoringAlert
   markAlertEscalated: (id: string) => void
   acknowledgeAlert: (id: string) => void
@@ -136,6 +142,14 @@ export function RouteMonitoringProvider({ children }: { children: ReactNode }) {
       return next
     })
     return saved
+  }, [])
+
+  const patchHistory = useCallback<RouteMonitoringValue['patchHistory']>((id, patch) => {
+    setHistory(current => {
+      const next = current.map(item => item.id === id ? { ...item, ...patch } : item)
+      writeJson(STORAGE_KEYS.checkHistory, next)
+      return next
+    })
   }, [])
 
   const addAlert = useCallback<RouteMonitoringValue['addAlert']>(alert => {
@@ -231,6 +245,7 @@ export function RouteMonitoringProvider({ children }: { children: ReactNode }) {
     onSiteReports,
     onSiteOutcomes,
     recordCheck,
+    patchHistory,
     addAlert,
     markAlertEscalated,
     acknowledgeAlert,
@@ -238,7 +253,7 @@ export function RouteMonitoringProvider({ children }: { children: ReactNode }) {
     simulateNewDisruption,
     clearDisruption,
     addOnSiteReport,
-  }), [acknowledgeAlert, addAlert, alerts, disruptions, history, markAlertEscalated, onSiteOutcomes, onSiteReports, recordCheck, resolveAlert])
+  }), [acknowledgeAlert, addAlert, alerts, disruptions, history, markAlertEscalated, onSiteOutcomes, onSiteReports, patchHistory, recordCheck, resolveAlert])
 
   return <RouteMonitoringContext.Provider value={value}>{children}</RouteMonitoringContext.Provider>
 }

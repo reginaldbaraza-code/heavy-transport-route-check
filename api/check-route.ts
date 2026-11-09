@@ -27,6 +27,7 @@ import {
   verdictCopy,
   type CandidateInput,
   type ClassifiedEvidence,
+  type SiteAcknowledgement,
 } from './_lib/verdict.js';
 
 export const config = {
@@ -54,7 +55,7 @@ type RouteEvidence = {
   source: string;
   age: string;
   confidence: 'high' | 'medium';
-  state: 'clear' | 'warning' | 'danger';
+  state: 'clear' | 'info' | 'warning' | 'danger';
   category: 'roadworks' | 'closures' | 'observations';
   lat?: number;
   lng?: number;
@@ -388,6 +389,20 @@ function pushClassified(
   if (item) collected.push(item);
 }
 
+function parseAcknowledgements(value: unknown): SiteAcknowledgement[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap(item => {
+    if (!item || typeof item !== 'object') return [];
+    const row = item as { evidenceId?: unknown; acknowledgedBy?: unknown; acknowledgedAt?: unknown };
+    if (typeof row.evidenceId !== 'string' || !row.evidenceId) return [];
+    return [{
+      evidenceId: row.evidenceId,
+      acknowledgedBy: typeof row.acknowledgedBy === 'string' ? row.acknowledgedBy : 'Dispatcher',
+      acknowledgedAt: typeof row.acknowledgedAt === 'string' ? row.acknowledgedAt : isoNow(),
+    }];
+  });
+}
+
 export default async function handler(
   req: VercelRequest,
   res: VercelResponse
@@ -419,6 +434,7 @@ export default async function handler(
       clearanceConfirmedBy,
       confirmedAt,
       scenario,
+      acknowledgements,
     } = req.body;
 
     if (!gpxContent) {
@@ -471,15 +487,20 @@ export default async function handler(
       nowMs: Date.now(),
     };
     const clearanceConfirmed = Boolean(bridgeClearanceConfirmed);
+    const siteAcknowledgements = parseAcknowledgements(acknowledgements);
 
     if (isScenarioId(scenario)) {
       const fixture = SCENARIOS[scenario];
       const classified = fixture.evidence;
-      const decided = determineVerdict(classified, { clearanceConfirmed: fixture.clearanceConfirmed });
+      const decided = determineVerdict(classified, {
+        clearanceConfirmed: fixture.clearanceConfirmed,
+        acknowledgements: siteAcknowledgements,
+      });
       const copy = verdictCopy(decided.verdict, {
         issueCount: classified.filter(item => item.state === 'danger').length,
         distanceKm: distance,
         clearanceConfirmed: fixture.clearanceConfirmed,
+        acknowledgedCount: decided.acknowledgedCount,
       });
       return res.status(200).json({
         verdict: decided.verdict,
@@ -680,7 +701,7 @@ export default async function handler(
     }
 
     let uniqueClassified = dedupeClassified(classified).sort((a, b) => {
-      const rank = { danger: 0, warning: 1, clear: 2 };
+      const rank = { danger: 0, warning: 1, info: 2, clear: 3 };
       return rank[a.state] - rank[b.state];
     });
 
@@ -737,13 +758,18 @@ export default async function handler(
       const stamps = timestampFields(item);
       return toRouteEvidence(item, stamps.age);
     });
-    const decided = determineVerdict(uniqueClassified, { degraded, clearanceConfirmed });
+    const decided = determineVerdict(uniqueClassified, {
+      degraded,
+      clearanceConfirmed,
+      acknowledgements: siteAcknowledgements,
+    });
     const issueCount = uniqueEvidence.filter(item => item.state === 'danger').length;
     const copy = verdictCopy(decided.verdict, {
       degraded,
       issueCount,
       distanceKm: distance,
       clearanceConfirmed,
+      acknowledgedCount: decided.acknowledgedCount,
     });
 
     const result: RouteCheckResult = {

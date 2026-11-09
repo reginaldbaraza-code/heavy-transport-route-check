@@ -184,6 +184,7 @@ export function JobsProvider({ children }: { children: ReactNode }) {
         bridgeClearanceConfirmed: job.bridgeClearanceConfirmed,
         clearanceConfirmedBy: job.clearanceConfirmedBy,
         confirmedAt: job.confirmedAt,
+        acknowledgements: job.siteAcknowledgements,
       })
       applyResult(job, result, job.lastVerdict && job.lastVerdict !== result.verdict ? 'verdict-change' : 'check')
       return result

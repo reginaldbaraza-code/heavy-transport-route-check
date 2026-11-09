@@ -8,7 +8,13 @@ export type VehicleDimensions = {
   grossWeight: number
 }
 
-export type EvidenceState = 'clear' | 'warning' | 'danger'
+export type EvidenceState = 'clear' | 'info' | 'warning' | 'danger'
+
+export type SiteAcknowledgement = {
+  evidenceId: string
+  acknowledgedBy: string
+  acknowledgedAt: string
+}
 export type LocationKind = 'mainline' | 'ramp' | 'parking' | 'unknown'
 export type TravelDirection = 'with' | 'against' | 'unknown' | 'both'
 
@@ -238,6 +244,7 @@ export function classifyCandidate(input: CandidateInput, ctx: ClassifyContext): 
   const direction = parseTravelDirection(text)
   const { road, offPermit } = roadMatchesPermit(input, ctx.permittedRoads)
   const nearby = distanceKm != null && distanceKm > HOLD_DISTANCE_KM
+  const unclearGeometry = distanceKm == null
   const dims = dimDecision(ctx.vehicle, input)
   const fullClosure = isFullMainlineClosure(input, kind)
   const bw = Boolean(input.isBw || input.category === 'bw')
@@ -247,8 +254,10 @@ export function classifyCandidate(input: CandidateInput, ctx: ClassifyContext): 
     && !input.endTimestamp
     && ctx.nowMs - startedAt > 90 * 24 * 60 * 60 * 1000
   )
+  const notOnPermittedRoad = offPermit || bw
 
   const holdEligible = !nearby
+    && !unclearGeometry
     && kind === 'mainline'
     && !offPermit
     && direction !== 'against'
@@ -269,10 +278,17 @@ export function classifyCandidate(input: CandidateInput, ctx: ClassifyContext): 
       : 'Lorry parking on corridor — informational.'
     blocker = false
     title = input.title
-  } else if (nearby) {
+  } else if (nearby && notOnPermittedRoad) {
+    state = 'info'
+    blocker = false
+    reason = `Nearby, not on route (${distanceKm?.toFixed(1)} km). Other Autobahn, off-corridor ramp/AS, or BW state road — shown for context, not a VERIFY blocker.`
+    title = `${input.title} (nearby, not on route)`
+  } else if (nearby || unclearGeometry) {
     state = 'warning'
-    reason = `Nearby (${distanceKm?.toFixed(1)} km from route), not on the permitted line of travel.`
-    title = `${input.title} (nearby)`
+    reason = unclearGeometry
+      ? 'Geometry is unclear (no coordinates) — VERIFY, do not HOLD.'
+      : `On the permitted corridor ${distanceKm?.toFixed(1)} km from the GPX line — VERIFY nearby.`
+    title = unclearGeometry ? `${input.title} (unclear geometry)` : `${input.title} (nearby)`
   } else if (kind === 'ramp' || kind === 'parking') {
     state = 'warning'
     reason = kind === 'ramp'
@@ -321,7 +337,7 @@ export function classifyCandidate(input: CandidateInput, ctx: ClassifyContext): 
     reason = 'Works on or near the permitted corridor — not a confirmed mainline block.'
   }
 
-  if (state === 'clear') blocker = false
+  if (state === 'clear' || state === 'info') blocker = false
   if (state === 'danger') blocker = true
 
   const detail = [input.description, reason].filter(Boolean).join(' · ')
@@ -347,7 +363,7 @@ export function classifyCandidate(input: CandidateInput, ctx: ClassifyContext): 
   }
 }
 
-const SEVERITY_RANK: Record<EvidenceState, number> = { danger: 3, warning: 2, clear: 1 }
+const SEVERITY_RANK: Record<EvidenceState, number> = { danger: 4, warning: 3, info: 2, clear: 1 }
 
 export function dedupeClassified(items: ClassifiedEvidence[], maxKm = DEDUPE_KM): ClassifiedEvidence[] {
   const kept: ClassifiedEvidence[] = []
@@ -378,13 +394,31 @@ export function isSystemNote(id: string) {
   return /^(mia-snapshot-|mia-deduped|bw-deduped|bw-unavailable|route-clear|bridge-clearance-|system-error)/.test(id)
 }
 
+export function isAcknowledgeable(
+  item: Pick<ClassifiedEvidence, 'id' | 'state' | 'blocker'>,
+): boolean {
+  if (item.state === 'danger') return false
+  if (item.state !== 'warning' || item.blocker === false) return false
+  return !isSystemNote(item.id)
+}
+
 export function determineVerdict(
   evidence: Array<Pick<ClassifiedEvidence, 'id' | 'state' | 'blocker' | 'category'>>,
-  opts: { degraded?: boolean; clearanceConfirmed?: boolean } = {},
-): { verdict: 'READY' | 'HOLD' | 'VERIFY'; confidence: 'high' | 'medium'; reasons: string[] } {
+  opts: {
+    degraded?: boolean
+    clearanceConfirmed?: boolean
+    acknowledgements?: SiteAcknowledgement[]
+  } = {},
+): {
+  verdict: 'READY' | 'HOLD' | 'VERIFY'
+  confidence: 'high' | 'medium'
+  reasons: string[]
+  acknowledgedCount: number
+} {
   const reasons: string[] = []
+  const ackIds = new Set((opts.acknowledgements || []).map(item => item.evidenceId))
   if (opts.degraded) {
-    return { verdict: 'VERIFY', confidence: 'medium', reasons: ['Live Autobahn source unavailable.'] }
+    return { verdict: 'VERIFY', confidence: 'medium', reasons: ['Live Autobahn source unavailable.'], acknowledgedCount: 0 }
   }
   const hold = evidence.filter(item => item.state === 'danger')
   if (hold.length) {
@@ -392,25 +426,43 @@ export function determineVerdict(
       verdict: 'HOLD',
       confidence: 'high',
       reasons: [`${hold.length} confirmed mainline block${hold.length === 1 ? '' : 's'} on the permitted carriageway.`],
+      acknowledgedCount: 0,
     }
   }
-  const verifyBlockers = evidence.filter(item => item.state === 'warning' && item.blocker !== false && !isSystemNote(item.id))
+  const acknowledgeable = evidence.filter(item => isAcknowledgeable(item))
+  const verifyBlockers = acknowledgeable.filter(item => !ackIds.has(item.id))
+  const acknowledgedCount = acknowledgeable.filter(item => ackIds.has(item.id)).length
   const clearanceMissing = !opts.clearanceConfirmed
   if (verifyBlockers.length) reasons.push(`${verifyBlockers.length} unresolved VERIFY item${verifyBlockers.length === 1 ? '' : 's'}.`)
   if (clearanceMissing) reasons.push('Bridge and clearance are not dispatcher-confirmed.')
   if (verifyBlockers.length || clearanceMissing) {
-    return { verdict: 'VERIFY', confidence: 'medium', reasons }
+    return { verdict: 'VERIFY', confidence: 'medium', reasons, acknowledgedCount }
+  }
+  if (acknowledgedCount) {
+    return {
+      verdict: 'READY',
+      confidence: 'high',
+      reasons: [`Dispatcher confirmed ${acknowledgedCount} item${acknowledgedCount === 1 ? '' : 's'}.`],
+      acknowledgedCount,
+    }
   }
   return {
     verdict: 'READY',
     confidence: 'high',
     reasons: ['No confirmed mainline block, no unresolved VERIFY items, and clearance is confirmed.'],
+    acknowledgedCount: 0,
   }
 }
 
 export function verdictCopy(
   verdict: 'READY' | 'HOLD' | 'VERIFY',
-  opts: { degraded?: boolean; issueCount: number; distanceKm: number; clearanceConfirmed?: boolean },
+  opts: {
+    degraded?: boolean
+    issueCount: number
+    distanceKm: number
+    clearanceConfirmed?: boolean
+    acknowledgedCount?: number
+  },
 ) {
   if (verdict === 'HOLD') {
     return {
@@ -425,6 +477,13 @@ export function verdictCopy(
     }
   }
   if (verdict === 'READY') {
+    const confirmed = opts.acknowledgedCount || 0
+    if (confirmed) {
+      return {
+        title: `READY – dispatcher confirmed ${confirmed} item${confirmed === 1 ? '' : 's'}`,
+        summary: `Dispatcher confirmed ${confirmed} VERIFY item${confirmed === 1 ? '' : 's'} on site. No HOLD remains and clearance is confirmed.`,
+      }
+    }
     return {
       title: 'Ready to depart – no confirmed mainline block',
       summary: `No HOLD-level disruption on the ${opts.distanceKm} km route. Dispatcher confirmed bridge/clearance.`,
