@@ -58,11 +58,30 @@ export function looksGerman(text: string): boolean {
   return GERMAN_HINT.test(text)
 }
 
+export function looksTechnical(text: string): boolean {
+  return /situationRecord|publicationTime|latitude|longitude|gml:|DATEX|locationDescriptor|payloadPublication|Long-term MIA record|Short-term MIA record|Snapshot 20\d{2}-/i.test(text)
+}
+
+const KEEP_ORIGINAL_TITLE = /^(bridge-clearance-|mia-snapshot-|mia-deduped|bw-deduped|bw-unavailable|route-clear|system-error)/
+
+export function displayEvidenceTitle(item: RouteEvidence): string {
+  if (KEEP_ORIGINAL_TITLE.test(item.id) || item.source === 'Dispatcher confirmation' || item.state === 'clear') {
+    return splitConcatenatedPlaces(item.title || '')
+  }
+  return evidenceEnglishSummary(item) || splitConcatenatedPlaces(item.title || '')
+}
+
+function concatenatedPlacePhrase(text: string): string {
+  const match = splitConcatenatedPlaces(text).match(/[A-ZÄÖÜ][a-zäöüß]+(?: – [A-ZÄÖÜ][a-zäöüß]+)+/)
+  return match ? match[0] : ''
+}
+
 export function evidenceEnglishSummary(item: RouteEvidence): string {
   const blob = splitConcatenatedPlaces(`${item.title} ${item.detail}`)
   const bits = [
     typeLabel(item),
     extractRoad(blob) || extractRoad(item.title),
+    concatenatedPlacePhrase(blob),
     extractDirection(blob),
     extractRestriction(blob),
   ]

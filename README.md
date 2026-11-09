@@ -57,7 +57,8 @@ pnpm test:qa      # Playwright against a local preview of dist/
 - **Bridge and clearance** are a manual dispatcher verify.
 - **Monitoring** runs only while this tab is open. Keep it open until departure.
 - **MIA snapshot** is refreshed by GitHub Actions (`refresh-mia-roadworks.yml`, about every 6 hours; `workflow_dispatch` is also enabled). GitHub cron on a quiet repo can skip ticks. If the served snapshot is older than **8 hours**, `POST /api/check-route` fetches the MobiData BW DATEX feeds live (8s timeout, ~10 min in-memory cache). If that live refresh fails, the MIA layer is marked stale in the result instead of going silent.
-- **Free tier** — in-memory rate limits, no email/SMS, jobs stored in this browser only.
+- **Rate limiting** is best-effort only: an in-memory per-instance token bucket on each serverless isolate. It does not run at the edge and will not reliably return HTTP 429 on Vercel Hobby. Do not treat it as a hard API quota.
+- **Free tier** — no email/SMS, jobs stored in this browser only.
 
 ## License
 

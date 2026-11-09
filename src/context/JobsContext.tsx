@@ -228,8 +228,8 @@ export function JobsProvider({ children }: { children: ReactNode }) {
       }],
       route: {
         coordinates: [],
-        origin: job.origin || 'Start',
-        destination: job.destination || 'End',
+        origin: job.origin || 'Origin',
+        destination: job.destination || 'Destination',
         distance: 0,
         corridor: job.corridor || 'Saved job',
       },

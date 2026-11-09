@@ -164,7 +164,7 @@ export function berlinClock(iso?: string | null): string {
   }).format(date)
 }
 
-function splitConcatenatedPlaces(text: string): string {
+export function splitConcatenatedPlaces(text: string): string {
   return String(text || '').replace(/([a-zäöüß])([A-ZÄÖÜ])/g, '$1 – $2').replace(/\s{2,}/g, ' ').trim()
 }
 

@@ -78,9 +78,24 @@ test('huge tracks are downsampled below 5000 points', () => {
   )).join('')
   const parsed = parseGpxDocument(wrap(`<trk><trkseg>${pts}</trkseg></trk>`))
   assert.equal(parsed.downsampled, true)
+  assert.equal(parsed.originalCount, 6200)
   assert.ok(parsed.points.length <= 5000)
   assert.equal(parsed.points[0].lat, 53.5)
   const simplified = downsampleGpxPoints(parsed.points, 200)
   assert.ok(simplified.length <= 200)
   assert.equal(simplified[0].lat, parsed.points[0].lat)
+})
+
+test('80k-point GPX is parsed and decimated in well under 10s', () => {
+  const pts = Array.from({ length: 80000 }, (_, i) => (
+    `<trkpt lat="${53.5 - i * 0.00001}" lon="${10 - i * 0.00001}"/>`
+  )).join('')
+  const started = Date.now()
+  const parsed = parseGpxDocument(wrap(`<trk><trkseg>${pts}</trkseg></trk>`))
+  const ms = Date.now() - started
+  assert.ok(ms < 10000, `parse took ${ms}ms`)
+  assert.equal(parsed.originalCount, 80000)
+  assert.ok(parsed.points.length <= 5000)
+  assert.equal(parsed.points[0].lat, 53.5)
+  assert.ok(parsed.downsampled)
 })

@@ -21,6 +21,7 @@ export type GpxParseResult = {
   creator: string
   vemags: boolean
   downsampled: boolean
+  originalCount: number
 }
 
 export class GpxParseError extends Error {
@@ -39,16 +40,16 @@ function attr(block: string, name: string): string {
 
 function collectPoints(xml: string, tag: string): GpxPoint[] {
   const points: GpxPoint[] = []
-  const re = new RegExp(`<${tag}\\b([^>]*)>([\\s\\S]*?)</${tag}>|<${tag}\\b([^>]*)/>`, 'gi')
+  const re = new RegExp(`<${tag}\\b([^>]*)`, 'gi')
   let match: RegExpExecArray | null
   while ((match = re.exec(xml))) {
-    const open = match[1] || match[3] || ''
-    const inner = match[2] || ''
+    const open = match[1] || ''
     const lat = Number(attr(open, 'lat'))
     const lng = Number(attr(open, 'lon') || attr(open, 'long'))
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue
-    const eleMatch = inner.match(/<ele>\s*([^<]+)\s*<\/ele>/i)
-    const nameMatch = inner.match(/<name>\s*([^<]+)\s*<\/name>/i)
+    const window = xml.slice(match.index, match.index + 180)
+    const eleMatch = window.match(/<ele>\s*([^<]+)\s*<\/ele>/i)
+    const nameMatch = window.match(/<name>\s*([^<]+)\s*<\/name>/i)
     points.push({
       lat,
       lng,
@@ -91,21 +92,22 @@ function douglasPeucker(points: GpxPoint[], epsilon: number): GpxPoint[] {
 
 export function downsampleGpxPoints(points: GpxPoint[], maxPoints = GPX_MAX_POINTS): GpxPoint[] {
   if (points.length <= maxPoints) return points
-  let epsilon = 0.00004
-  let simplified = douglasPeucker(points, epsilon)
-  while (simplified.length > maxPoints && epsilon < 2) {
-    epsilon *= 1.7
-    simplified = douglasPeucker(points, epsilon)
-  }
-  if (simplified.length <= maxPoints) return simplified
-  const out: GpxPoint[] = []
+  // Uniform first so 80k-point tracks never spend 30s in recursive DP.
+  const uniform: GpxPoint[] = []
   const last = maxPoints - 1
   for (let i = 0; i <= last; i++) {
     const next = points[Math.round((i * (points.length - 1)) / last)]
-    const prev = out[out.length - 1]
-    if (!prev || prev.lat !== next.lat || prev.lng !== next.lng) out.push(next)
+    const prev = uniform[uniform.length - 1]
+    if (!prev || prev.lat !== next.lat || prev.lng !== next.lng) uniform.push(next)
   }
-  return out
+  if (uniform.length <= 2 || uniform.length <= maxPoints) return uniform
+  let epsilon = 0.00004
+  let simplified = douglasPeucker(uniform, epsilon)
+  while (simplified.length > maxPoints && epsilon < 2) {
+    epsilon *= 1.7
+    simplified = douglasPeucker(uniform, epsilon)
+  }
+  return simplified.length >= 2 && simplified.length <= maxPoints ? simplified : uniform
 }
 
 export function parseGpxDocument(xml: string, opts?: { maxBytes?: number; downsample?: boolean }): GpxParseResult {
@@ -142,7 +144,17 @@ export function parseGpxDocument(xml: string, opts?: { maxBytes?: number; downsa
 
   const shouldDownsample = opts?.downsample !== false && raw.length > GPX_MAX_POINTS
   const points = shouldDownsample ? downsampleGpxPoints(raw) : raw
-  return { points, source, creator, vemags, downsampled: shouldDownsample }
+  return { points, source, creator, vemags, downsampled: shouldDownsample, originalCount: raw.length }
+}
+
+export function serializeGpxTrack(points: GpxPoint[], creator = 'HTR simplified'): string {
+  const body = points.map(point => {
+    const name = point.name ? `<name>${point.name}</name>` : ''
+    const ele = Number.isFinite(point.ele) ? `<ele>${point.ele}</ele>` : ''
+    return `<trkpt lat="${point.lat}" lon="${point.lng}">${ele}${name}</trkpt>`
+  }).join('')
+  const safeCreator = String(creator || 'HTR simplified').replace(/[<>"]/g, '')
+  return `<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="${safeCreator}"><trk><trkseg>${body}</trkseg></trk></gpx>`
 }
 
 export function validateGpxFileSize(bytes: number) {

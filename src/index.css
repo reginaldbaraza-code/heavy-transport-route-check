@@ -2684,11 +2684,11 @@ h4 { font-size: 18px !important; line-height: 1.35 !important; }
     max-height: none !important;
   }
   
-  /* Sticky action bar on mobile */
+  /* Sticky action bar on mobile — tab bar hides while this is shown so the verdict/map keep room. */
   .mobile-route-actions {
     display: flex !important;
     position: fixed;
-    bottom: calc(var(--mobile-tab-bar-height) + var(--safe-area-inset-bottom));
+    bottom: var(--safe-area-inset-bottom);
     left: 0;
     right: 0;
     height: var(--mobile-route-actions-height);
@@ -2696,8 +2696,8 @@ h4 { font-size: 18px !important; line-height: 1.35 !important; }
     background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(20px);
     border-top: 1px solid var(--border);
-    padding: 12px 16px;
-    z-index: 90;
+    padding: 8px 16px;
+    z-index: 110;
     gap: 8px;
   }
   
@@ -2938,9 +2938,13 @@ body, button, input, select, textarea {
     padding-bottom: calc(var(--mobile-tab-bar-height) + var(--safe-area-inset-bottom)) !important;
   }
 
-  /* Results: keep the last route details above the sticky action bar. */
+  /* Results: hide the tab bar while the action bar is up so chrome is one bar, not two. */
+  body:has(.mobile-route-actions) .mobile-tab-bar {
+    display: none !important;
+  }
+
   .app-page-host:has(.mobile-route-actions) {
-    padding-bottom: calc(var(--mobile-tab-bar-height) + var(--mobile-route-actions-height) + var(--safe-area-inset-bottom)) !important;
+    padding-bottom: calc(var(--mobile-route-actions-height) + var(--safe-area-inset-bottom)) !important;
   }
 
   .route-page-polished {

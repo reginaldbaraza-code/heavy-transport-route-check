@@ -9,6 +9,7 @@ import { Toast } from '../components/Feedback'
 import {
   checkRoute,
   loadTestPermit,
+  permitVehicleDims,
   readFileAsText,
   sampleTestPermits,
   scenarioTestPermits,
@@ -21,7 +22,7 @@ import { useJobs } from '../context/JobsContext'
 import { useOrgSettings } from '../context/OrgSettingsContext'
 import { formatBerlinDateTime } from '../lib/formatTime'
 import type { RouteEvidence } from '../data/routeChecks'
-import { confirmOnSiteTitles, downloadSnapshot, pdfBytesFromSnapshot, sanitizePdfText, snapshotFromResult } from '../lib/exportCheck'
+import { confirmOnSiteTitles, downloadSnapshot, formatStartLabel, pdfBytesFromSnapshot, sanitizePdfText, snapshotFromResult } from '../lib/exportCheck'
 import {
   DEFAULT_MONITOR_PREFS,
   MONITOR_INTERVAL_OPTIONS,
@@ -37,8 +38,8 @@ import {
   isNearbyOffRoute,
   type SiteAcknowledgement,
 } from '../lib/siteAcknowledgements'
-import { evidenceEnglishSummary, evidenceOriginalGerman, looksGerman } from '../lib/evidenceSummary'
-import { GPX_FRIENDLY_TOO_LARGE, GpxParseError, parseGpxDocument, validateGpxFileSize } from '../lib/gpxParse'
+import { displayEvidenceTitle, evidenceOriginalGerman, looksGerman, looksTechnical, splitConcatenatedPlaces } from '../lib/evidenceSummary'
+import { GPX_FRIENDLY_TOO_LARGE, GpxParseError, parseGpxDocument, serializeGpxTrack, validateGpxFileSize } from '../lib/gpxParse'
 
 const RouteMapGL = lazy(() => import('../components/RouteMapGL'))
 
@@ -65,6 +66,7 @@ export default function RouteIntelligencePolished() {
   const [toast, setToast] = useState('')
   const [error, setError] = useState('')
   const [errorTechnical, setErrorTechnical] = useState('')
+  const [gpxSimplifyNote, setGpxSimplifyNote] = useState('')
   const [showTestPermits, setShowTestPermits] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const mapRef = useRef<RouteMapHandle>(null)
@@ -108,9 +110,7 @@ export default function RouteIntelligencePolished() {
   }
 
   const applyPermitVehicle = (permit?: TestPermit | null, metadata?: any) => {
-    const dims = permit?.kind === 'scenario'
-      ? permit.vehicle
-      : (metadata?.vehicle || permit?.vehicle)
+    const dims = permitVehicleDims(permit, metadata)
     if (!dims) return
     setVehicleProfile('custom')
     setVehicleWidth(String(dims.width))
@@ -125,13 +125,8 @@ export default function RouteIntelligencePolished() {
     permitOverride?: TestPermit,
     acks: SiteAcknowledgement[] = acknowledgements,
   ) => {
-    const dims = metadata?.vehicle ? {
-      width: Number(metadata.vehicle.width),
-      height: Number(metadata.vehicle.height),
-      length: Number(metadata.vehicle.length),
-      grossWeight: Number(metadata.vehicle.grossWeight),
-    } : vehicle
     const activePermit = permitOverride || testPermits.find(item => item.id === activePermitId)
+    const dims = permitVehicleDims(activePermit, metadata) || vehicle
     const permit = (activePermit?.kind === 'scenario' ? activePermit.permitNumber : null)
       || metadata?.permitNumber
       || permitNumber
@@ -271,13 +266,19 @@ export default function RouteIntelligencePolished() {
 
     try {
       const content = await readFileAsText(file)
-      const parsed = parseGpxDocument(content, { downsample: false })
+      const parsed = parseGpxDocument(content)
       setRouteFile(file.name)
-      setGpxContent(content)
-      setStep('vehicle')
-      if (parsed.vemags) {
-        setToast('VEMAGS route detected.')
+      if (parsed.downsampled || parsed.originalCount > parsed.points.length) {
+        const note = `Simplified from ${parsed.originalCount} to ${parsed.points.length} points`
+        setGpxContent(serializeGpxTrack(parsed.points, parsed.creator))
+        setGpxSimplifyNote(note)
+        setToast(parsed.vemags ? `VEMAGS route detected. ${note}` : note)
+      } else {
+        setGpxContent(content)
+        setGpxSimplifyNote('')
+        if (parsed.vemags) setToast('VEMAGS route detected.')
       }
+      setStep('vehicle')
     } catch (err) {
       setError(err instanceof Error ? err.message : "This file isn't a valid GPX route. Export the route from VEMAGS as GPX and try again.")
       setErrorTechnical(err instanceof GpxParseError ? err.technical : '')
@@ -376,6 +377,7 @@ export default function RouteIntelligencePolished() {
     setGpxContent('')
     setError('')
     setErrorTechnical('')
+    setGpxSimplifyNote('')
     setPermitNumber('')
     setShowSaveJob(false)
     loadedJob.current = null
@@ -517,7 +519,6 @@ export default function RouteIntelligencePolished() {
       permitNumber,
       permitName: routeFile || permitNumber,
       vehicle,
-      runAt: displayed.retrievedAt,
     }), format)
   }
 
@@ -723,6 +724,12 @@ export default function RouteIntelligencePolished() {
                     <strong>{permitNumber}</strong>
                   </div>
                 )}
+                {gpxSimplifyNote && (
+                  <div className="route-info-item">
+                    <span>Track</span>
+                    <strong>{gpxSimplifyNote}</strong>
+                  </div>
+                )}
               </div>
             )}
 
@@ -770,10 +777,11 @@ export default function RouteIntelligencePolished() {
                           inputMode="decimal"
                           pattern="[0-9]*[.,]?[0-9]*"
                           min="0"
-                          step="0.1"
+                          step="any"
                           value={field.value}
                           onChange={e => field.setValue(e.target.value)}
                           aria-label={`${field.label} in ${field.unit}`}
+                          data-testid={`vehicle-${field.label.toLowerCase().replace(/\s+/g, '-')}`}
                         />
                         <span className="unit">{field.unit}</span>
                       </div>
@@ -967,7 +975,7 @@ export default function RouteIntelligencePolished() {
                     <div><span>Destination</span><strong>{displayed.route.destination}</strong></div>
                     <div><span>Distance</span><strong>{displayed.route.distance} km</strong></div>
                     <div><span>Evidence found</span><strong>{displayed.evidence.length}</strong></div>
-                    <div><span>Retrieved</span><strong>{formatBerlinDateTime(displayed.retrievedAt) || 'Just now'}</strong></div>
+                    <div><span>Retrieved</span><strong data-testid="result-retrieved-at">{formatBerlinDateTime(displayed.retrievedAt) || 'Just now'}</strong></div>
                     <div><span>Source</span><strong>{displayed.source || 'Autobahn GmbH'}</strong></div>
                   </div>
                 </div>
@@ -1083,6 +1091,13 @@ function EvidenceCard({
 }) {
   const canConfirm = onConfirm && isAcknowledgeable(item) && !item.acknowledgedAt
   const holdLocked = isHoldItem(item)
+  const title = displayEvidenceTitle(item)
+  const original = evidenceOriginalGerman(item)
+  const blob = `${item.title} ${item.detail}`
+  const summarized = title !== splitConcatenatedPlaces(item.title || '')
+  const keepOriginalAside = Boolean(original)
+    && original.replace(/\s+/g, ' ') !== title.replace(/\s+/g, ' ')
+    && (summarized || looksGerman(blob) || /[a-zäöüß][A-ZÄÖÜ]/.test(blob) || looksTechnical(blob))
   return (
     <div
       className={`evidence-card evidence-${item.state}`}
@@ -1090,18 +1105,18 @@ function EvidenceCard({
       style={{ cursor: item.lat != null && item.lng != null ? 'pointer' : 'default' }}
     >
       <div className="evidence-header">
-        <strong>{looksGerman(`${item.title} ${item.detail}`) ? evidenceEnglishSummary(item) : item.title}</strong>
+        <strong data-testid="evidence-title">{title}</strong>
         <span className={`confidence-badge confidence-${String(item.confidence).toLowerCase()}`}>
           {String(item.confidence).toLowerCase() === 'high' ? 'High confidence' : 'Medium confidence'}
         </span>
       </div>
-      {looksGerman(`${item.title} ${item.detail}`) ? (
+      {keepOriginalAside ? (
         <details className="evidence-original">
           <summary>Original text (German)</summary>
-          <pre>{evidenceOriginalGerman(item)}</pre>
+          <pre>{original}</pre>
         </details>
       ) : (
-        <p>{item.detail}</p>
+        <p>{splitConcatenatedPlaces(item.detail || '')}</p>
       )}
       {(item.reason || item.distanceKm != null) && (
         <p className="evidence-reason">
@@ -1114,7 +1129,7 @@ function EvidenceCard({
       <div className="evidence-meta">
         <span>{item.source}</span>
         <span>·</span>
-        <span>{item.startTimestamp ? `Start: ${formatBerlinDateTime(item.startTimestamp)}` : 'Start: not published'}</span>
+        <span>{formatStartLabel(item.startTimestamp ? formatBerlinDateTime(item.startTimestamp) : '')}</span>
         {item.endTimestamp && (
           <>
             <span>·</span>

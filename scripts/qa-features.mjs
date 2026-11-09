@@ -303,6 +303,11 @@ async function main() {
   const headerSpaced = /H\s+e\s+a\s+v\s+y\s+t\s+r\s+a\s+n\s+s\s+p\s+o\s+r\s+t/.test(extracted.text)
   record('PDF text uses -> not bang-arrow', hasArrow && !hasBangArrow, extracted.compact.replace(/\s+/g, ' ').slice(0, 220))
   record('PDF header is not letter-spaced', headerTogether && !headerSpaced, headerTogether ? 'header intact' : extracted.compact.slice(0, 160))
+  record(
+    'PDF does not duplicate start Start wording',
+    !/start\s+Start/i.test(extracted.compact) && !/Start:\s*Start/.test(extracted.compact),
+    extracted.compact.replace(/\s+/g, ' ').slice(0, 240),
+  )
 
   const umlautPdf = await page.evaluate(async () => {
     const bytes = await window.__HT_TEST__.pdfBytesFromSnapshot({
@@ -365,6 +370,12 @@ async function main() {
   record('Result CSV download is non-empty', csv.size > 50, `${csv.suggested} ${csv.size} bytes`)
 
   await page.getByRole('button', { name: 'Check another route' }).click()
+  await page.getByRole('button', { name: /show test permits/i }).click()
+  await page.getByRole('button', { name: /Simulated HOLD — A3 residual width/ }).click()
+  await page.locator('[data-testid="vehicle-width"]').waitFor({ timeout: 10000 })
+  const holdWidth = await page.locator('[data-testid="vehicle-width"]').inputValue()
+  record('Scenario dims populate immediately', holdWidth === '3.8', `width=${holdWidth}`)
+  await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded' })
   await page.getByRole('button', { name: /show test permits/i }).click()
   await page.getByRole('button', { name: /Simulated VERIFY/ }).click()
   await page.getByRole('button', { name: 'Check route' }).click()

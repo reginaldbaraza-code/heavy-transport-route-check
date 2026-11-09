@@ -325,7 +325,7 @@ export default function Layout() {
               }}
               onFocus={() => setSearchOpen(true)}
               onKeyDown={handleSearch}
-              placeholder="Search jobs, permits, A9…"
+              placeholder="Search"
               style={{
                 background: 'transparent',
                 border: 'none',

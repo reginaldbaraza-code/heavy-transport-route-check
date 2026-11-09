@@ -5,6 +5,7 @@ import {
   eventFreshness,
   evidenceAgeLabel,
   isoNow,
+  splitConcatenatedPlaces,
 } from './_lib/autobahnTimes.js';
 import { GpxParseError, parseGpxDocument } from './_lib/gpxParse.js';
 import { guardApi, rejectOversizedBody } from './_lib/httpGuard.js';
@@ -97,6 +98,15 @@ function parseGPX(gpxContent: string): GPXPoint[] {
   return parsed.points
 }
 
+function waypointLabel(point?: GPXPoint): string {
+  const name = String(point?.name || '').trim()
+  if (!point || !name || /^(starts?|end|ende|ziel)$/i.test(name)) {
+    if (!point || !Number.isFinite(point.lat) || !Number.isFinite(point.lng)) return 'Unknown'
+    return `${point.lat.toFixed(4)}, ${point.lng.toFixed(4)}`
+  }
+  return name
+}
+
 function calculateRouteDistance(points: GPXPoint[]): number {
   if (points.length < 2) return 0;
   
@@ -187,7 +197,7 @@ function processAutobahnItem(
 
   return {
     id: item.identifier || `evt-${Date.now()}-${Math.random()}`,
-    title: item.title || fallbackTitle,
+    title: splitConcatenatedPlaces(item.title || fallbackTitle),
     description: descriptionFromAutobahnItem(item) || fallbackDescription,
     lat,
     lng,
@@ -306,8 +316,8 @@ function timestampFields(event: {
 function toRouteEvidence(item: ClassifiedEvidence, age: string): RouteEvidence {
   return {
     id: item.id,
-    title: item.title,
-    detail: item.detail,
+    title: splitConcatenatedPlaces(item.title),
+    detail: splitConcatenatedPlaces(item.detail),
     source: item.source,
     age,
     confidence: item.confidence,
@@ -354,6 +364,7 @@ export default async function handler(
   res: VercelResponse
 ) {
   if (!guardApi(req, res, 'POST, OPTIONS')) return
+  if (!rejectOversizedBody(req, res)) return
 
   try {
     const {
@@ -403,8 +414,8 @@ export default async function handler(
     }
     
     const distance = calculateRouteDistance(routePoints);
-    const origin = routePoints[0].name || 'Start';
-    const destination = routePoints[routePoints.length - 1].name || 'End';
+    const origin = waypointLabel(routePoints[0]);
+    const destination = waypointLabel(routePoints[routePoints.length - 1]);
     
     const routeLine = routeLineFromPoints(routePoints);
     const permittedRoads = inferPermittedRoads(
@@ -625,8 +636,8 @@ export default async function handler(
       for (const item of mia.items) {
         pushClassified(classified, {
           id: `mia-${item.id}`,
-          title: item.description || `${item.road || 'Autobahn'} MIA roadworks`,
-          description: `${item.description} ${item.term === 'long' ? 'Long-term MIA record' : 'Short-term MIA record'} · ${freshness} ${mia.snapshotAt}`,
+          title: splitConcatenatedPlaces(item.description || `${item.road || 'Autobahn'} MIA roadworks`),
+          description: splitConcatenatedPlaces(`${item.description} ${item.term === 'long' ? 'Long-term MIA record' : 'Short-term MIA record'} · ${freshness} ${mia.snapshotAt}`),
           source: MIA_SOURCE,
           lat: item.lat,
           lng: item.lng,
@@ -748,8 +759,8 @@ export default async function handler(
       const fallbackGpx = typeof req.body?.gpxContent === 'string' ? req.body.gpxContent : ''
       const points = parseGPX(fallbackGpx);
       const distance = calculateRouteDistance(points);
-      const origin = points[0]?.name || `${points[0]?.lat.toFixed(4)}, ${points[0]?.lng.toFixed(4)}`;
-      const destination = points[points.length - 1]?.name || `${points[points.length - 1]?.lat.toFixed(4)}, ${points[points.length - 1]?.lng.toFixed(4)}`;
+      const origin = waypointLabel(points[0]);
+      const destination = waypointLabel(points[points.length - 1]);
       
       fallbackRoute = {
         coordinates: points.map(p => [p.lat, p.lng]),

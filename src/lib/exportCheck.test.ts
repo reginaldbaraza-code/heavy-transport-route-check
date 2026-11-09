@@ -155,12 +155,43 @@ test('PDF and CSV keep one de-DE date, reflect result-screen clearance, and name
   assert.equal((pdfImpact.match(/Clearance confirmed by QA Test at/g) || []).length, 1)
 })
 
+test('export uses the displayed retrievedAt and never writes start Start', () => {
+  const displayed = baseResult([
+    verifyItem('e1', 'A7 works', 'Start: not published. Lane restriction on the permitted corridor.'),
+  ])
+  displayed.retrievedAt = '2026-11-09T21:50:00.000Z'
+  displayed.route = { ...displayed.route, origin: 'Start', destination: 'End' }
+  displayed.evidence[0].startTimestamp = null
+  displayed.evidence[0].age = 'Start: not published · Retrieved 09.11.2026, 21:12'
+  displayed.evidence[0].retrievedAt = '2026-11-09T21:12:00.000Z'
+  const snapshot = snapshotFromResult(displayed, {
+    permitName: 'Hamburg → Hannover',
+    runAt: '2026-11-09T21:12:00.000Z',
+  })
+  assert.equal(snapshot.retrievedAt, displayed.retrievedAt)
+  assert.equal(snapshot.runAt, displayed.retrievedAt)
+  assert.equal(snapshot.evidence[0].start, 'Start: not published')
+  assert.equal(snapshot.routeLabel, 'Origin → Destination')
+
+  const pdf = decodePdfStrings(pdfBytesFromSnapshot(snapshot))
+  assert.match(pdf.compact, /Start: not published/)
+  assert.doesNotMatch(pdf.compact, /start\s+Start/i)
+  assert.doesNotMatch(pdf.compact, /Start:\s*Start/)
+  assert.match(pdf.compact, /21:50|09\.11\.2026/)
+
+  const csv = snapshotToCsv(snapshot)
+  assert.match(csv, /Start: not published/)
+  assert.doesNotMatch(csv, /start Start/i)
+  assert.doesNotMatch(csv, /Start: Start/)
+})
+
 test('PDF wraps long evidence titles instead of clipping them', () => {
   const title = 'Entwässerungsarbeiten auf der Fahrbahn der A7 Richtung Hannover in Fahrtrichtung Süd bei länger andauernder Baustelle'
   const snapshot = snapshotFromResult(baseResult([
     verifyItem('long', title, 'Detail text that must wrap inside the evidence card without overlapping the next card edge.'),
   ]), { permitName: 'Hamburg → Hannover' })
   const extracted = decodePdfStrings(pdfBytesFromSnapshot(snapshot))
+  assert.match(extracted.compact, /Roadworks/)
   assert.match(extracted.compact, /Entwässerungsarbeiten/)
   assert.match(extracted.compact, /andauernder Baustelle/)
   assert.match(extracted.text, /Fahrtrichtung Süd/)

@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf'
 import type { RouteEvidence, RouteVerdict } from '../data/routeChecks'
+import { displayEvidenceTitle, splitConcatenatedPlaces } from './evidenceSummary'
 import { formatBerlinDateTime } from './formatTime'
 import { formatVehicleDims, type VehicleDims } from './jobs'
 import type { RouteCheckResult } from './routeCheck'
@@ -71,13 +72,44 @@ export type ExportSnapshot = {
   clearanceConfirmedAt?: string
 }
 
+export const START_NOT_PUBLISHED = 'Start: not published'
+
+export function formatStartLabel(value?: string | null): string {
+  const raw = String(value || '').trim()
+  if (!raw) return START_NOT_PUBLISHED
+  const stripped = raw.replace(/^starts?\s*:?\s*/i, '').trim()
+  if (!stripped || /not published/i.test(stripped)) return START_NOT_PUBLISHED
+  return `Start: ${stripped}`
+}
+
+function exportTitle(item: RouteEvidence): string {
+  return displayEvidenceTitle(item)
+}
+
+function routePlace(value: string | undefined, fallback: string) {
+  const raw = String(value || '').trim()
+  if (!raw || /^(starts?|end|ende|ziel)$/i.test(raw)) return fallback
+  return raw
+}
+
+function exportDetail(item: RouteEvidence): string {
+  const title = splitConcatenatedPlaces(item.title || '')
+  const detail = splitConcatenatedPlaces(item.detail || '')
+    .replace(/(?:^|\s)Start:\s*(?:not published|[^.·]+)(?:\s*·\s*)?/gi, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+  const summary = exportTitle(item)
+  const parts = [title !== summary ? title : '', detail].filter(Boolean)
+  return [...new Set(parts)].join(' · ')
+}
+
 function evidenceRow(item: RouteEvidence, fallbackRetrieved?: string): ExportEvidence {
   return {
     id: item.id,
-    title: item.title,
-    detail: item.detail,
+    title: exportTitle(item),
+    detail: exportDetail(item),
     source: item.source,
-    start: item.startTimestamp ? formatBerlinDateTime(item.startTimestamp) : 'not published',
+    start: formatStartLabel(item.startTimestamp ? formatBerlinDateTime(item.startTimestamp) : ''),
     retrieved: formatBerlinDateTime(item.retrievedAt || fallbackRetrieved) || 'Not recorded',
     confidence: String(item.confidence),
     category: item.category,
@@ -133,7 +165,8 @@ export function snapshotFromResult(
   } = {},
 ): ExportSnapshot {
   const sourceEvidence = result.evidence || []
-  const evidence = sourceEvidence.map(item => evidenceRow(item, result.retrievedAt))
+  const retrievedAt = result.retrievedAt || new Date().toISOString()
+  const evidence = sourceEvidence.map(item => evidenceRow(item, retrievedAt))
   const onSiteConfirmations = acknowledgementRows(sourceEvidence)
   const copy = readyCopy(result, sourceEvidence.filter(item => item.acknowledgedBy && item.id !== 'bridge-clearance-confirmed'))
   return {
@@ -142,12 +175,12 @@ export function snapshotFromResult(
     summary: copy.summary,
     impact: copy.impact,
     permitNumber: meta.permitNumber || '',
-    permitName: meta.permitName || `${result.route.origin} → ${result.route.destination}`,
-    routeLabel: `${result.route.origin} → ${result.route.destination}`,
+    permitName: meta.permitName || `${routePlace(result.route.origin, 'Origin')} → ${routePlace(result.route.destination, 'Destination')}`,
+    routeLabel: `${routePlace(result.route.origin, 'Origin')} → ${routePlace(result.route.destination, 'Destination')}`,
     vehicle: meta.vehicle ?? null,
     source: result.source || 'Autobahn GmbH',
-    runAt: meta.runAt || result.retrievedAt || new Date().toISOString(),
-    retrievedAt: result.retrievedAt || meta.runAt || new Date().toISOString(),
+    runAt: retrievedAt,
+    retrievedAt,
     confidence: result.confidence,
     evidence,
     confirmOnSite: confirmOnSiteTitles(sourceEvidence),
@@ -331,7 +364,7 @@ function drawEvidenceCard(
   const titleLines = wrapLines(doc, item.title, innerW)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
-  const startLabel = !item.start || /not published/i.test(item.start) ? 'Start: not published' : `Start: ${item.start}`
+  const startLabel = formatStartLabel(item.start)
   const meta = `${item.source} · ${startLabel} · retrieved ${item.retrieved} · ${item.confidence} · ${item.confirmOnSite ? 'confirm on site' : item.state}`
   const metaLines = wrapLines(doc, meta, innerW)
   const detailLines = wrapLines(doc, item.detail, innerW)
