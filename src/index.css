@@ -791,13 +791,20 @@ select:focus-visible {
 }
 .sidebar-collapse:hover { color: #fff; background: rgba(255,255,255,.1); }
 .app-sidebar nav a > div { min-height: 40px; }
+.app-sidebar a:focus,
+.app-sidebar a:focus-visible,
+.app-sidebar button:focus,
+.app-sidebar button:focus-visible {
+  outline: none;
+  outline-offset: 0;
+}
 .app-sidebar nav a:focus-visible > div,
 .sidebar-collapse:focus-visible,
 .sidebar-logo:focus-visible,
 .sidebar-wordmark:focus-visible,
 .sidebar-htr:focus-visible {
-  outline: 2px solid #f5c518;
-  outline-offset: 1px;
+  outline: none;
+  box-shadow: inset 0 0 0 2px #f5c518;
 }
 .app-page h1 {
   letter-spacing: -.036em;
