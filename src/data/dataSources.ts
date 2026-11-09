@@ -7,6 +7,8 @@ export type DataSourceNote = {
   used: boolean
   summary: string
   limitation?: string
+  license?: string
+  attribution?: string
 }
 
 export const dataSources: DataSourceNote[] = [
@@ -55,12 +57,23 @@ export const dataSources: DataSourceNote[] = [
     limitation: 'Not used. Heavy-transport dispatch does not depend on EV charging.',
   },
   {
+    id: 'bemas-bw',
+    name: 'MobiData BW BEMaS (state roads)',
+    status: 'live',
+    used: true,
+    summary: 'Keyless GeoJSON of Baden-Württemberg B/L/K roadworks from BEMaS, fetched live during each route check. CDN cache s-maxage=10 min on /api/bw-roadworks.',
+    license: 'dl-de/by-2.0',
+    attribution: 'Verkehrsministerium Baden-Württemberg / BEMaS via MobiData BW. License: Datenlizenz Deutschland – Namensnennung – Version 2.0.',
+  },
+  {
     id: 'mobilithek',
     name: 'Mobilithek roadworks (DATEX II)',
-    status: 'unavailable',
-    used: false,
-    summary: 'National mobility data portal. Roadworks subscriptions use registration, a machine account, and often a client certificate.',
-    limitation: 'Not integrated. No keyless public dataset was found that can be used without registration, subscription contract, or API keys. Free-tier constraint: do not add paid or contract-gated feeds.',
+    status: 'live',
+    used: true,
+    summary: 'Integrated via MobiData BW open republication (no Mobilithek login or certificate). Autobahn GmbH MIA short- and long-term DATEX II feeds are streamed every 6 hours by GitHub Actions into public/data/mia-roadworks.json.',
+    limitation: 'Each snapshot commit triggers a Vercel production deploy (~4/day, within Hobby). If the snapshot is older than 12 hours, route checks flag it. Width uses residualRoadWidth / minLaneWidth when present; height/weight tags are rare in this DATEX profile.',
+    license: 'dl-de/by-2.0',
+    attribution: 'Autobahn GmbH des Bundes / Mobilithek, republished by MobiData BW. License: Datenlizenz Deutschland – Namensnennung – Version 2.0.',
   },
   {
     id: 'bridge-clearance',

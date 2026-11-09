@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { extname, join, normalize, resolve } from 'node:path'
 import checkRouteHandler from '../api/check-route.ts'
 import autobahnEventsHandler from '../api/autobahn-events.ts'
+import bwRoadworksHandler from '../api/bw-roadworks.ts'
 
 const dist = resolve(process.cwd(), 'dist')
 const port = Number(process.env.QA_PORT || 4173)
@@ -65,6 +66,10 @@ const server = createServer(async (req, res) => {
     }
     if (url.pathname === '/api/autobahn-events') {
       await autobahnEventsHandler({ method: req.method, query: Object.fromEntries(url.searchParams) } as any, mockRes(res) as any)
+      return
+    }
+    if (url.pathname === '/api/bw-roadworks') {
+      await bwRoadworksHandler({ method: req.method, query: Object.fromEntries(url.searchParams) } as any, mockRes(res) as any)
       return
     }
 

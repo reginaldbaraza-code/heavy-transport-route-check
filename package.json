@@ -10,7 +10,8 @@
     "typecheck:api": "tsc --noEmit --project tsconfig.api.json",
     "preview": "vite preview",
     "format": "oxfmt",
-    "test:qa": "node scripts/qa-features.mjs"
+    "test:qa": "node scripts/qa-features.mjs",
+    "data:mia": "node scripts/refresh-mia-roadworks.mjs"
   },
   "dependencies": {
     "@turf/boolean-intersects": "^7.4.0",

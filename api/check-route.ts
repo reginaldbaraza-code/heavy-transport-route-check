@@ -8,6 +8,21 @@ import {
   evidenceAgeLabel,
   isoNow,
 } from './_lib/autobahnTimes.js';
+import {
+  BW_SOURCE,
+  MIA_SOURCE,
+  dimConflictFromBw,
+  dimConflictFromMia,
+  fetchBwRoadworks,
+  isLocationDuplicate,
+  loadMiaSnapshot,
+  miaItemsOnCorridor,
+  miaSnapshotAgeMs,
+  miaSnapshotIsStale,
+  sampledLineHitsCorridor,
+  corridorBbox,
+  type BwRoadwork,
+} from './_lib/openRoadworks.js';
 
 export const config = {
   maxDuration: 30,
@@ -459,9 +474,17 @@ export default async function handler(
     console.log('Checking roads:', affectedRoads.join(', '));
 
     const retrievedAt = isoNow();
-    const autobahnData = await fetchAutobahnEventsForRoute(affectedRoads, retrievedAt);
+    const [autobahnData, bwResult] = await Promise.all([
+      fetchAutobahnEventsForRoute(affectedRoads, retrievedAt),
+      fetchBwRoadworks(retrievedAt)
+        .then(items => ({ items, error: null as string | null }))
+        .catch((error: unknown) => ({
+          items: [] as BwRoadwork[],
+          error: error instanceof Error ? error.message : 'BEMaS unavailable',
+        })),
+    ]);
     const degraded = !autobahnData;
-    const source = 'Autobahn GmbH';
+    const source = 'Autobahn GmbH + MobiData BW';
     
     const evidence: RouteEvidence[] = [];
     
@@ -555,11 +578,142 @@ export default async function handler(
       }
     }
 
+    const bbox = corridorBbox(corridor);
+    const bwOnCorridor = bwResult.items.filter(item => sampledLineHitsCorridor(corridor, item.coordinates, bbox));
+    let bwAdded = 0;
+    for (const item of bwOnCorridor) {
+      if (bwAdded >= 12) break;
+      if (isLocationDuplicate(item.lat, item.lng, evidence, item.id)) continue;
+      const conflict = dimConflictFromBw(item, vehicle);
+      const closed = item.type === 'ROAD_CLOSED' || /ROAD_CLOSED/i.test(item.subtype || '');
+      evidence.push({
+        id: `bw-${item.id}`,
+        title: conflict.exceeds && conflict.type === 'full closure'
+          ? 'BW state road closed on corridor'
+          : item.description || item.street || 'BW state roadworks',
+        detail: [item.street, item.description, item.subtype].filter(Boolean).join(' · ') || 'BEMaS roadworks on the permitted corridor.',
+        source: BW_SOURCE,
+        ...timestampFields({
+          startTimestamp: item.start,
+          endTimestamp: item.end,
+          retrievedAt: item.retrievedAt,
+          confidence: 'medium',
+        }),
+        state: conflict.exceeds || closed ? 'danger' : 'warning',
+        category: closed ? 'closures' : 'roadworks',
+        lat: item.lat,
+        lng: item.lng,
+      });
+      bwAdded += 1;
+    }
+    if (bwOnCorridor.length > 0 && bwAdded === 0) {
+      evidence.push({
+        id: 'bw-deduped',
+        title: `BEMaS: ${bwOnCorridor.length} corridor items already listed`,
+        detail: 'Duplicate BW state-road records were omitted where location already matched another source.',
+        source: BW_SOURCE,
+        ...timestampFields({ retrievedAt, confidence: 'medium' }),
+        state: 'clear',
+        category: 'observations',
+      });
+    }
+    if (bwResult.error) {
+      evidence.push({
+        id: 'bw-unavailable',
+        title: 'MobiData BW BEMaS feed unavailable',
+        detail: bwResult.error,
+        source: BW_SOURCE,
+        ...timestampFields({ retrievedAt, confidence: 'medium' }),
+        state: 'warning',
+        category: 'observations',
+      });
+    }
+
+    const mia = loadMiaSnapshot();
+    if (!mia) {
+      evidence.push({
+        id: 'mia-snapshot-missing',
+        title: 'MIA roadworks snapshot not loaded',
+        detail: 'The compact Autobahn MIA snapshot is missing. Route checks still use the live Autobahn GmbH API.',
+        source: MIA_SOURCE,
+        ...timestampFields({ retrievedAt, confidence: 'medium' }),
+        state: 'warning',
+        category: 'observations',
+      });
+    } else {
+      const ageMs = miaSnapshotAgeMs(mia);
+      const ageHours = Math.max(0, Math.round(ageMs / 3600000));
+      if (miaSnapshotIsStale(mia)) {
+        evidence.push({
+          id: 'mia-snapshot-stale',
+          title: 'MIA roadworks snapshot is older than 12 hours',
+          detail: `Snapshot ${mia.snapshotAt} (${ageHours}h old). GitHub Actions refreshes this file every 6 hours. Live Autobahn API events are still used.`,
+          source: MIA_SOURCE,
+          ...timestampFields({ retrievedAt: mia.snapshotAt, confidence: 'medium' }),
+          state: 'warning',
+          category: 'observations',
+        });
+      }
+      const miaHits = miaItemsOnCorridor(mia, corridor).sort((a, b) => {
+        const ac = dimConflictFromMia(a, vehicle).exceeds ? 0 : 1;
+        const bc = dimConflictFromMia(b, vehicle).exceeds ? 0 : 1;
+        return ac - bc;
+      });
+      let miaAdded = 0;
+      for (const item of miaHits) {
+        if (miaAdded >= 16) break;
+        const conflict = dimConflictFromMia(item, vehicle);
+        const duplicate = isLocationDuplicate(item.lat, item.lng, evidence, item.id);
+        if (duplicate && !conflict.exceeds) continue;
+        if (duplicate && conflict.exceeds && evidence.some(entry => entry.state === 'danger' && isLocationDuplicate(item.lat, item.lng, [entry], item.id))) {
+          continue;
+        }
+        const restrictionLabel = conflict.exceeds
+          ? conflict.type === 'full closure'
+            ? 'MIA full closure on corridor'
+            : `MIA ${conflict.type} restriction${conflict.restriction ? ` ${conflict.restriction}` : ''} – vehicle exceeds`
+          : item.description || `${item.road || 'Autobahn'} MIA roadworks`;
+        evidence.push({
+          id: `mia-${item.id}`,
+          title: restrictionLabel,
+          detail: [
+            item.description,
+            item.road && `Road ${item.road}`,
+            item.term === 'long' ? 'Long-term MIA record' : 'Short-term MIA record',
+            `Snapshot ${mia.snapshotAt} (${ageHours}h old)`,
+          ].filter(Boolean).join(' · '),
+          source: MIA_SOURCE,
+          ...timestampFields({
+            startTimestamp: item.start,
+            endTimestamp: item.end,
+            retrievedAt: mia.snapshotAt,
+            confidence: conflict.exceeds ? 'high' : 'medium',
+          }),
+          state: conflict.exceeds ? 'danger' : 'warning',
+          category: conflict.type === 'full closure' ? 'closures' : 'roadworks',
+          lat: item.lat,
+          lng: item.lng,
+        });
+        miaAdded += 1;
+      }
+      if (miaHits.length > 0 && miaAdded === 0) {
+        evidence.push({
+          id: 'mia-deduped',
+          title: `MIA snapshot: ${miaHits.length} corridor items already covered by Autobahn API`,
+          detail: `Snapshot ${mia.snapshotAt} (${ageHours}h old). Duplicate MIA records were omitted where id or location already matched live Autobahn GmbH events.`,
+          source: MIA_SOURCE,
+          ...timestampFields({ retrievedAt: mia.snapshotAt, confidence: 'medium' }),
+          state: 'clear',
+          category: 'observations',
+        });
+      }
+    }
+
     if (!degraded && !evidence.some(item => item.category === 'roadworks' || item.category === 'closures')) {
       evidence.push({
         id: 'route-clear',
         title: 'No active Autobahn roadworks or closures on corridor',
-        detail: `Checked Autobahn routes (${autobahnData?.roads || 'none'}) show no current disruptions on the permitted corridor. Bridge and clearance data are still unavailable.`,
+        detail: `Checked Autobahn routes (${autobahnData?.roads || 'none'}), MIA snapshot, and BW BEMaS show no current disruptions on the permitted corridor. Bridge and clearance data are still unavailable.`,
         source: `Autobahn GmbH · retrieved ${retrievedAt}`,
         ...timestampFields({ retrievedAt, confidence: 'high' }),
         state: 'clear',

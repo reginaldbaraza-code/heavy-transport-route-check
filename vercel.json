@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "api/check-route.ts": {
+      "includeFiles": "public/data/mia-roadworks.json"
+    }
+  },
   "rewrites": [
     {
       "source": "/(.*)",
