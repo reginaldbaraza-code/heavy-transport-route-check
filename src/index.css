@@ -1822,6 +1822,115 @@ h4 { font-size: 18px !important; line-height: 1.35 !important; }
   color: var(--text-tertiary);
 }
 
+.test-permit-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  margin-top: 16px;
+}
+
+.test-permit-group-title {
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+}
+
+.test-permit-group-note {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  margin: 0 0 12px;
+}
+
+.test-permit-card {
+  align-items: flex-start;
+}
+
+.permit-card-label {
+  display: block;
+  font-size: 12px !important;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.expected-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: 999px;
+}
+
+.expected-ready { background: #dcfce7; color: #166534; }
+.expected-verify { background: #fef3c7; color: #92400e; }
+.expected-hold { background: #fee2e2; color: #991b1b; }
+
+.clearance-tick {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-grouped);
+  margin: 8px 0 16px;
+  cursor: pointer;
+}
+
+.clearance-tick input {
+  margin-top: 3px;
+}
+
+.clearance-tick span {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.clearance-tick strong {
+  color: var(--text-primary);
+}
+
+.scenario-banner,
+.outcome-match {
+  display: inline-flex;
+  margin-top: 10px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.scenario-banner {
+  background: #e0e7ff;
+  color: #312e81;
+}
+
+.outcome-match.matched {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.outcome-match.differed {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.evidence-reason {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 6px 0 0;
+}
+
+.evidence-distance {
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
 /* Info Note */
 .info-note {
   display: flex;

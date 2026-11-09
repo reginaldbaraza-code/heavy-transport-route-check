@@ -177,7 +177,14 @@ export function JobsProvider({ children }: { children: ReactNode }) {
     checkingRef.current.add(id)
     setCheckingJobId(id)
     try {
-      const result = await checkRoute(job.gpxContent, job.vehicle, job.permitNumber)
+      const result = await checkRoute(job.gpxContent, job.vehicle, {
+        permitNumber: job.permitNumber,
+        corridor: job.corridor,
+        departureStart: job.plannedDeparture,
+        bridgeClearanceConfirmed: job.bridgeClearanceConfirmed,
+        clearanceConfirmedBy: job.clearanceConfirmedBy,
+        confirmedAt: job.confirmedAt,
+      })
       applyResult(job, result, job.lastVerdict && job.lastVerdict !== result.verdict ? 'verdict-change' : 'check')
       return result
     } catch (error) {

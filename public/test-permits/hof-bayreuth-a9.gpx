@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="VEMAGS Route Export" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata>
+    <name>Hof → Bayreuth A9</name>
+    <desc>Heavy transport permit route DE-BY-2026-01009</desc>
+    <time>2026-11-09T12:00:00Z</time>
+  </metadata>
+  <trk>
+    <name>Hof A9 → Bayreuth A9</name>
+    <trkseg>
+      <trkpt lat="50.3170" lon="11.8770"><ele>500</ele><name>Hof A9</name></trkpt>
+      <trkpt lat="50.2700" lon="11.8400"><ele>520</ele></trkpt>
+      <trkpt lat="50.2200" lon="11.8000"><ele>540</ele></trkpt>
+      <trkpt lat="50.1700" lon="11.7600"><ele>530</ele></trkpt>
+      <trkpt lat="50.1200" lon="11.7200"><ele>510</ele></trkpt>
+      <trkpt lat="50.0700" lon="11.6800"><ele>490</ele></trkpt>
+      <trkpt lat="50.0200" lon="11.6400"><ele>470</ele></trkpt>
+      <trkpt lat="49.9800" lon="11.6100"><ele>450</ele></trkpt>
+      <trkpt lat="49.9460" lon="11.5780"><ele>430</ele><name>Bayreuth A9</name></trkpt>
+    </trkseg>
+  </trk>
+</gpx>

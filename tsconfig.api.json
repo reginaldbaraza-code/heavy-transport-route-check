@@ -7,5 +7,5 @@
     "allowImportingTsExtensions": false
   },
   "include": ["api/**/*"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "api/**/*.test.ts"]
 }

@@ -5,6 +5,7 @@
   "destination": "Stuttgart Industrial Complex",
   "validFrom": "2026-11-13T00:00:00+01:00",
   "validUntil": "2026-11-20T23:59:59+01:00",
+  "corridor": "A8",
   "vehicle": {
     "width": 3.3,
     "height": 4.3,

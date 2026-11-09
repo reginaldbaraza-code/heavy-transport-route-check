@@ -5,6 +5,7 @@
   "destination": "Hannover Logistics Hub",
   "validFrom": "2026-11-10T00:00:00+01:00",
   "validUntil": "2026-11-15T23:59:59+01:00",
+  "corridor": "A7",
   "vehicle": {
     "width": 3.2,
     "height": 4.5,

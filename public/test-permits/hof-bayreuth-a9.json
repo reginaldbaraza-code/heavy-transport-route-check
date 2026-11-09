@@ -1,0 +1,19 @@
+{
+  "permitNumber": "DE-BY-2026-01009",
+  "route": "Hof → Bayreuth via A9",
+  "origin": "Hof A9",
+  "destination": "Bayreuth A9",
+  "validFrom": "2026-11-09T00:00:00+01:00",
+  "validUntil": "2026-11-16T23:59:59+01:00",
+  "vehicle": {
+    "width": 2.55,
+    "height": 4.0,
+    "length": 18.0,
+    "grossWeight": 40
+  },
+  "corridor": "A9",
+  "bridgeClearanceConfirmed": true,
+  "clearanceConfirmedBy": "Sample dispatcher",
+  "confirmedAt": "2026-11-09T08:00:00.000Z",
+  "routeDescription": "Short A9 segment Hof to Bayreuth. Sample — expected READY, live data may differ."
+}

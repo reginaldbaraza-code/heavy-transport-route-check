@@ -6,7 +6,16 @@ import {
 } from 'lucide-react'
 import RouteMapGL, { type RouteMapHandle } from '../components/RouteMapGL'
 import { Toast } from '../components/Feedback'
-import { checkRoute, loadTestPermit, readFileAsText, testPermits, type RouteCheckResult } from '../lib/routeCheck'
+import {
+  checkRoute,
+  loadTestPermit,
+  readFileAsText,
+  sampleTestPermits,
+  scenarioTestPermits,
+  testPermits,
+  type RouteCheckResult,
+  type TestPermit,
+} from '../lib/routeCheck'
 import { useRouteMonitoring } from '../context/RouteMonitoringContext'
 import { useJobs } from '../context/JobsContext'
 import { formatBerlinDateTime } from '../lib/formatTime'
@@ -54,6 +63,10 @@ export default function RouteIntelligencePolished() {
   const [jobInterval, setJobInterval] = useState(prefs.intervalMinutes)
   const [showSaveJob, setShowSaveJob] = useState(false)
   const loadedJob = useRef<string | null>(null)
+  const [activePermitId, setActivePermitId] = useState<string | null>(null)
+  const [clearanceConfirmed, setClearanceConfirmed] = useState(false)
+  const [clearanceBy, setClearanceBy] = useState('')
+  const [confirmedAt, setConfirmedAt] = useState('')
 
   const vehicle = {
     width: parseFloat(vehicleWidth) || 0,
@@ -64,14 +77,24 @@ export default function RouteIntelligencePolished() {
 
   const vehicleValid = vehicle.width > 0 && vehicle.height > 0 && vehicle.length > 0 && vehicle.grossWeight > 0
 
-  const runCheck = async (content: string, metadata?: any) => {
+  const applyPermitClearance = (permit?: TestPermit | null, metadata?: any) => {
+    const confirmed = Boolean(metadata?.bridgeClearanceConfirmed ?? permit?.bridgeClearanceConfirmed)
+    setClearanceConfirmed(confirmed)
+    setClearanceBy(metadata?.clearanceConfirmedBy || permit?.clearanceConfirmedBy || '')
+    setConfirmedAt(metadata?.confirmedAt || permit?.confirmedAt || (confirmed ? new Date().toISOString() : ''))
+  }
+
+  const runCheck = async (content: string, metadata?: any, permitOverride?: TestPermit) => {
     const dims = metadata?.vehicle ? {
       width: Number(metadata.vehicle.width),
       height: Number(metadata.vehicle.height),
       length: Number(metadata.vehicle.length),
       grossWeight: Number(metadata.vehicle.grossWeight),
     } : vehicle
-    const permit = metadata?.permitNumber || permitNumber
+    const activePermit = permitOverride || testPermits.find(item => item.id === activePermitId)
+    const permit = (activePermit?.kind === 'scenario' ? activePermit.permitNumber : null)
+      || metadata?.permitNumber
+      || permitNumber
     if (!(dims.width > 0 && dims.height > 0 && dims.length > 0 && dims.grossWeight > 0) || checking) return
 
     setChecking(true)
@@ -79,7 +102,7 @@ export default function RouteIntelligencePolished() {
     
     try {
       if (metadata) {
-        setPermitNumber(metadata.permitNumber || '')
+        setPermitNumber(activePermit?.kind === 'scenario' ? (activePermit.permitNumber || permit) : (metadata.permitNumber || ''))
         setVehicleProfile('custom')
         setVehicleWidth(metadata.vehicle.width.toString())
         setVehicleHeight(metadata.vehicle.height.toString())
@@ -87,7 +110,25 @@ export default function RouteIntelligencePolished() {
         setVehicleWeight(metadata.vehicle.grossWeight.toString())
       }
 
-      const checkResult = await checkRoute(content, dims, permit)
+      const checkResult = await checkRoute(content, dims, {
+        permitNumber: permit,
+        corridor: metadata?.corridor || activePermit?.corridor,
+        permittedRoads: (metadata?.corridor || activePermit?.corridor)
+          ? [String(metadata?.corridor || activePermit?.corridor).replace(/\s+/g, '')]
+          : undefined,
+        validFrom: metadata?.validFrom || activePermit?.validFrom,
+        validUntil: metadata?.validUntil || activePermit?.validUntil,
+        bridgeClearanceConfirmed: permitOverride
+          ? Boolean(metadata?.bridgeClearanceConfirmed ?? permitOverride.bridgeClearanceConfirmed)
+          : Boolean(metadata?.bridgeClearanceConfirmed ?? clearanceConfirmed),
+        clearanceConfirmedBy: permitOverride
+          ? (metadata?.clearanceConfirmedBy || permitOverride.clearanceConfirmedBy)
+          : (metadata?.clearanceConfirmedBy || clearanceBy || undefined),
+        confirmedAt: permitOverride
+          ? (metadata?.confirmedAt || permitOverride.confirmedAt)
+          : (metadata?.confirmedAt || confirmedAt || undefined),
+        scenario: activePermit?.scenario,
+      })
       setResult(checkResult)
       setActiveLayer('roadworks')
       setStep('result')
@@ -126,21 +167,30 @@ export default function RouteIntelligencePolished() {
     const permit = testPermits.find(p => p.id === permitId)
     if (!permit) return
 
+    setActivePermitId(permit.id)
     setRouteFile(permit.name.split('·')[0].trim())
     setShowTestPermits(false)
     setError('')
     setStep('vehicle')
+    applyPermitClearance(permit)
 
     try {
       const { gpxContent: content, metadata } = await loadTestPermit(permit)
       setGpxContent(content)
       if (metadata) {
-        setPermitNumber(metadata.permitNumber || '')
+        setPermitNumber(permit.kind === 'scenario' ? permit.permitNumber : (metadata.permitNumber || ''))
         setVehicleProfile('custom')
-        setVehicleWidth(metadata.vehicle.width.toString())
-        setVehicleHeight(metadata.vehicle.height.toString())
-        setVehicleLength(metadata.vehicle.length.toString())
-        setVehicleWeight(metadata.vehicle.grossWeight.toString())
+        setVehicleWidth((metadata.vehicle?.width ?? permit.vehicle.width).toString())
+        setVehicleHeight((metadata.vehicle?.height ?? permit.vehicle.height).toString())
+        setVehicleLength((metadata.vehicle?.length ?? permit.vehicle.length).toString())
+        setVehicleWeight((metadata.vehicle?.grossWeight ?? permit.vehicle.grossWeight).toString())
+      } else {
+        setPermitNumber(permit.permitNumber)
+        setVehicleProfile('custom')
+        setVehicleWidth(permit.vehicle.width.toString())
+        setVehicleHeight(permit.vehicle.height.toString())
+        setVehicleLength(permit.vehicle.length.toString())
+        setVehicleWeight(permit.vehicle.grossWeight.toString())
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load test permit')
@@ -213,8 +263,19 @@ export default function RouteIntelligencePolished() {
       setJobInterval(job.monitorIntervalMinutes || prefs.intervalMinutes)
       setShowTestPermits(false)
       setError('')
+      setActivePermitId(null)
+      setClearanceConfirmed(Boolean(job.bridgeClearanceConfirmed))
+      setClearanceBy(job.clearanceConfirmedBy || '')
+      setConfirmedAt(job.confirmedAt || '')
       if (searchParams.get('run') === '1') {
-        void runCheck(job.gpxContent, { permitNumber: job.permitNumber, vehicle: job.vehicle })
+        void runCheck(job.gpxContent, {
+          permitNumber: job.permitNumber,
+          vehicle: job.vehicle,
+          corridor: job.corridor,
+          bridgeClearanceConfirmed: job.bridgeClearanceConfirmed,
+          clearanceConfirmedBy: job.clearanceConfirmedBy,
+          confirmedAt: job.confirmedAt,
+        })
       } else {
         setStep('vehicle')
       }
@@ -242,8 +303,10 @@ export default function RouteIntelligencePolished() {
           setVehicleLength(metadata.vehicle.length.toString())
           setVehicleWeight(metadata.vehicle.grossWeight.toString())
         }
+        setActivePermitId(permit.id)
+        applyPermitClearance(permit, metadata)
         if (autoRun) {
-          await runCheck(content, metadata)
+          await runCheck(content, metadata, permit)
         } else {
           setStep('vehicle')
         }
@@ -262,6 +325,10 @@ export default function RouteIntelligencePolished() {
     setPermitNumber('')
     setShowSaveJob(false)
     loadedJob.current = null
+    setActivePermitId(null)
+    setClearanceConfirmed(false)
+    setClearanceBy('')
+    setConfirmedAt('')
   }
 
   const handleSaveJob = () => {
@@ -284,6 +351,9 @@ export default function RouteIntelligencePolished() {
       lastRetrievedAt: result?.retrievedAt,
       lastSource: result?.source,
       monitoringStoppedReason: null,
+      bridgeClearanceConfirmed: clearanceConfirmed,
+      clearanceConfirmedBy: clearanceBy,
+      confirmedAt: confirmedAt || (clearanceConfirmed ? new Date().toISOString() : undefined),
     }, loadedJob.current || undefined)
     loadedJob.current = saved.id
     setShowSaveJob(false)
@@ -435,21 +505,25 @@ export default function RouteIntelligencePolished() {
             </button>
 
             {showTestPermits && (
-              <div className="test-permits-grid">
-                {testPermits.filter(p => p.id !== 'invalid').map(permit => (
-                  <button
-                    key={permit.id}
-                    type="button"
-                    className="test-permit-card"
-                    onClick={() => handleTestPermitSelect(permit.id)}
-                  >
-                    <MapPin size={20} />
-                    <div>
-                      <strong>{permit.name.split('·')[0].trim()}</strong>
-                      <span>{permit.name.split('·')[1]?.trim()}</span>
-                    </div>
-                  </button>
-                ))}
+              <div className="test-permit-groups">
+                <div>
+                  <h3 className="test-permit-group-title">Live samples</h3>
+                  <p className="test-permit-group-note">Sample — expected outcome, live data may differ</p>
+                  <div className="test-permits-grid">
+                    {sampleTestPermits.map(permit => (
+                      <PermitCard key={permit.id} permit={permit} onSelect={handleTestPermitSelect} />
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <h3 className="test-permit-group-title">Scenario mode</h3>
+                  <p className="test-permit-group-note">Simulated — not live data. Skips live feeds so READY, VERIFY, and HOLD can all be demoed.</p>
+                  <div className="test-permits-grid">
+                    {scenarioTestPermits.map(permit => (
+                      <PermitCard key={permit.id} permit={permit} onSelect={handleTestPermitSelect} />
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -567,6 +641,38 @@ export default function RouteIntelligencePolished() {
               <p className="storage-note">Used if you save this as a job. Monitoring only runs while the tab is open and stops after this time.</p>
             </div>
 
+            <label className="clearance-tick">
+              <input
+                type="checkbox"
+                checked={clearanceConfirmed}
+                onChange={event => {
+                  const next = event.target.checked
+                  setClearanceConfirmed(next)
+                  if (next) {
+                    if (!clearanceBy) setClearanceBy('Dispatcher')
+                    setConfirmedAt(new Date().toISOString())
+                  }
+                }}
+              />
+              <span>
+                <strong>Bridge and clearance confirmed</strong>
+                READY is only possible after this dispatcher tick. Stored with the job.
+              </span>
+            </label>
+            {clearanceConfirmed && (
+              <div className="form-group">
+                <label htmlFor="clearance-by">
+                  <span>Confirmed by</span>
+                  <input
+                    id="clearance-by"
+                    value={clearanceBy}
+                    onChange={event => setClearanceBy(event.target.value)}
+                    placeholder="Dispatcher name"
+                  />
+                </label>
+              </div>
+            )}
+
             <div className="form-actions">
               <button type="button" className="btn-secondary" onClick={resetFlow}>
                 Back
@@ -610,6 +716,20 @@ export default function RouteIntelligencePolished() {
                     <span>Data source temporarily unavailable – verify manually</span>
                   </div>
                 )}
+                {result.mode === 'simulated' && (
+                  <div className="scenario-banner">Simulated — not live data</div>
+                )}
+                {(() => {
+                  const permit = testPermits.find(item => item.id === activePermitId)
+                  if (!permit?.expectedVerdict) return null
+                  const matched = result.verdict === permit.expectedVerdict
+                  return (
+                    <div className={`outcome-match ${matched ? 'matched' : 'differed'}`}>
+                      Expected {permit.expectedVerdict}
+                      {matched ? ' — actual matched' : ` — actual ${result.verdict}${permit.liveMayDiffer ? ' (live data may differ)' : ''}`}
+                    </div>
+                  )
+                })()}
               </div>
               <button type="button" className="btn-text" onClick={resetFlow}>
                 Check another route
@@ -715,6 +835,14 @@ export default function RouteIntelligencePolished() {
                           </span>
                         </div>
                         <p>{item.detail}</p>
+                        {(item.reason || item.distanceKm != null) && (
+                          <p className="evidence-reason">
+                            {item.distanceKm != null && (
+                              <span className="evidence-distance">{item.distanceKm.toFixed(2)} km from route · </span>
+                            )}
+                            {item.reason}
+                          </p>
+                        )}
                         <div className="evidence-meta">
                           <span>{item.source}</span>
                           <span>·</span>
@@ -754,5 +882,27 @@ export default function RouteIntelligencePolished() {
 
       {toast && <Toast message={toast} tone="info" onClose={() => setToast('')} />}
     </div>
+  )
+}
+
+function PermitCard({ permit, onSelect }: { permit: TestPermit; onSelect: (id: string) => void }) {
+  return (
+    <button
+      type="button"
+      className={`test-permit-card kind-${permit.kind}`}
+      onClick={() => onSelect(permit.id)}
+    >
+      <MapPin size={20} />
+      <div>
+        <strong>{permit.name.split('·')[0].trim()}</strong>
+        <span>{permit.permitNumber || permit.liveLabel}</span>
+        <span className="permit-card-label">{permit.liveLabel}</span>
+      </div>
+      {permit.expectedVerdict && (
+        <b className={`expected-badge expected-${permit.expectedVerdict.toLowerCase()}`}>
+          Expected {permit.expectedVerdict}
+        </b>
+      )}
+    </button>
   )
 }

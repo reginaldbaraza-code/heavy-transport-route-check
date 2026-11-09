@@ -24,6 +24,10 @@ export type RouteEvidence = {
   endTimestamp?: string | null
   retrievedAt?: string
   longRunning?: boolean
+  distanceKm?: number | null
+  reason?: string
+  locationKind?: string
+  blocker?: boolean
 }
 
 export type MapAlert = {

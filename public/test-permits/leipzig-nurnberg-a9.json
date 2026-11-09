@@ -5,6 +5,7 @@
   "destination": "Nürnberg Heavy Cargo Hub",
   "validFrom": "2026-11-09T00:00:00+01:00",
   "validUntil": "2026-11-14T23:59:59+01:00",
+  "corridor": "A9",
   "vehicle": {
     "width": 3.0,
     "height": 4.0,

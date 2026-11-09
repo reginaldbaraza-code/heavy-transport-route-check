@@ -28,6 +28,9 @@ export type SavedJob = {
   lastRetrievedAt?: string
   lastSource?: string
   monitoringStoppedReason?: 'departed' | 'deleted' | null
+  bridgeClearanceConfirmed?: boolean
+  clearanceConfirmedBy?: string
+  confirmedAt?: string
 }
 
 export type MonitorPrefs = {
