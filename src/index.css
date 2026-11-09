@@ -7,58 +7,66 @@
   --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
   --safe-area-inset-left: env(safe-area-inset-left, 0px);
   
+  /* Spacing scale — 4 / 8 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
   /* Backgrounds */
-  --bg-base: #f5f7fa;
+  --bg-base: #f5f6f8;
   --bg-card: #ffffff;
   --bg-elevated: #ffffff;
-  --bg-grouped: #f5f7fa;
+  --bg-grouped: #f5f6f8;
 
-  /* Text — Apple iOS palette */
-  --text-primary: #101828;
-  --text-secondary: #475467;
-  --text-tertiary: #667085;
-  --text-quaternary: #667085;
+  /* Text — Apple iOS palette, AA on --bg-base / --bg-card */
+  --text-primary: #0f1728;
+  --text-secondary: #3f4c5a;
+  --text-tertiary: #5b6775;
+  --text-quaternary: #5b6775;
 
   /* Brand */
-  --navy: #102a43;
-  --navy-mid: #1b3a57;
-  --navy-light: #285b85;
+  --navy: #0c2439;
+  --navy-mid: #16344c;
+  --navy-light: #2a5678;
 
   /* Accent — Apple blue */
-  --accent: #175cd3;
-  --accent-hover: #1849a9;
-  --accent-light: #eaf2ff;
-  --accent-soft: #f4f8ff;
+  --accent: #0b57d0;
+  --accent-hover: #0846a8;
+  --accent-light: #e8f0fe;
+  --accent-soft: #f3f7ff;
 
-  /* Semantic */
-  --green: #12b76a;
-  --green-bg: #ecfdf3;
-  --green-text: #067647;
-  --amber: #f79009;
-  --amber-bg: #fffaeb;
-  --amber-text: #93370d;
-  --red: #f04438;
-  --red-bg: #fef3f2;
+  /* Semantic — AA text on tinted surfaces */
+  --green: #0f9d58;
+  --green-bg: #e8f8ef;
+  --green-text: #0b6b3a;
+  --amber: #d97706;
+  --amber-bg: #fff7e8;
+  --amber-text: #92400e;
+  --red: #dc2626;
+  --red-bg: #fef2f2;
   --red-text: #b42318;
-  --blue-bg: #eff6ff;
+  --blue-bg: #eef4ff;
   --blue-text: #1d4ed8;
 
   /* Borders */
-  --border: #e4e7ec;
-  --border-strong: #d0d5dd;
+  --border: #e6e8ec;
+  --border-strong: #cfd4dc;
   --divider: #eef0f3;
 
-  /* Shadows — Apple-style layered */
-  --shadow-xs: 0 1px 2px rgba(16,24,40,.04);
-  --shadow-sm: 0 1px 3px rgba(16,24,40,.06), 0 1px 2px rgba(16,24,40,.03);
-  --shadow-md: 0 8px 20px rgba(16,24,40,.07), 0 2px 5px rgba(16,24,40,.04);
-  --shadow-lg: 0 16px 32px rgba(16,24,40,.09);
-  --shadow-xl: 0 24px 48px rgba(16,24,40,.12);
+  /* Shadows — subtle, layered, with offset */
+  --shadow-xs: 0 1px 2px rgba(15,23,40,.05);
+  --shadow-sm: 0 1px 2px rgba(15,23,40,.04), 0 4px 10px rgba(15,23,40,.05);
+  --shadow-md: 0 2px 4px rgba(15,23,40,.04), 0 10px 24px rgba(15,23,40,.07);
+  --shadow-lg: 0 4px 8px rgba(15,23,40,.05), 0 18px 36px rgba(15,23,40,.09);
+  --shadow-xl: 0 8px 16px rgba(15,23,40,.06), 0 28px 48px rgba(15,23,40,.12);
 
-  /* Radius */
-  --r-sm: 6px;
-  --r-md: 8px;
-  --r-lg: 12px;
+  /* Radius — 8 / 12 / 16 */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
   --r-xl: 16px;
 
   /* Legacy compat */
@@ -85,7 +93,7 @@
 html { font-size: 16px; }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Segoe UI', Inter, 'Helvetica Neue', sans-serif;
   font-size: 16px;
   line-height: 1.5;
   background: var(--bg-base);
@@ -120,7 +128,7 @@ html, body, #root { width: 100%; min-height: 100%; overflow-x: clip; }
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: var(--r-sm);
 }
 
 /* Smooth transitions everywhere */
@@ -3035,4 +3043,191 @@ select:focus-visible {
 
 @media (max-width: 800px) {
   .job-row-main, .jobs-monitor-banner, .jobs-prefs-grid, .result-actions { flex-direction: column; grid-template-columns: 1fr; }
+}
+
+/* Visual polish — lockup, tokens, chips, map overlays, skeletons */
+.sidebar-brand {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 0 16px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+.sidebar-brand.is-collapsed {
+  padding: 0 8px;
+  gap: 4px;
+  justify-content: space-between;
+}
+.sidebar-lockup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+.sidebar-logo {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+}
+.sidebar-logo svg { display: block; }
+.sidebar-wordmark {
+  min-width: 0;
+  flex: 1;
+  text-align: left;
+  color: rgba(255,255,255,.94);
+}
+.sidebar-wordmark span {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -.015em;
+}
+.sidebar-htr {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  color: rgba(255,255,255,.94);
+}
+.sidebar-collapse {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  color: rgba(255,255,255,.72);
+}
+.sidebar-collapse:hover { color: #fff; background: rgba(255,255,255,.1); }
+.app-sidebar nav a > div { min-height: 40px; }
+.app-sidebar nav a:focus-visible > div,
+.sidebar-collapse:focus-visible,
+.sidebar-logo:focus-visible,
+.sidebar-wordmark:focus-visible,
+.sidebar-htr:focus-visible {
+  outline: 2px solid #f5c518;
+  outline-offset: 1px;
+}
+
+h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
+  letter-spacing: -.03em;
+}
+.route-stat-grid strong,
+.transport-facts strong,
+.vehicle-profile-facts strong,
+.custom-vehicle-fields input,
+.live-event-summary strong,
+[data-testid="job-last-check"] {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.market-button,
+.primary-button,
+.secondary-button,
+.btn-primary,
+.btn-secondary {
+  min-height: 40px;
+  border-radius: var(--r-sm);
+}
+.route-verdict,
+.transport-route-list b,
+.transport-source-list b,
+.job-monitor-pill,
+.feed-status,
+.setup-pill {
+  min-height: 24px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 99px;
+  font-weight: 700;
+}
+.verdict-banner {
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+}
+.verdict-banner.verdict-green { background: var(--green-bg); border: 1px solid #86d5a8; }
+.verdict-banner.verdict-red { background: var(--red-bg); border: 1px solid #f5b5b0; }
+.verdict-banner.verdict-amber { background: var(--amber-bg); border: 1px solid #f3d18a; }
+.verdict-label { border-radius: 99px; min-height: 24px; display: inline-flex; align-items: center; }
+
+.heatmap-legend,
+.permit-map-legend,
+.live-map-legend,
+.heatmap-status,
+.heatmap-map-caption,
+.permit-map-badge {
+  max-width: calc(100% - 28px);
+  flex-wrap: wrap;
+}
+.live-map-legend { bottom: 92px; }
+.live-map-kpis { z-index: 451; }
+.heatmap-zoom { overflow: hidden; border-radius: var(--r-sm); }
+.heatmap-canvas { overflow: hidden; }
+
+.live-event-skeleton {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.live-event-skeleton span,
+.ui-skeleton {
+  display: block;
+  height: 40px;
+  border-radius: var(--r-sm);
+  background: linear-gradient(90deg, var(--divider) 0%, #f8fafc 50%, var(--divider) 100%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.2s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+.checking-state::after,
+.route-checking-state::after {
+  content: '';
+  width: min(280px, 70%);
+  height: 10px;
+  margin-top: 16px;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--divider) 0%, #f8fafc 50%, var(--divider) 100%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+.card,
+.job-save-card,
+.jobs-prefs-card,
+.settings-card,
+.heatmap-shell {
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+@media (max-width: 768px) {
+  .verdict-banner { flex-direction: column; align-items: flex-start; gap: 16px; padding: 20px; }
+  .verdict-icon { width: 48px; height: 48px; }
+  .verdict-content h2 { font-size: 22px; }
+  .result-actions, .history-export-actions { width: 100%; }
+  .result-actions button, .result-actions a, .history-export-actions button { width: 100%; justify-content: center; }
+  .app-page, .route-page, .market-page, .jobs-page { overflow-x: clip; padding-left: 16px; padding-right: 16px; }
+  .live-map-legend, .live-map-kpis { max-width: calc(100% - 16px); left: 8px; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-event-skeleton span,
+  .ui-skeleton,
+  .checking-state::after,
+  .route-checking-state::after,
+  .spin { animation: none !important; }
 }

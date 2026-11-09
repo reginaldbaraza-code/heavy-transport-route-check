@@ -1,4 +1,39 @@
 import { jsPDF, GState } from 'jspdf'
+import { LANE_INNER_PATH, LANE_OUTER_PATH, ROUTE_PATH } from '../components/RouteCheckLogo'
+
+function parsePath(d: string) {
+  const tokens = d.replace(/,/g, ' ').trim().split(/\s+/)
+  const ops: Array<{ cmd: string; nums: number[] }> = []
+  let i = 0
+  while (i < tokens.length) {
+    const cmd = tokens[i]
+    if (cmd === 'M' || cmd === 'L') {
+      ops.push({ cmd, nums: [Number(tokens[i + 1]), Number(tokens[i + 2])] })
+      i += 3
+    } else if (cmd === 'C') {
+      ops.push({
+        cmd,
+        nums: [Number(tokens[i + 1]), Number(tokens[i + 2]), Number(tokens[i + 3]), Number(tokens[i + 4]), Number(tokens[i + 5]), Number(tokens[i + 6])],
+      })
+      i += 7
+    } else {
+      i += 1
+    }
+  }
+  return ops
+}
+
+function strokePath(doc: jsPDF, px: (n: number) => number, py: (n: number) => number, d: string) {
+  const ops = parsePath(d)
+  for (const op of ops) {
+    if (op.cmd === 'M') doc.moveTo(px(op.nums[0]), py(op.nums[1]))
+    else if (op.cmd === 'L') doc.lineTo(px(op.nums[0]), py(op.nums[1]))
+    else if (op.cmd === 'C') {
+      doc.curveTo(px(op.nums[0]), py(op.nums[1]), px(op.nums[2]), py(op.nums[3]), px(op.nums[4]), py(op.nums[5]))
+    }
+  }
+  doc.stroke()
+}
 
 /** Draw the route-check mark in the 64×64 viewBox, scaled into a square of `size` mm. */
 export function drawRouteCheckLogo(doc: jsPDF, x: number, y: number, size: number) {
@@ -16,28 +51,22 @@ export function drawRouteCheckLogo(doc: jsPDF, x: number, y: number, size: numbe
   doc.setLineCap('round')
   doc.setLineJoin('round')
 
+  doc.setGState(new GState({ 'stroke-opacity': 0.22 }))
+  doc.setDrawColor(245, 197, 24)
+  doc.setLineWidth(7.4 * k)
+  strokePath(doc, px, py, ROUTE_PATH)
+
   doc.setGState(new GState({ 'stroke-opacity': 0.7 }))
   doc.setDrawColor(255, 255, 255)
-  doc.setLineWidth(1.12 * k)
+  doc.setLineWidth(1.25 * k)
   doc.setLineDashPattern([2.4 * k, 2.75 * k], 0)
-  doc.moveTo(px(19.2), py(43.6))
-  doc.curveTo(px(24.8), py(42), px(28.6), py(37.4), px(29.6), py(30.6))
-  doc.stroke()
-  doc.moveTo(px(33), py(54.4))
-  doc.curveTo(px(40.6), py(49.6), px(44.8), py(43.2), px(42.6), py(36.8))
-  doc.stroke()
+  strokePath(doc, px, py, LANE_INNER_PATH)
+  strokePath(doc, px, py, LANE_OUTER_PATH)
   doc.setLineDashPattern([], 0)
-  doc.setGState(new GState({ 'stroke-opacity': 1 }))
 
+  doc.setGState(new GState({ 'stroke-opacity': 1 }))
   doc.setDrawColor(245, 197, 24)
   doc.setLineWidth(5 * k)
-  doc.moveTo(px(-2), py(51.8))
-  doc.curveTo(px(14), py(51.8), px(20), py(51.5), px(26), py(48.4))
-  doc.curveTo(px(35.2), py(43.8), px(43.2), py(40.4), px(40.2), py(33.8))
-  doc.curveTo(px(37.4), py(27.8), px(33), py(26.2), px(31.5), py(22.8))
-  doc.curveTo(px(30), py(19), px(34.2), py(15.4), px(39.8), py(13.35))
-  doc.lineTo(px(46.5), py(19.7))
-  doc.lineTo(px(56.75), py(10.05))
-  doc.stroke()
+  strokePath(doc, px, py, ROUTE_PATH)
   doc.restoreGraphicsState()
 }

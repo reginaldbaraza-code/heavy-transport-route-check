@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { extname, join } from 'node:path'
 import { test } from 'node:test'
 import { pdfBytesFromSnapshot, type ExportSnapshot } from './exportCheck.ts'
+import { logoDetailForSize } from '../components/RouteCheckLogo.tsx'
 
 const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 const LFS_PREFIX = 'version https://git-lfs'
@@ -49,6 +50,21 @@ test('built dist/ PNGs keep a valid PNG signature when dist exists', () => {
   const files = walk('dist').filter(path => extname(path).toLowerCase() === '.png')
   assert.ok(files.length >= 4, `expected dist icon PNGs after build, found ${files.length}`)
   for (const path of files) assertPngBlob(path)
+})
+
+test('logo detail tiers match size breakpoints', () => {
+  assert.equal(logoDetailForSize(16), 'small')
+  assert.equal(logoDetailForSize(24), 'small')
+  assert.equal(logoDetailForSize(32), 'medium')
+  assert.equal(logoDetailForSize(48), 'medium')
+  assert.equal(logoDetailForSize(64), 'full')
+})
+
+test('in-app logo and favicon have no Gaussian blur', () => {
+  const favicon = readFileSync('public/favicon.svg', 'utf8')
+  const source = readFileSync('src/components/RouteCheckLogo.tsx', 'utf8')
+  assert.doesNotMatch(favicon, /feGaussianBlur/)
+  assert.doesNotMatch(source, /feGaussianBlur/)
 })
 
 test('PDF header draws the mark as vectors, not an LFS/PNG asset', () => {

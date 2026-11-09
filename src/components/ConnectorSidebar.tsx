@@ -26,12 +26,12 @@ export default function ConnectorSidebar() {
   return (
     <aside className="connector-sidebar w-64 flex-shrink-0 bg-white border-r border-[var(--border)] flex flex-col overflow-y-auto">
       <div className="connector-sidebar-brand flex items-center gap-3 px-5 py-4 border-b border-[var(--border)]">
-        <div className="w-10 h-10 flex-shrink-0">
-          <RouteCheckLogo size={40} tone="light" decorative className="w-full h-full" />
+        <div className="w-8 h-8 flex-shrink-0">
+          <RouteCheckLogo size={32} tone="light" decorative className="w-full h-full" />
         </div>
-        <div>
-          <div className="font-bold text-sm leading-tight text-[var(--foreground)]">Heavy transport</div>
-          <div className="font-bold text-sm leading-tight text-[var(--foreground)]">route check</div>
+        <div className="sidebar-wordmark-light">
+          <div className="font-semibold text-[13px] leading-tight tracking-tight text-[var(--foreground)]">Heavy transport</div>
+          <div className="font-semibold text-[13px] leading-tight tracking-tight text-[var(--foreground)]">route check</div>
         </div>
       </div>
 

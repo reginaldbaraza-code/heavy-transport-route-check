@@ -7,17 +7,29 @@ export type RouteCheckLogoProps = {
   className?: string
 }
 
+export type LogoDetail = "small" | "medium" | "full"
+
 /** Amber route: left-edge entry, S-curve, then a check (short down, long up). */
 export const ROUTE_PATH =
-  "M-2 51.8 C14 51.8 20 51.5 26 48.4 C35.2 43.8 43.2 40.4 40.2 33.8 C37.4 27.8 33 26.2 31.5 22.8 C30 19 34.2 15.4 39.8 13.35 L46.5 19.7 L56.75 10.05"
+  "M2 50 C16 50 22 49.5 28 46 C36.5 41.5 44 38 41.5 32 C38.5 26.5 34 25 32.5 21.5 C31 18 35 14.5 40.5 13 L47 19.5 L57.5 10"
+
+/** Pixel-snapped 16/24px mark — integer coords on the 64 viewBox (multiples of 4). */
+export const ROUTE_PATH_SMALL =
+  "M4 48 C16 48 24 48 28 44 C36 40 44 40 40 32 C36 28 32 24 32 20 C32 16 36 12 40 12 L48 20 L60 8"
 
 /** Inner (left) dashed lane — lower/middle S only. */
-export const LANE_INNER_PATH = "M19.2 43.6 C24.8 42 28.6 37.4 29.6 30.6"
+export const LANE_INNER_PATH = "M20 42 C26 40 30 36 31 29"
 
 /** Outer (right) dashed lane — lower/middle S only. */
-export const LANE_OUTER_PATH = "M33 54.4 C40.6 49.6 44.8 43.2 42.6 36.8"
+export const LANE_OUTER_PATH = "M34 52 C42 47 46 41 44 35"
 
 const TITLE = "Heavy transport route check"
+
+export function logoDetailForSize(size: number): LogoDetail {
+  if (size <= 24) return "small"
+  if (size < 64) return "medium"
+  return "full"
+}
 
 export default function RouteCheckLogo({
   size = 32,
@@ -26,11 +38,14 @@ export default function RouteCheckLogo({
   className,
 }: RouteCheckLogoProps) {
   const uid = useId().replace(/:/g, "")
-  const showGlow = size >= 24
+  const detail = logoDetailForSize(size)
   const tile = `rc-tile-${uid}`
   const route = `rc-route-${uid}`
   const clip = `rc-clip-${uid}`
-  const glow = `rc-glow-${uid}`
+  const routePath = detail === "small" ? ROUTE_PATH_SMALL : ROUTE_PATH
+  const stroke = detail === "small" ? 6.5 : detail === "medium" ? 5.5 : 5
+  const showLanes = detail === "full" || (detail === "medium" && size >= 32)
+  const showGlowStroke = detail === "full"
 
   return (
     <svg
@@ -39,7 +54,9 @@ export default function RouteCheckLogo({
       height={size}
       viewBox="0 0 64 64"
       fill="none"
+      shapeRendering="geometricPrecision"
       data-tone={tone}
+      data-detail={detail}
       role={decorative ? undefined : "img"}
       aria-hidden={decorative || undefined}
       aria-label={decorative ? undefined : TITLE}
@@ -71,54 +88,45 @@ export default function RouteCheckLogo({
         <clipPath id={clip}>
           <rect width="64" height="64" rx="14" />
         </clipPath>
-        {showGlow && (
-          <filter
-            id={glow}
-            x="-25%"
-            y="-25%"
-            width="150%"
-            height="150%"
-            colorInterpolationFilters="sRGB"
-          >
-            <feGaussianBlur stdDeviation="1.2" />
-          </filter>
-        )}
       </defs>
       <g clipPath={`url(#${clip})`}>
         <rect width="64" height="64" rx="14" fill={`url(#${tile})`} />
-        {showGlow && (
+        {showGlowStroke && (
           <path
-            d={ROUTE_PATH}
+            d={routePath}
             stroke="#F5C518"
-            strokeWidth="6.6"
+            strokeWidth={stroke + 2.4}
             strokeLinecap="round"
             strokeLinejoin="round"
-            opacity="0.28"
-            filter={`url(#${glow})`}
+            opacity="0.22"
           />
         )}
+        {showLanes && (
+          <>
+            <path
+              d={LANE_INNER_PATH}
+              stroke="#FFFFFF"
+              strokeOpacity="0.7"
+              strokeWidth="1.25"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray="2.4 2.75"
+            />
+            <path
+              d={LANE_OUTER_PATH}
+              stroke="#FFFFFF"
+              strokeOpacity="0.7"
+              strokeWidth="1.25"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray="2.4 2.75"
+            />
+          </>
+        )}
         <path
-          d={LANE_INNER_PATH}
-          stroke="#FFFFFF"
-          strokeOpacity="0.7"
-          strokeWidth="1.12"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeDasharray="2.4 2.75"
-        />
-        <path
-          d={LANE_OUTER_PATH}
-          stroke="#FFFFFF"
-          strokeOpacity="0.7"
-          strokeWidth="1.12"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeDasharray="2.4 2.75"
-        />
-        <path
-          d={ROUTE_PATH}
+          d={routePath}
           stroke={`url(#${route})`}
-          strokeWidth="5"
+          strokeWidth={stroke}
           strokeLinecap="round"
           strokeLinejoin="round"
         />
