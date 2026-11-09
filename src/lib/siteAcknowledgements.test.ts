@@ -12,7 +12,7 @@ function result(evidence: RouteCheckResult['evidence'], verdict: RouteCheckResul
     verdict,
     title: 'Verification required – potential issue detected',
     summary: 'Nearby items remain.',
-    impact: '',
+    impact: `Selected vehicle: 3.20m W x 4.50m H. ${evidence.filter(item => item.state === 'warning').length} unresolved VERIFY items.`,
     confidence: 'medium',
     issueCount: 0,
     evidence,
@@ -33,6 +33,9 @@ test('client overlay: acknowledging VERIFY items yields READY; HOLD cannot be cl
   }], true)
   assert.equal(ready.verdict, 'READY')
   assert.match(ready.title, /READY – dispatcher confirmed 1 item/)
+  assert.match(ready.summary, /1 VERIFY item confirmed on site by Ada at/)
+  assert.doesNotMatch(ready.impact, /unresolved VERIFY/)
+  assert.match(ready.impact, /Selected vehicle/)
 
   const hold = result([{
     id: 'h1', title: 'Vollsperrung', detail: '', source: 't', age: '', confidence: 'high',

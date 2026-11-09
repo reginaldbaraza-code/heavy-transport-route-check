@@ -1,4 +1,5 @@
 import type { RouteEvidence } from '../data/routeChecks'
+import { formatBerlinDateTime } from './formatTime'
 import type { RouteCheckResult } from './routeCheck'
 
 export type SiteAcknowledgement = {
@@ -21,6 +22,25 @@ export function isAcknowledgeable(item: Pick<RouteEvidence, 'id' | 'state' | 'bl
   if (item.state === 'danger') return false
   if (item.state !== 'warning' || item.blocker === false) return false
   return !SYSTEM_NOTE.test(item.id)
+}
+
+export function stripUnresolvedVerifyCopy(text: string) {
+  return text
+    .replace(/\s*\d+\s+unresolved VERIFY items?\.\s*/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+export function formatOnSiteConfirmationLine(
+  acks: Array<{ acknowledgedBy?: string; acknowledgedAt?: string }>,
+) {
+  if (!acks.length) return ''
+  const n = acks.length
+  const names = [...new Set(acks.map(item => item.acknowledgedBy).filter(Boolean))] as string[]
+  const name = names.join(', ') || 'Dispatcher'
+  const latest = acks.map(item => item.acknowledgedAt).filter(Boolean).sort().at(-1)
+  const time = formatBerlinDateTime(latest) || latest || ''
+  return `${n} VERIFY item${n === 1 ? '' : 's'} confirmed on site by ${name} at ${time}`
 }
 
 export function applySiteAcknowledgements(
@@ -70,12 +90,14 @@ export function applySiteAcknowledgements(
   }
 
   if (acknowledgedCount) {
+    const acks = acknowledgements.filter(item => acknowledgeable.some(entry => entry.id === item.evidenceId))
     return {
       ...result,
       evidence,
       verdict: 'READY',
       title: `READY – dispatcher confirmed ${acknowledgedCount} item${acknowledgedCount === 1 ? '' : 's'}`,
-      summary: `Dispatcher confirmed ${acknowledgedCount} VERIFY item${acknowledgedCount === 1 ? '' : 's'} on site. No HOLD remains and clearance is confirmed.`,
+      summary: formatOnSiteConfirmationLine(acks),
+      impact: stripUnresolvedVerifyCopy(result.impact || ''),
       clearanceConfirmed: true,
     }
   }
