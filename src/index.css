@@ -192,12 +192,20 @@ button, a, input, select, textarea {
 .permit-leaflet-host { height: 100%; min-height: inherit; }
 .permit-leaflet-host .heatmap-shell, .permit-leaflet-shell { height: 100%; }
 .permit-leaflet-map { position: absolute; z-index: 0; inset: 0; background: #e8eef2; }
-.permit-leaflet-map.leaflet-container .leaflet-tile-pane { display: block !important; }
+.permit-leaflet-map.leaflet-container .leaflet-tile-pane { display: block !important; filter: grayscale(1) brightness(1.06) contrast(0.92); }
 .permit-leaflet-map .leaflet-control-attribution { background: rgba(255,255,255,.86); }
-.permit-city-label { padding: 3px 7px; border: 1px solid rgba(16,42,67,.12); border-radius: 6px; background: rgba(255,255,255,.96); color: var(--text-primary); font: 700 12px/1.2 Inter, sans-serif; white-space: nowrap; filter: drop-shadow(0 1px 2px rgba(16,42,67,.16)); }
-.permit-city-label.is-left { text-align: right; }
-.permit-endpoint.label-left { flex-direction: row-reverse; }
-.permit-endpoint.label-right { flex-direction: row; }
+.permit-pill-host { background: none !important; border: none !important; width: 0 !important; height: 0 !important; }
+.permit-pill-host .permit-map-pill { position: absolute; top: 50%; transform: translateY(-50%); }
+.permit-pill-host.is-right .permit-map-pill { left: 10px; }
+.permit-pill-host.is-left .permit-map-pill { right: 10px; }
+.permit-pill-host.is-above .permit-map-pill { transform: translateY(calc(-50% - 16px)); }
+.permit-pill-host.is-below .permit-map-pill { transform: translateY(calc(-50% + 16px)); }
+.permit-map-pill { display: inline-flex; align-items: baseline; flex-direction: row; gap: 5px; width: max-content; padding: 3px 8px; border: 1px solid rgba(16,42,67,.1); border-radius: 999px; background: rgba(255,255,255,.96); color: var(--text-primary); box-shadow: 0 1px 3px rgba(16,42,67,.14); white-space: nowrap; }
+.permit-map-pill small { color: var(--text-tertiary); font: 650 9px/1 Inter, sans-serif; letter-spacing: .04em; text-transform: uppercase; }
+.permit-map-pill strong { color: var(--text-primary); font: 600 12px/1.2 Inter, sans-serif; }
+.overview-route-legend .alert-key.ready { background: #16A34A; }
+.overview-route-legend .alert-key.verify { background: #F59E0B; }
+.overview-route-legend .alert-key.hold { background: #DC2626; }
 .permit-leaflet-fallback { position: absolute; inset: 0; display: grid; place-items: center; background: #e8eef2; color: var(--text-tertiary); font-size: 14px; font-weight: 650; }
 .transport-route-list > button { width: 100%; min-height: 58px; padding: 10px 12px; display: flex; align-items: center; gap: 9px; border: 0; color: inherit; text-align: left; background: transparent; cursor: pointer; }
 .transport-route-list > button + button { border-top: 1px solid var(--divider); }

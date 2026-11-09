@@ -124,18 +124,34 @@ async function main() {
     'Homepage hero is not the illustrated Germany map',
     (await page.locator('.transport-readiness-map .shared-leaflet-map').count()) === 0,
   )
+  const heroCard = await page.locator('.transport-readiness-copy').innerText()
+  record(
+    'Hero card matches a drawn route, not Duisburg→Munich',
+    /München|Stuttgart/.test(heroCard) && !/Duisburg Logistics/.test(heroCard),
+    heroCard.replace(/\s+/g, ' ').slice(0, 180),
+  )
+  const tileFilter = await page.locator('.permit-leaflet-map .leaflet-tile-pane').evaluate(el => getComputedStyle(el).filter)
+  record('Homepage tiles are desaturated', /grayscale/i.test(tileFilter), tileFilter)
 
   await page.getByRole('button', { name: 'Test permits' }).click()
-  await page.locator('[data-permit-map="sample"]').waitFor({ timeout: 15000 })
+  const sampleMap = page.locator('[data-permit-map="sample"]')
+  await sampleMap.waitFor({ timeout: 15000 })
+  await page.locator('[data-permit-map="overview"]').waitFor({ state: 'detached', timeout: 10000 }).catch(() => {})
   record(
     'Test permits panel defaults to Hamburg→Hannover',
-    (await page.locator('[data-selected-permit="hamburg-hannover"]').count()) > 0,
+    (await page.locator('[data-permit-map="sample"][data-selected-permit="hamburg-hannover"]').count()) > 0,
   )
-  await page.locator('.transport-readiness-map .permit-endpoint strong').first().waitFor({ timeout: 20000 })
-  const hamburgLabels = await page.locator('.transport-readiness-map .permit-endpoint strong').allInnerTexts()
+  await sampleMap.locator('.permit-map-pill small', { hasText: /^START$/ }).waitFor({ timeout: 20000 })
+  await page.waitForFunction(() => {
+    const labels = [...document.querySelectorAll('[data-permit-map="sample"] .permit-map-pill strong')]
+      .map(node => (node.textContent || '').trim())
+    return labels.length === 2 && labels.some(text => /Hamburg/i.test(text)) && labels.some(text => /Hannover/i.test(text))
+  }, { timeout: 20000 })
+  const hamburgLabels = await sampleMap.locator('.permit-map-pill strong').allInnerTexts()
   record(
     'Hamburg→Hannover map labels match the selected permit',
-    hamburgLabels.some(text => /Hamburg/i.test(text))
+    hamburgLabels.length === 2
+      && hamburgLabels.some(text => /Hamburg/i.test(text))
       && hamburgLabels.some(text => /Hannover/i.test(text))
       && !hamburgLabels.some(text => /Munich|München/i.test(text)),
     hamburgLabels.join(' | '),
@@ -146,9 +162,13 @@ async function main() {
   )
 
   await page.getByRole('button', { name: /Bremen → Dortmund/ }).click()
-  await page.locator('[data-selected-permit="bremen-dortmund"]').waitFor({ timeout: 10000 })
-  await page.locator('.transport-readiness-map .permit-endpoint strong', { hasText: /Bremen/ }).waitFor({ timeout: 20000 })
-  const bremenLabels = await page.locator('.transport-readiness-map .permit-endpoint strong').allInnerTexts()
+  await page.locator('[data-permit-map="sample"][data-selected-permit="bremen-dortmund"]').waitFor({ timeout: 10000 })
+  await page.waitForFunction(() => {
+    const labels = [...document.querySelectorAll('[data-permit-map="sample"] .permit-map-pill strong')]
+      .map(node => (node.textContent || '').trim())
+    return labels.length === 2 && labels.some(text => /Bremen/i.test(text)) && labels.some(text => /Dortmund/i.test(text))
+  }, { timeout: 20000 })
+  const bremenLabels = await sampleMap.locator('.permit-map-pill strong').allInnerTexts()
   record(
     'Selecting Bremen→Dortmund updates the sample map labels',
     bremenLabels.some(text => /Bremen/i.test(text)) && bremenLabels.some(text => /Dortmund/i.test(text)),

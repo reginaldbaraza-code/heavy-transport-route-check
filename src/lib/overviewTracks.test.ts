@@ -4,7 +4,11 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { downsampleTrack, parseGpxTrack } from './gpxTrack.ts'
 import {
+  OVERVIEW_FEATURED_PERMIT_ID,
   OVERVIEW_MONITOR_ROUTES,
+  SAMPLE_ROUTE_COLOR,
+  VERDICT_TRACK_COLORS,
+  getOverviewFeatured,
   getOverviewMonitorPermits,
   overviewVerdictForPermit,
 } from './overviewTracks.ts'
@@ -53,6 +57,25 @@ test('overview verdicts prefer the labelled sample outcome', () => {
   assert.equal(overviewVerdictForPermit(hamburg!), 'VERIFY')
   assert.equal(overviewVerdictForPermit(lubeck!), 'READY')
   assert.equal(overviewVerdictForPermit(munich!), 'HOLD')
+})
+
+test('overview line colours match the Ready / Verify / Hold legend', () => {
+  assert.equal(VERDICT_TRACK_COLORS.READY, '#16A34A')
+  assert.equal(VERDICT_TRACK_COLORS.VERIFY, '#F59E0B')
+  assert.equal(VERDICT_TRACK_COLORS.HOLD, '#DC2626')
+  assert.equal(SAMPLE_ROUTE_COLOR, '#0b57d0')
+})
+
+test('featured hero transport is a route drawn on the overview map', () => {
+  const featured = getOverviewFeatured()
+  assert.equal(OVERVIEW_FEATURED_PERMIT_ID, 'munchen-stuttgart')
+  assert.equal(featured.permit.id, 'munchen-stuttgart')
+  assert.equal(featured.verdict, 'HOLD')
+  assert.ok(OVERVIEW_MONITOR_ROUTES.some(route => route.id === featured.permit.id))
+  const overview = readFileSync('src/pages/MarketplaceOverview.tsx', 'utf8')
+  assert.equal(overview.includes("getPermittedRoute('duisburg-munich')"), false)
+  assert.ok(overview.includes('OVERVIEW_FEATURED_PERMIT_ID'))
+  assert.ok(overview.includes('highlightPermitId'))
 })
 
 test('downsample keeps endpoints and a shorter line', () => {
