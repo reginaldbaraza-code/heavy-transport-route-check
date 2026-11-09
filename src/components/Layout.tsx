@@ -107,64 +107,44 @@ export default function Layout() {
         }}
       >
         {/* Logo row */}
-        <div style={{
-          height: 56,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: collapsed ? 'space-between' : undefined,
-          padding: collapsed ? '0 6px' : '0 16px',
-          gap: collapsed ? 0 : 10,
-          borderBottom: '1px solid rgba(255,255,255,0.07)',
-        }}>
+        <div className={`sidebar-brand ${collapsed ? 'is-collapsed' : ''}`}>
           {collapsed ? (
             <button
+              type="button"
+              className="sidebar-htr"
               onClick={() => navigate('/')}
               aria-label="Heavy transport route check"
-              style={{
-                fontFamily: 'Inter', fontWeight: 700, fontSize: 10, letterSpacing: '0.06em',
-                color: 'rgba(255,255,255,0.92)', lineHeight: 1,
-                flex: 1, minWidth: 0, textAlign: 'left',
-              }}
             >
               HTR
             </button>
           ) : (
-            <>
+            <div className="sidebar-lockup">
               <button
+                type="button"
+                className="sidebar-logo"
                 onClick={() => navigate('/')}
                 aria-label="Go to home"
-                style={{ flexShrink: 0, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
-                <RouteCheckLogo size={28} tone="dark" decorative />
+                <RouteCheckLogo size={32} tone="dark" decorative />
               </button>
               <button
+                type="button"
+                className="sidebar-wordmark"
                 onClick={() => navigate('/')}
                 aria-label="Heavy transport route check"
-                style={{ flex: 1, textAlign: 'left', paddingTop: 1 }}
               >
-                <div style={{ fontFamily: 'Inter', fontWeight: 600, fontSize: 13, color: 'rgba(255,255,255,0.92)', lineHeight: 1.2, letterSpacing: '-0.01em' }}>
-                  Heavy transport
-                </div>
-                <div style={{ fontFamily: 'Inter', fontWeight: 600, fontSize: 13, color: 'rgba(255,255,255,0.92)', lineHeight: 1.2, letterSpacing: '-0.01em' }}>
-                  route check
-                </div>
+                <span>Heavy transport</span>
+                <span>route check</span>
               </button>
-            </>
+            </div>
           )}
           <button
+            type="button"
+            className="sidebar-collapse"
             onClick={() => setCollapsed(!collapsed)}
             aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
-            style={{
-              width: 28, height: 28, borderRadius: 6,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: 'rgba(255,255,255,0.72)',
-              background: 'transparent',
-              flexShrink: 0,
-              marginLeft: 0,
-            }}
-            className="hover:!text-white hover:!bg-white/10"
           >
-            <Menu size={14} />
+            <Menu size={16} strokeWidth={1.75} />
           </button>
         </div>
 
@@ -207,7 +187,7 @@ export default function Layout() {
                       width: 3, height: 18, background: '#f5c518', borderRadius: '0 3px 3px 0',
                     }} />
                   )}
-                  <Icon size={16} style={{ flexShrink: 0 }} />
+                  <Icon size={18} strokeWidth={1.75} style={{ flexShrink: 0 }} />
                   {!collapsed && (
                     <span style={{ fontSize: 14, fontWeight: isActive ? 600 : 400, letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
                       {label}
@@ -254,7 +234,7 @@ export default function Layout() {
                       width: 3, height: 18, background: '#f5c518', borderRadius: '0 3px 3px 0',
                     }} />
                   )}
-                  <Icon size={16} style={{ flexShrink: 0 }} />
+                  <Icon size={18} strokeWidth={1.75} style={{ flexShrink: 0 }} />
                   {!collapsed && (
                     <span style={{ fontSize: 14, fontWeight: isActive ? 600 : 400, letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
                       {label}
@@ -281,7 +261,7 @@ export default function Layout() {
                 cursor: 'pointer',
                 justifyContent: collapsed ? 'center' : 'flex-start',
               }}>
-                <Settings size={16} />
+                <Settings size={18} strokeWidth={1.75} />
                 {!collapsed && <span style={{ fontSize: 14, fontWeight: 400, letterSpacing: '-0.01em' }}>Settings</span>}
               </div>
             )}

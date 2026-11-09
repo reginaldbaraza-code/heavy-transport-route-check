@@ -7,17 +7,37 @@ export type RouteCheckLogoProps = {
   className?: string
 }
 
-/** Amber route: left-edge entry, S-curve, then a check (short down, long up). */
+export type LogoDetail = "small" | "medium" | "full"
+
+/** Full/medium road. S-curve then check at upper right. */
 export const ROUTE_PATH =
-  "M-2 51.8 C14 51.8 20 51.5 26 48.4 C35.2 43.8 43.2 40.4 40.2 33.8 C37.4 27.8 33 26.2 31.5 22.8 C30 19 34.2 15.4 39.8 13.35 L46.5 19.7 L56.75 10.05"
+  "M7 52 C22 52 36.5 48 36.5 39.5 C36.5 33.5 28.2 30.5 28.2 24.5 C28.2 19.6 34 15.6 39.6 11.8 L47.6 20 L56.6 11"
 
-/** Inner (left) dashed lane — lower/middle S only. */
-export const LANE_INNER_PATH = "M19.2 43.6 C24.8 42 28.6 37.4 29.6 30.6"
+/** Bold simplified S+check for ≤24px and favicon-32. */
+export const ROUTE_PATH_SMALL =
+  "M8 52 C22 52 36 48 36 40 C36 34 27.5 31 27.5 24.5 C27.5 19.5 33.5 15.5 39 12 L47 20.5 L56 11.5"
 
-/** Outer (right) dashed lane — lower/middle S only. */
-export const LANE_OUTER_PATH = "M33 54.4 C40.6 49.6 44.8 43.2 42.6 36.8"
+/** Dashed lane on the inner/left side of the S. Full ≥64px only. */
+export const LANE_LEFT_PATH =
+  "M18.5 46.4 C24.6 44.6 29.4 40.6 30 35.6 C30.2 33.8 29.6 32.4 28.8 31.2"
+
+/** Dashed lane on the outer/right side of the S. Full ≥64px only. */
+export const LANE_RIGHT_PATH =
+  "M38.6 31.6 C42.4 35 43.6 40 41.8 44.4 C40.8 47 38.8 49.4 36.2 51.4"
+
+/** Chosen so neither dashed lane ends on a round-cap stub. */
+export const LANE_DASHARRAY = "2.2 2.4"
+export const LANE_DASHOFFSET_LEFT = "4.1"
+export const LANE_DASHOFFSET_RIGHT = "2.35"
 
 const TITLE = "Heavy transport route check"
+const STROKE = { small: 5.2, medium: 4.2, full: 3.2 } as const
+
+export function logoDetailForSize(size: number): LogoDetail {
+  if (size <= 24) return "small"
+  if (size < 64) return "medium"
+  return "full"
+}
 
 export default function RouteCheckLogo({
   size = 32,
@@ -26,11 +46,13 @@ export default function RouteCheckLogo({
   className,
 }: RouteCheckLogoProps) {
   const uid = useId().replace(/:/g, "")
-  const showGlow = size >= 24
+  const detail = logoDetailForSize(size)
   const tile = `rc-tile-${uid}`
   const route = `rc-route-${uid}`
-  const clip = `rc-clip-${uid}`
-  const glow = `rc-glow-${uid}`
+  const routePath = detail === "small" ? ROUTE_PATH_SMALL : ROUTE_PATH
+  const stroke = STROKE[detail]
+  const showLanes = detail === "full"
+  const roadStroke = detail === "small" ? "#F5C518" : `url(#${route})`
 
   return (
     <svg
@@ -39,90 +61,74 @@ export default function RouteCheckLogo({
       height={size}
       viewBox="0 0 64 64"
       fill="none"
+      shapeRendering="geometricPrecision"
       data-tone={tone}
+      data-detail={detail}
       role={decorative ? undefined : "img"}
       aria-hidden={decorative || undefined}
       aria-label={decorative ? undefined : TITLE}
     >
       {!decorative && <title>{TITLE}</title>}
       <defs>
-        <linearGradient
-          id={tile}
-          x1="0"
-          y1="0"
-          x2="64"
-          y2="64"
-          gradientUnits="userSpaceOnUse"
-        >
+        <linearGradient id={tile} x1="0" y1="0" x2="1" y2="1">
           <stop stopColor="#13294B" />
           <stop offset="1" stopColor="#0A1A33" />
         </linearGradient>
         <linearGradient
           id={route}
-          x1="0"
+          x1="6"
           y1="52"
           x2="56"
-          y2="10"
+          y2="11"
           gradientUnits="userSpaceOnUse"
         >
-          <stop stopColor="#F5C518" />
-          <stop offset="1" stopColor="#F0A500" />
+          <stop stopColor="#F0A500" />
+          <stop offset="1" stopColor="#F5C518" />
         </linearGradient>
-        <clipPath id={clip}>
-          <rect width="64" height="64" rx="14" />
-        </clipPath>
-        {showGlow && (
-          <filter
-            id={glow}
-            x="-25%"
-            y="-25%"
-            width="150%"
-            height="150%"
-            colorInterpolationFilters="sRGB"
-          >
-            <feGaussianBlur stdDeviation="1.2" />
-          </filter>
-        )}
       </defs>
-      <g clipPath={`url(#${clip})`}>
-        <rect width="64" height="64" rx="14" fill={`url(#${tile})`} />
-        {showGlow && (
+      <rect width="64" height="64" rx="14.5" fill={`url(#${tile})`} />
+      <rect
+        x="0.5"
+        y="0.5"
+        width="63"
+        height="63"
+        rx="14"
+        fill="none"
+        stroke="rgba(255,255,255,0.08)"
+        strokeWidth="1"
+        vectorEffect="non-scaling-stroke"
+      />
+      <path
+        d={routePath}
+        stroke={roadStroke}
+        strokeWidth={stroke}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {showLanes && (
+        <>
           <path
-            d={ROUTE_PATH}
-            stroke="#F5C518"
-            strokeWidth="6.6"
+            d={LANE_LEFT_PATH}
+            stroke="#FFFFFF"
+            strokeOpacity="0.9"
+            strokeWidth="1.1"
             strokeLinecap="round"
             strokeLinejoin="round"
-            opacity="0.28"
-            filter={`url(#${glow})`}
+            strokeDasharray={LANE_DASHARRAY}
+            strokeDashoffset={LANE_DASHOFFSET_LEFT}
           />
-        )}
-        <path
-          d={LANE_INNER_PATH}
-          stroke="#FFFFFF"
-          strokeOpacity="0.7"
-          strokeWidth="1.12"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeDasharray="2.4 2.75"
-        />
-        <path
-          d={LANE_OUTER_PATH}
-          stroke="#FFFFFF"
-          strokeOpacity="0.7"
-          strokeWidth="1.12"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeDasharray="2.4 2.75"
-        />
-        <path
-          d={ROUTE_PATH}
-          stroke={`url(#${route})`}
-          strokeWidth="5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </g>
+          <path
+            d={LANE_RIGHT_PATH}
+            stroke="#FFFFFF"
+            strokeOpacity="0.9"
+            strokeWidth="1.1"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeDasharray={LANE_DASHARRAY}
+            strokeDashoffset={LANE_DASHOFFSET_RIGHT}
+          />
+        </>
+      )}
     </svg>
   )
 }

@@ -130,7 +130,7 @@ export default function Home() {
           <b>Open Live Mobility Map <ArrowRight size={13} /></b>
         </div>
         <div className="home-intelligence-map">
-          <MobilityHeatmap mode="weather" compact showRoute />
+          <MobilityHeatmap mode="weather" compact />
         </div>
         <div className="home-intelligence-icon"><Route size={18} /></div>
       </Link>

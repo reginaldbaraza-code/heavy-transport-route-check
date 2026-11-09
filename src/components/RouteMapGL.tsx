@@ -9,6 +9,34 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 setWorkerUrl(workerUrl);
 import { AlertTriangle, CheckCircle2, CircleX, Layers3, Minus, Plus } from 'lucide-react';
 import type { RouteEvidence } from '../data/routeChecks';
+import { boundsFromEvidence, routeBounds, ROUTE_FIT_MAX_ZOOM, ROUTE_FIT_PADDING_PX, type RouteBounds } from '../lib/mapBounds';
+
+function fitMapToRoute(
+  mapInstance: maplibregl.Map,
+  coordinates: [number, number][],
+  evidence: RouteEvidence[],
+  duration: number,
+) {
+  const box: RouteBounds | null = routeBounds(coordinates) ?? boundsFromEvidence(evidence);
+  if (!box) return;
+  mapInstance.resize();
+  const el = mapInstance.getContainer();
+  const w = el?.clientWidth ?? 0;
+  const h = el?.clientHeight ?? 0;
+  if (w < 8 || h < 8) return;
+  const pad = Math.min(ROUTE_FIT_PADDING_PX, Math.max(8, Math.floor(Math.min(w, h) / 8)));
+  mapInstance.fitBounds(
+    [
+      [box.west, box.south],
+      [box.east, box.north],
+    ],
+    {
+      padding: pad,
+      duration,
+      maxZoom: ROUTE_FIT_MAX_ZOOM,
+    },
+  );
+}
 
 type Props = {
   coordinates: [number, number][];
@@ -106,9 +134,12 @@ const RouteMapGL = forwardRef<RouteMapHandle, Props>(({
 
     mapInstance.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
 
-    // Set map loaded when style is ready
     mapInstance.on('load', () => {
-      setMapLoaded(true);
+      mapInstance.resize();
+      requestAnimationFrame(() => {
+        mapInstance.resize();
+        setMapLoaded(true);
+      });
     });
 
     map.current = mapInstance;
@@ -126,34 +157,38 @@ const RouteMapGL = forwardRef<RouteMapHandle, Props>(({
     };
   }, []);
 
-  // Update route and corridor
+  const coordinatesRef = useRef(coordinates);
+  coordinatesRef.current = coordinates;
+  const evidenceRef = useRef(evidence);
+  evidenceRef.current = evidence;
+  const corridorRef = useRef(corridor);
+  corridorRef.current = corridor;
+  const routeKey = `${verdict}:${coordinates.length}:${coordinates[0]?.join(',') ?? ''}:${coordinates[coordinates.length - 1]?.join(',') ?? ''}:${corridor?.length ?? 0}`;
+  const evidenceKey = evidence.map(item => `${item.id}:${item.state}:${item.lat}:${item.lng}`).join('|');
+
+  // Update route and corridor once per actual route change.
   useEffect(() => {
-    if (!map.current || !mapLoaded || coordinates.length < 2) return;
+    if (!map.current || !mapLoaded || coordinatesRef.current.length < 2) return;
 
     const mapInstance = map.current;
+    const routeCoordinates = coordinatesRef.current;
+    const routeCorridor = corridorRef.current;
     
-    // Helper to safely remove layer and source
     const removeLayerAndSource = (layerId: string, sourceId: string) => {
       try {
         if (mapInstance.getLayer(layerId)) mapInstance.removeLayer(layerId);
         if (mapInstance.getSource(sourceId)) mapInstance.removeSource(sourceId);
-      } catch (e) {
-        console.warn(`Failed to remove ${layerId}:`, e);
+      } catch {
+        // Layer may already have been removed.
       }
     };
 
-    // Remove existing route layers
     removeLayerAndSource('route-corridor', 'route-corridor');
     removeLayerAndSource('route-line', 'route-line');
 
-    // Convert coordinates to [lng, lat] for MapLibre
-    const geoCoordinates: [number, number][] = coordinates.map(([lat, lng]) => [lng, lat]);
-    
-    console.log('Adding route with', coordinates.length, 'points');
-    console.log('First point (input):', coordinates[0], '→ (geo):', geoCoordinates[0]);
+    const geoCoordinates: [number, number][] = routeCoordinates.map(([lat, lng]) => [lng, lat]);
 
-    // Add corridor if provided
-    if (corridor && corridor.length > 0) {
+    if (routeCorridor && routeCorridor.length > 0) {
       try {
         mapInstance.addSource('route-corridor', {
           type: 'geojson',
@@ -162,7 +197,7 @@ const RouteMapGL = forwardRef<RouteMapHandle, Props>(({
             properties: {},
             geometry: {
               type: 'Polygon',
-              coordinates: corridor,
+              coordinates: routeCorridor,
             },
           },
         });
@@ -181,7 +216,6 @@ const RouteMapGL = forwardRef<RouteMapHandle, Props>(({
       }
     }
 
-    // Add route line
     try {
       mapInstance.addSource('route-line', {
         type: 'geojson',
@@ -205,29 +239,48 @@ const RouteMapGL = forwardRef<RouteMapHandle, Props>(({
           'line-opacity': 0.9,
         },
       });
-      
-      console.log('✓ Route line added successfully');
     } catch (e) {
       console.error('Failed to add route line:', e);
     }
 
-    // Fit to route bounds with padding
     try {
-      const bounds = geoCoordinates.reduce(
-        (bounds, [lng, lat]) => bounds.extend([lng, lat]),
-        new maplibregl.LngLatBounds(geoCoordinates[0], geoCoordinates[0])
-      );
-
-      mapInstance.fitBounds(bounds, {
-        padding: { top: 80, bottom: 80, left: 80, right: 80 },
-        duration: 1000,
-      });
-      
-      console.log('✓ Fitted to bounds');
+      fitMapToRoute(mapInstance, routeCoordinates, evidenceRef.current, 0);
     } catch (e) {
       console.error('Failed to fit bounds:', e);
     }
-  }, [coordinates, corridor, verdict, mapLoaded]);
+  }, [routeKey, mapLoaded, verdict]);
+
+  useEffect(() => {
+    if (!map.current || !mapLoaded || !mapContainer.current) return;
+    const mapInstance = map.current;
+    const el = mapContainer.current;
+    let lastW = el.clientWidth;
+    let lastH = el.clientHeight;
+    let debounce = 0;
+    const observer = new ResizeObserver((entries) => {
+      const cr = entries[0]?.contentRect;
+      if (!cr || cr.width < 8 || cr.height < 8) return;
+      mapInstance.resize();
+      if (Math.abs(cr.width - lastW) < 8 && Math.abs(cr.height - lastH) < 8) return;
+      lastW = cr.width;
+      lastH = cr.height;
+      window.clearTimeout(debounce);
+      debounce = window.setTimeout(() => {
+        if (!map.current) return;
+        try {
+          mapInstance.resize();
+          fitMapToRoute(mapInstance, coordinatesRef.current, evidenceRef.current, 0);
+        } catch (e) {
+          console.error('Failed to refit bounds after resize:', e);
+        }
+      }, 250);
+    });
+    observer.observe(el);
+    return () => {
+      window.clearTimeout(debounce);
+      observer.disconnect();
+    };
+  }, [mapLoaded]);
 
   // Update markers
   useEffect(() => {
@@ -285,7 +338,7 @@ const RouteMapGL = forwardRef<RouteMapHandle, Props>(({
 
       markers.current.push(marker);
     });
-  }, [evidence, activeLayer, mapLoaded, onEvidenceSelect]);
+  }, [evidenceKey, activeLayer, mapLoaded, onEvidenceSelect]);
 
   const VerdictIcon = verdict === 'READY' ? CheckCircle2 : verdict === 'HOLD' ? CircleX : AlertTriangle;
   const layerCounts = {

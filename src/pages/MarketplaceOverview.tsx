@@ -1,18 +1,24 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   AlertTriangle, ArrowRight, CheckCircle2, CircleX, FileJson, Map,
   Route, ShieldCheck, Truck, Upload,
 } from 'lucide-react'
-import MobilityHeatmap from '../components/MobilityHeatmap'
+import LazyPermitMap from '../components/LazyPermitMap'
 import { MarketplacePageHeader } from '../components/MarketplaceUI'
 import {
-  defaultVehicleProfile, getPermittedRoute, getRouteCheckResult, permittedRoutes,
+  defaultVehicleProfile, getRouteCheckResult, permittedRoutes,
 } from '../data/routeChecks'
 import { useRouteMonitoring } from '../context/RouteMonitoringContext'
 import { useJobs } from '../context/JobsContext'
 import { formatBerlinDateTime } from '../lib/formatTime'
 import { sampleTestPermits } from '../lib/routeCheck'
+import {
+  OVERVIEW_FEATURED_COPY,
+  OVERVIEW_FEATURED_PERMIT_ID,
+  getOverviewFeatured,
+  getOverviewMonitorPermits,
+} from '../lib/overviewTracks'
 import { readJson, STORAGE_KEYS, writeJson } from '../lib/browserStore'
 import { formatVehicleDims, shouldMonitorJob } from '../lib/jobs'
 
@@ -37,15 +43,14 @@ export default function MarketplaceOverview() {
     writeJson(STORAGE_KEYS.overviewSampleMode, mode)
   }
 
-  const heroRoute = getPermittedRoute('duisburg-munich')
-  const heroResult = getRouteCheckResult(heroRoute, defaultVehicleProfile)
-  const HeroVerdictIcon = verdictMeta[heroResult.verdict].icon
-  const monitoredRoutes = permittedRoutes.map(route => ({
-    id: route.id,
-    coordinates: route.coordinates,
-    verdict: getRouteCheckResult(route, defaultVehicleProfile).verdict,
-  }))
-  const heroPermit = sampleTestPermits[0]
+  const [selectedPermitId, setSelectedPermitId] = useState(sampleTestPermits[0].id)
+  const featured = getOverviewFeatured()
+  const featuredPermit = featured.permit
+  const featuredVerdict = featured.verdict
+  const FeaturedVerdictIcon = verdictMeta[featuredVerdict].icon
+  const overviewPermits = useMemo(() => getOverviewMonitorPermits().map(item => item.permit), [])
+  const heroPermit = sampleTestPermits.find(permit => permit.id === selectedPermitId) ?? sampleTestPermits[0]
+  const selectedPermits = useMemo(() => [heroPermit], [heroPermit])
 
   return (
     <div className="market-page transport-overview">
@@ -157,31 +162,30 @@ export default function MarketplaceOverview() {
                 <div className="transport-route-heading">
                   <span className="transport-icon"><Truck size={20} /></span>
                   <div>
-                    <span className="market-eyebrow">Next transport · Permit {heroRoute.permitId}</span>
-                    <h2>{heroRoute.origin} <ArrowRight size={18} /> {heroRoute.destination}</h2>
+                    <span className="market-eyebrow">Next transport · Permit {featuredPermit.permitNumber}</span>
+                    <h2>{featuredPermit.origin} <ArrowRight size={18} /> {featuredPermit.destination}</h2>
                   </div>
                 </div>
-                <div className={`transport-status ${heroResult.verdict.toLowerCase()}`}><HeroVerdictIcon size={18} /><div><strong>{heroResult.title}</strong><span>{heroResult.summary}</span></div></div>
+                <div className={`transport-status ${featuredVerdict.toLowerCase()}`}><FeaturedVerdictIcon size={18} /><div><strong>{OVERVIEW_FEATURED_COPY.title}</strong><span>{OVERVIEW_FEATURED_COPY.summary}</span></div></div>
                 <div className="transport-facts">
-                  <div><span>Departure</span><strong>{heroRoute.departure}</strong></div>
-                  <div><span>Load</span><strong>{defaultVehicleProfile.grossWeight} t · {defaultVehicleProfile.width.toFixed(2)} m wide</strong></div>
-                  <div><span>Route area</span><strong>{heroRoute.corridor} · {heroRoute.distance}</strong></div>
+                  <div><span>Valid</span><strong>{formatBerlinDateTime(featuredPermit.validFrom)} – {formatBerlinDateTime(featuredPermit.validUntil)}</strong></div>
+                  <div><span>Load</span><strong>{featuredPermit.vehicle.grossWeight} t · {featuredPermit.vehicle.width.toFixed(2)} m wide</strong></div>
+                  <div><span>Route area</span><strong>{featuredPermit.corridor} · {featuredPermit.distance}</strong></div>
                 </div>
-                <div className={`transport-warning verdict-${heroResult.verdict.toLowerCase()}`}>
-                  <HeroVerdictIcon size={16} />
-                  <div><strong>{heroResult.title}</strong><span>{heroResult.impact}</span></div>
+                <div className={`transport-warning verdict-${featuredVerdict.toLowerCase()}`}>
+                  <FeaturedVerdictIcon size={16} />
+                  <div><strong>{OVERVIEW_FEATURED_COPY.title}</strong><span>{OVERVIEW_FEATURED_COPY.impact}</span></div>
                 </div>
-                <Link to="/route-checks" className="transport-review-link">Review approved route <ArrowRight size={16} /></Link>
+                <Link to={`/route-checks?permit=${featuredPermit.id}`} className="transport-review-link">Review approved route <ArrowRight size={16} /></Link>
               </div>
               <div className="transport-readiness-map">
-                <MobilityHeatmap
-                  mode="transport"
-                  compact
-                  showRoute
-                  routePermitId="4 monitored routes"
-                  routeCorridor="Example verdicts across Germany"
-                  routeMarkers={[]}
-                  routeOverlays={monitoredRoutes}
+                <LazyPermitMap
+                  permits={overviewPermits}
+                  highlightPermitId={OVERVIEW_FEATURED_PERMIT_ID}
+                  badgeTitle="4 monitored routes"
+                  badgeSubtitle="Example verdicts across Germany"
+                  endpointMode="cities"
+                  showLegend
                 />
               </div>
             </section>
@@ -223,13 +227,21 @@ export default function MarketplaceOverview() {
                   <Link to="/discover">Manage data <ArrowRight size={16} /></Link>
                 </div>
                 <div className="transport-source-list">
-                  {heroRoute.evidence.map((item, index) => (
-                    <div key={item.id}>
-                      <span>{['AG', 'RO', 'VB'][index]}</span>
-                      <div><strong>{item.source}</strong><small>{item.title} · Example</small></div>
-                      <b>Example</b>
-                    </div>
-                  ))}
+                  <div>
+                    <span>AG</span>
+                    <div><strong>Autobahn GmbH</strong><small>Roadworks and closures on the permitted A8 · Example</small></div>
+                    <b>Example</b>
+                  </div>
+                  <div>
+                    <span>SP</span>
+                    <div><strong>{featuredPermit.permitNumber}</strong><small>Snapped GPX for München → Stuttgart · Example</small></div>
+                    <b>Example</b>
+                  </div>
+                  <div>
+                    <span>BC</span>
+                    <div><strong>Bridge, clearance, Mobilithek</strong><small>Height restriction 4.00 m vs 4.30 m vehicle · Example</small></div>
+                    <b>Example</b>
+                  </div>
                 </div>
               </section>
             </div>
@@ -264,14 +276,13 @@ export default function MarketplaceOverview() {
                 <Link to={`/route-checks?permit=${heroPermit.id}`} className="transport-review-link">Check this sample permit <ArrowRight size={16} /></Link>
               </div>
               <div className="transport-readiness-map">
-                <MobilityHeatmap
-                  mode="transport"
-                  compact
-                  showRoute
-                  routePermitId="Sample test permits"
-                  routeCorridor="Hamburg, Bremen, Leipzig, Duisburg, München"
-                  routeMarkers={[]}
-                  routeOverlays={[]}
+                <LazyPermitMap
+                  permits={selectedPermits}
+                  selectedPermitId={heroPermit.id}
+                  badgeTitle={heroPermit.permitNumber}
+                  badgeSubtitle={`${heroPermit.originShort} → ${heroPermit.destinationShort} · ${heroPermit.corridor}`}
+                  endpointMode="start-dest"
+                  showLegend={false}
                 />
               </div>
             </section>
@@ -292,7 +303,13 @@ export default function MarketplaceOverview() {
                 </div>
                 <div className="transport-route-list">
                   {sampleTestPermits.map(permit => (
-                    <Link to={`/route-checks?permit=${permit.id}`} key={permit.id}>
+                    <button
+                      type="button"
+                      key={permit.id}
+                      className={permit.id === heroPermit.id ? 'is-selected' : ''}
+                      aria-pressed={permit.id === heroPermit.id}
+                      onClick={() => setSelectedPermitId(permit.id)}
+                    >
                       <span className="transport-list-icon amber"><Route size={16} /></span>
                       <div>
                         <strong>{permit.originShort} → {permit.destinationShort}</strong>
@@ -300,7 +317,7 @@ export default function MarketplaceOverview() {
                       </div>
                       <b className="verify">Sample</b>
                       <ArrowRight size={16} />
-                    </Link>
+                    </button>
                   ))}
                 </div>
               </section>

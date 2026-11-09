@@ -541,7 +541,12 @@ export default function LiveMap() {
                 </button>
               )
             })}
-            {listedEvents.length === 0 && <div className="live-event-empty">No signals match the active layers, scope, and search.</div>}
+            {listedEvents.length === 0 && liveStatus === 'refreshing' && (
+              <div className="live-event-skeleton" aria-busy="true" aria-live="polite">
+                <span /><span /><span />
+              </div>
+            )}
+            {listedEvents.length === 0 && liveStatus !== 'refreshing' && <div className="live-event-empty">No signals match the active layers, scope, and search.</div>}
           </div>
         </aside>
 

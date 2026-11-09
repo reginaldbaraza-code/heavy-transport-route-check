@@ -11,6 +11,13 @@ function record(name, ok, detail = '') {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`)
 }
 
+function permitMapCounts(root) {
+  return {
+    tiles: root.querySelectorAll('img.leaflet-tile').length,
+    paths: root.querySelectorAll('.leaflet-overlay-pane path').length,
+  }
+}
+
 async function waitForPreview(child) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('Preview server did not start')), 20000)
@@ -112,6 +119,113 @@ async function main() {
   )
   await page.getByRole('button', { name: 'Expand navigation' }).click()
 
+  await page.locator('.example-data-panel').scrollIntoViewIfNeeded()
+  await page.locator('.permit-leaflet-map.leaflet-container').waitFor({ timeout: 25000 })
+  const heroBadge = await page.locator('.permit-map-badge strong').first().innerText()
+  record('Homepage hero uses 4 monitored routes badge', heroBadge.includes('4 monitored routes'), heroBadge)
+  const osmAttr = await page.locator('.permit-leaflet-map .leaflet-control-attribution').innerText()
+  record('Homepage map keeps OSM attribution', /OpenStreetMap/i.test(osmAttr), osmAttr)
+  const tileDisplay = await page.locator('.permit-leaflet-map .leaflet-tile-pane').evaluate(el => getComputedStyle(el).display)
+  record('Homepage map shows tile layer', tileDisplay !== 'none', tileDisplay)
+  record(
+    'Homepage hero is not the illustrated Germany map',
+    (await page.locator('.transport-readiness-map .shared-leaflet-map').count()) === 0,
+  )
+  const heroCard = await page.locator('.transport-readiness-copy').innerText()
+  record(
+    'Hero card matches a drawn route, not Duisburg→Munich',
+    /München|Stuttgart/.test(heroCard) && !/Duisburg Logistics/.test(heroCard),
+    heroCard.replace(/\s+/g, ' ').slice(0, 180),
+  )
+  const tileFilter = await page.locator('.permit-leaflet-map .leaflet-tile-pane').evaluate(el => getComputedStyle(el).filter)
+  record('Homepage tiles are desaturated', /grayscale/i.test(tileFilter), tileFilter)
+
+  await page.getByRole('button', { name: 'Test permits' }).click()
+  const sampleMap = page.locator('[data-permit-map="sample"]')
+  await sampleMap.waitFor({ timeout: 15000 })
+  await page.locator('[data-permit-map="overview"]').waitFor({ state: 'detached', timeout: 10000 }).catch(() => {})
+  record(
+    'Test permits panel defaults to Hamburg→Hannover',
+    (await page.locator('[data-permit-map="sample"][data-selected-permit="hamburg-hannover"]').count()) > 0,
+  )
+  await sampleMap.locator('.permit-map-pill small', { hasText: /^START$/ }).waitFor({ timeout: 20000 })
+  await page.waitForFunction(() => {
+    const labels = [...document.querySelectorAll('[data-permit-map="sample"] .permit-map-pill strong')]
+      .map(node => (node.textContent || '').trim())
+    return labels.length === 2 && labels.some(text => /Hamburg/i.test(text)) && labels.some(text => /Hannover/i.test(text))
+  }, { timeout: 20000 })
+  const hamburgLabels = await sampleMap.locator('.permit-map-pill strong').allInnerTexts()
+  record(
+    'Hamburg→Hannover map labels match the selected permit',
+    hamburgLabels.length === 2
+      && hamburgLabels.some(text => /Hamburg/i.test(text))
+      && hamburgLabels.some(text => /Hannover/i.test(text))
+      && !hamburgLabels.some(text => /Munich|München/i.test(text)),
+    hamburgLabels.join(' | '),
+  )
+  record(
+    'Fake Duisburg→Munich sample-corridor caption is gone',
+    (await page.getByText('Hamburg, Bremen, Leipzig, Duisburg, München').count()) === 0,
+  )
+
+  await page.getByRole('button', { name: /Bremen → Dortmund/ }).click()
+  await page.locator('[data-permit-map="sample"][data-selected-permit="bremen-dortmund"]').waitFor({ timeout: 10000 })
+  await page.waitForFunction(() => {
+    const labels = [...document.querySelectorAll('[data-permit-map="sample"] .permit-map-pill strong')]
+      .map(node => (node.textContent || '').trim())
+    return labels.length === 2 && labels.some(text => /Bremen/i.test(text)) && labels.some(text => /Dortmund/i.test(text))
+  }, { timeout: 20000 })
+  const bremenLabels = await sampleMap.locator('.permit-map-pill strong').allInnerTexts()
+  record(
+    'Selecting Bremen→Dortmund updates the sample map labels',
+    bremenLabels.some(text => /Bremen/i.test(text)) && bremenLabels.some(text => /Dortmund/i.test(text)),
+    bremenLabels.join(' | '),
+  )
+
+  async function assertDesktopPermitMaps(width, height) {
+    await page.setViewportSize({ width, height })
+    await page.goto(base + '/', { waitUntil: 'domcontentloaded', timeout: 60000 })
+    const skip = page.getByRole('button', { name: /skip/i })
+    if (await skip.count()) await skip.first().click()
+    await page.getByRole('button', { name: 'Example data' }).click()
+    await page.locator('[data-permit-map="overview"]').waitFor({ timeout: 25000 })
+    await page.locator('.transport-readiness').scrollIntoViewIfNeeded()
+    await page.locator('[data-permit-map="overview"] .leaflet-container').waitFor({ timeout: 25000 })
+    await page.waitForFunction(() => {
+      const root = document.querySelector('[data-permit-map="overview"]')
+      if (!root) return false
+      const tiles = root.querySelectorAll('img.leaflet-tile').length
+      const paths = root.querySelectorAll('.leaflet-overlay-pane path').length
+      return tiles > 0 && paths >= 4
+    }, { timeout: 25000 })
+    const hero = await page.locator('[data-permit-map="overview"]').evaluate(permitMapCounts)
+    record(
+      `Hero map at ${width}×${height} has tiles and ≥4 route paths`,
+      hero.tiles > 0 && hero.paths >= 4,
+      JSON.stringify(hero),
+    )
+    await page.getByRole('button', { name: 'Test permits' }).click()
+    await page.locator('[data-permit-map="sample"]').waitFor({ timeout: 20000 })
+    await page.locator('.transport-readiness').scrollIntoViewIfNeeded()
+    await page.locator('[data-permit-map="sample"] .leaflet-container').waitFor({ timeout: 20000 })
+    await page.waitForFunction(() => {
+      const root = document.querySelector('[data-permit-map="sample"]')
+      if (!root) return false
+      const tiles = root.querySelectorAll('img.leaflet-tile').length
+      const paths = root.querySelectorAll('.leaflet-overlay-pane path').length
+      return tiles > 0 && paths >= 1
+    }, { timeout: 25000 })
+    const sample = await page.locator('[data-permit-map="sample"]').evaluate(permitMapCounts)
+    record(
+      `Test-permits map at ${width}×${height} has tiles and ≥1 route path`,
+      sample.tiles > 0 && sample.paths >= 1,
+      JSON.stringify(sample),
+    )
+  }
+  await assertDesktopPermitMaps(1280, 800)
+  await assertDesktopPermitMaps(1920, 1200)
+  await page.setViewportSize({ width: 1440, height: 900 })
+
   await page.goto(base + '/discover', { waitUntil: 'domcontentloaded', timeout: 60000 })
   const discoverBanner = await page.getByText(/leftover marketplace example data/i).isVisible()
   const discoverBadge = await page.getByText('Example data', { exact: true }).first().isVisible()
@@ -186,10 +300,41 @@ async function main() {
   await page.setViewportSize({ width: 400, height: 720 })
   const zoomVisibleOnMobile = await page.locator('.maplibregl-ctrl-bottom-right .maplibregl-ctrl-group').first().isVisible().catch(() => false)
   record('Mobile map zoom control is hidden at 400px', zoomVisibleOnMobile === false)
+
+  await page.setViewportSize({ width: 390, height: 915 })
+  await page.locator('.mobile-route-actions').waitFor({ state: 'visible', timeout: 5000 })
+  await page.locator('.app-page-host').evaluate(el => {
+    el.scrollTop = el.scrollHeight
+  })
+  const mobileScrollClearance = await page.evaluate(() => {
+    const host = document.querySelector('.app-page-host')
+    const bar = document.querySelector('.mobile-route-actions')
+    const details = document.querySelector('.evidence-section') || document.querySelector('.results-sidebar')
+    if (!host || !bar || !details) return { ok: false, detail: 'missing nodes' }
+    const barBox = bar.getBoundingClientRect()
+    const detailsBox = details.getBoundingClientRect()
+    return {
+      ok: detailsBox.bottom <= barBox.top + 1,
+      detailsBottom: Math.round(detailsBox.bottom),
+      barTop: Math.round(barBox.top),
+      paddingBottom: getComputedStyle(host).paddingBottom,
+    }
+  })
+  record(
+    'Mobile results scroll padding clears the action bar',
+    mobileScrollClearance.ok,
+    JSON.stringify(mobileScrollClearance),
+  )
   await page.setViewportSize({ width: 1440, height: 900 })
 
   const csv = await downloadFile(page, 'Export CSV')
   record('Result CSV download is non-empty', csv.size > 50, `${csv.suggested} ${csv.size} bytes`)
+
+  await page.getByRole('button', { name: 'Check another route' }).click()
+  await page.getByRole('button', { name: /show test permits/i }).click()
+  await page.getByRole('button', { name: /Simulated VERIFY/ }).click()
+  await page.getByRole('button', { name: 'Check route' }).click()
+  await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
 
   await page.locator('.confirm-on-site-bar').waitFor({ timeout: 10000 })
   await page.locator('.confirm-on-site-bar input').first().fill('QA Test')

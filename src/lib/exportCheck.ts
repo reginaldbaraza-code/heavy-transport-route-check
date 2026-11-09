@@ -416,14 +416,14 @@ export function createPdfDocument(snapshot: ExportSnapshot) {
 
   doc.setFillColor(16, 42, 67)
   doc.rect(0, 0, 210, 28, 'F')
-  drawRouteCheckLogo(doc, margin, 8, 12)
+  drawRouteCheckLogo(doc, margin, 7.5, 13)
   doc.setTextColor(255, 255, 255)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(16)
-  pdfText(doc, 'Heavy transport route check', margin + 15, 13)
+  pdfText(doc, 'Heavy transport route check', margin + 17, 13)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(11)
-  pdfText(doc, wrapLines(doc, `${snapshot.verdict}  ·  ${snapshot.permitName}`, width - 15)[0], margin + 15, 21)
+  pdfText(doc, wrapLines(doc, `${snapshot.verdict}  ·  ${snapshot.permitName}`, width - 17)[0], margin + 17, 21)
 
   y = 38
   doc.setTextColor(16, 24, 40)

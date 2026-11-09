@@ -663,6 +663,9 @@ export default function RouteIntelligencePolished() {
                     ))}
                   </div>
                 </div>
+                <p className="test-permit-attribution">
+                  Test routes were pre-snapped to OpenStreetMap roads with OSRM. © OpenStreetMap contributors, ODbL.
+                </p>
               </div>
             )}
 
@@ -1024,7 +1027,7 @@ export default function RouteIntelligencePolished() {
             </div>
             
             {/* Mobile sticky action bar */}
-            <div className="mobile-route-actions" style={{ display: 'none' }}>
+            <div className="mobile-route-actions">
               <button type="button" className="btn-secondary" onClick={resetFlow}>
                 Re-check
               </button>
