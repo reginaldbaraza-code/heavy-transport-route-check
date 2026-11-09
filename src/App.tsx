@@ -5,6 +5,9 @@ import AppErrorBoundary from './components/AppErrorBoundary'
 import { RouteMonitoringProvider } from './context/RouteMonitoringContext'
 import { JobsProvider } from './context/JobsContext'
 import { OrgSettingsProvider } from './context/OrgSettingsContext'
+import { TooltipProvider } from './components/ui/tooltip'
+import { Toaster } from './components/ui/sonner'
+import { Skeleton } from './components/ui/skeleton'
 import NotFound from './pages/NotFound'
 
 const MarketplaceOverview = lazy(() => import('./pages/MarketplaceOverview'))
@@ -17,12 +20,20 @@ const MarketplaceActivity = lazy(() => import('./pages/MarketplaceActivity'))
 const SearchResults = lazy(() => import('./pages/SearchResults'))
 
 function PageFallback() {
-  return <div className="page-fallback" role="status">Loading…</div>
+  return (
+    <div className="page-fallback flex flex-col gap-3 p-8" role="status">
+      <Skeleton className="h-7 w-48" />
+      <Skeleton className="h-4 w-80" />
+      <Skeleton className="mt-4 h-40 w-full rounded-xl" />
+      <span className="sr-only">Loading…</span>
+    </div>
+  )
 }
 
 export default function App() {
   return (
     <AppErrorBoundary>
+      <TooltipProvider>
       <OrgSettingsProvider>
         <RouteMonitoringProvider>
         <JobsProvider>
@@ -42,9 +53,11 @@ export default function App() {
           </Route>
           </Routes>
           </BrowserRouter>
+          <Toaster position="bottom-right" />
         </JobsProvider>
         </RouteMonitoringProvider>
       </OrgSettingsProvider>
+      </TooltipProvider>
     </AppErrorBoundary>
   )
 }

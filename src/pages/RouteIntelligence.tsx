@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import type { RouteMapHandle } from '../components/RouteMapGL'
 import { Toast } from '../components/Feedback'
+import { Button } from '../components/ui/button'
 import {
   checkRoute,
   loadTestPermit,
@@ -899,15 +900,15 @@ export default function RouteIntelligencePolished() {
             </div>
 
             <div className="result-actions">
-              <button type="button" className="btn-primary" onClick={() => setShowSaveJob(true)}>
+              <Button type="button" onClick={() => setShowSaveJob(true)}>
                 <Briefcase size={16} /> Save as job
-              </button>
-              <button type="button" className="btn-secondary" onClick={() => exportCurrent('pdf')}>
+              </Button>
+              <Button type="button" variant="outline" onClick={() => exportCurrent('pdf')}>
                 <Download size={16} /> Export PDF
-              </button>
-              <button type="button" className="btn-secondary" onClick={() => exportCurrent('csv')}>
+              </Button>
+              <Button type="button" variant="outline" onClick={() => exportCurrent('csv')}>
                 <Download size={16} /> Export CSV
-              </button>
+              </Button>
             </div>
 
             {showSaveJob && (
@@ -951,20 +952,22 @@ export default function RouteIntelligencePolished() {
             {/* Map and Evidence */}
             <div className="results-layout">
               <div className="results-main">
-                <Suspense fallback={<div className="results-map-fallback">Loading map…</div>}>
-                  <RouteMapGL
-                    ref={mapRef}
-                    coordinates={displayed.route.coordinates}
-                    origin={displayed.route.origin}
-                    destination={displayed.route.destination}
-                    evidence={displayed.evidence}
-                    verdict={displayed.verdict}
-                    activeLayer={activeLayer}
-                    layers={routeLayers}
-                    onLayerChange={setActiveLayer}
-                    className="results-map"
-                  />
-                </Suspense>
+                <div className="results-map-card">
+                  <Suspense fallback={<div className="results-map-fallback">Loading map…</div>}>
+                    <RouteMapGL
+                      ref={mapRef}
+                      coordinates={displayed.route.coordinates}
+                      origin={displayed.route.origin}
+                      destination={displayed.route.destination}
+                      evidence={displayed.evidence}
+                      verdict={displayed.verdict}
+                      activeLayer={activeLayer}
+                      layers={routeLayers}
+                      onLayerChange={setActiveLayer}
+                      className="results-map"
+                    />
+                  </Suspense>
+                </div>
               </div>
 
               <div className="results-sidebar">

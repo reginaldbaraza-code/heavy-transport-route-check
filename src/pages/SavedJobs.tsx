@@ -5,6 +5,16 @@ import {
 } from 'lucide-react'
 import PageHeader from '../components/PageHeader'
 import { Toast } from '../components/Feedback'
+import { Button } from '../components/ui/button'
+import { Input } from '../components/ui/input'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog'
 import { useJobs } from '../context/JobsContext'
 import { formatBerlinDateTime, relativeFromNow } from '../lib/formatTime'
 import {
@@ -85,7 +95,7 @@ export default function SavedJobs() {
         title="Saved jobs"
         description="Save a permit, vehicle, and planned departure in this browser, then re-run the check until departure."
         actions={
-          <Link to="/route-checks" className="market-button primary">New route check</Link>
+          <Button asChild><Link to="/route-checks">New route check</Link></Button>
         }
       />
       <p className="storage-note activity-storage-note">Jobs are stored in this browser only. They are not synced to a server.</p>
@@ -188,26 +198,29 @@ export default function SavedJobs() {
             <Briefcase size={30} />
             <h2>No saved jobs yet</h2>
             <p>Run a route check, then choose Save as job. The permit file, vehicle dimensions, and planned departure stay in this browser.</p>
-            <Link to="/route-checks" className="market-button primary">Check a route</Link>
+            <Button asChild><Link to="/route-checks">Check a route</Link></Button>
           </div>
         )}
       </section>
 
       {editing && (
-        <div className="job-edit-overlay" role="dialog" aria-labelledby="edit-job-title">
-          <div className="job-edit-card">
-            <h2 id="edit-job-title">Edit job</h2>
+        <Dialog open onOpenChange={open => { if (!open) setEditing(null) }}>
+          <DialogContent className="job-edit-card sm:max-w-md" aria-labelledby="edit-job-title">
+            <DialogHeader>
+              <DialogTitle id="edit-job-title">Edit job</DialogTitle>
+              <DialogDescription>Stored in this browser only. Monitoring runs only while the tab is open and stops after departure.</DialogDescription>
+            </DialogHeader>
             <label>
               <span>Job name</span>
-              <input value={draft.name} onChange={event => setDraft(current => ({ ...current, name: event.target.value }))} />
+              <Input value={draft.name} onChange={event => setDraft(current => ({ ...current, name: event.target.value }))} />
             </label>
             <label>
               <span>Permit number</span>
-              <input value={draft.permitNumber} onChange={event => setDraft(current => ({ ...current, permitNumber: event.target.value }))} />
+              <Input value={draft.permitNumber} onChange={event => setDraft(current => ({ ...current, permitNumber: event.target.value }))} />
             </label>
             <label>
               <span>Planned departure</span>
-              <input type="datetime-local" value={draft.plannedDeparture} onChange={event => setDraft(current => ({ ...current, plannedDeparture: event.target.value }))} />
+              <Input type="datetime-local" value={draft.plannedDeparture} onChange={event => setDraft(current => ({ ...current, plannedDeparture: event.target.value }))} />
             </label>
             <label>
               <span>Re-check interval</span>
@@ -218,12 +231,12 @@ export default function SavedJobs() {
               </select>
             </label>
             <p className="storage-note">Stored in this browser only. Monitoring runs only while the tab is open and stops after departure.</p>
-            <div className="form-actions">
-              <button type="button" className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
-              <button type="button" className="btn-primary" onClick={saveEdit}>Save job</button>
-            </div>
-          </div>
-        </div>
+            <DialogFooter className="form-actions">
+              <Button type="button" variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
+              <Button type="button" onClick={saveEdit}>Save job</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
 
       {toast && <Toast message={toast} onClose={() => setToast('')} />}

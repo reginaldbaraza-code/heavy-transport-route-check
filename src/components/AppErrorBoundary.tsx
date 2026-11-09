@@ -1,5 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { AlertTriangle, RefreshCw } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from './ui/alert'
+import { Button } from './ui/button'
 
 export default class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null }
@@ -28,13 +30,20 @@ export default class AppErrorBoundary extends Component<{ children: ReactNode },
     if (!this.state.error) return this.props.children
     return (
       <main className="app-error-screen">
-        <div>
-          <span><AlertTriangle size={21} /></span>
-          <h1>HTR could not display this view</h1>
-          <p>The prototype encountered a browser runtime error. Reload the workspace to restore the current session.</p>
-          <button type="button" onClick={() => window.location.reload()}><RefreshCw size={15} /> Reload HTR</button>
-          <details><summary>Technical details</summary><code>{this.state.error.message}</code></details>
-        </div>
+        <Alert className="max-w-md">
+          <AlertTriangle />
+          <AlertTitle>HTR could not display this view</AlertTitle>
+          <AlertDescription>
+            The prototype encountered a browser runtime error. Reload the workspace to restore the current session.
+          </AlertDescription>
+          <Button type="button" className="mt-4" onClick={() => window.location.reload()}>
+            <RefreshCw size={15} /> Reload HTR
+          </Button>
+          <details>
+            <summary>Technical details</summary>
+            <code>{this.state.error.message}</code>
+          </details>
+        </Alert>
       </main>
     )
   }

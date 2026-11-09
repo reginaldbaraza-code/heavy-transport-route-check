@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { AlertTriangle, CheckCircle2, Info, X } from 'lucide-react'
+import { Button } from './ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog'
 
 export function Toast({
   message,
@@ -91,25 +100,27 @@ export function ConfirmDialog({
   onConfirm: () => void
   onCancel: () => void
 }) {
-  useEffect(() => {
-    const closeOnEscape = (event: KeyboardEvent) => event.key === 'Escape' && onCancel()
-    document.addEventListener('keydown', closeOnEscape)
-    return () => document.removeEventListener('keydown', closeOnEscape)
-  }, [onCancel])
-
   return (
-    <div className="dialog-backdrop" role="presentation" onMouseDown={event => event.target === event.currentTarget && onCancel()}>
-      <div className="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-description">
+    <Dialog open onOpenChange={open => { if (!open) onCancel() }}>
+      <DialogContent
+        className="confirm-dialog sm:max-w-md"
+        showCloseButton={false}
+        role="alertdialog"
+        aria-labelledby="confirm-title"
+        aria-describedby="confirm-description"
+      >
         <div className={`confirm-dialog-icon ${destructive ? 'danger' : ''}`}><AlertTriangle size={19} /></div>
-        <div>
-          <h2 id="confirm-title">{title}</h2>
-          <p id="confirm-description">{description}</p>
-        </div>
-        <div className="confirm-dialog-actions">
-          <button type="button" onClick={onCancel} autoFocus>Cancel</button>
-          <button type="button" className={destructive ? 'danger' : 'primary'} onClick={onConfirm}>{confirmLabel}</button>
-        </div>
-      </div>
-    </div>
+        <DialogHeader>
+          <DialogTitle id="confirm-title">{title}</DialogTitle>
+          <DialogDescription id="confirm-description">{description}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="confirm-dialog-actions">
+          <Button type="button" variant="outline" onClick={onCancel} autoFocus>Cancel</Button>
+          <Button type="button" variant={destructive ? 'destructive' : 'default'} onClick={onConfirm}>
+            {confirmLabel}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

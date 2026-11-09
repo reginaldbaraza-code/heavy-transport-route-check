@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Bell, Building2, Database, Save, Timer, User } from 'lucide-react'
 import { Toast } from '../components/Feedback'
+import { Button } from '../components/ui/button'
+import { Input } from '../components/ui/input'
 import { useOrgSettings } from '../context/OrgSettingsContext'
 import { useJobs } from '../context/JobsContext'
 import { dataSources } from '../data/dataSources'
@@ -98,18 +100,18 @@ export default function Settings() {
                 <label className="settings-field">
                   <span>Organisation name</span>
                   <small>Shown in the header. Stored only in this browser.</small>
-                  <input value={profile.orgName} onChange={event => { setProfile(current => ({ ...current, orgName: event.target.value })); setSaved(false) }} placeholder="e.g. Nordhauler GmbH" aria-invalid={Boolean(error && !profile.orgName.trim())} />
+                  <Input value={profile.orgName} onChange={event => { setProfile(current => ({ ...current, orgName: event.target.value })); setSaved(false) }} placeholder="e.g. Nordhauler GmbH" aria-invalid={Boolean(error && !profile.orgName.trim())} />
                 </label>
                 <label className="settings-field">
                   <span>Dispatcher name</span>
                   <small>Used as the default name on on-site confirmations.</small>
-                  <input value={profile.dispatcherName} onChange={event => { setProfile(current => ({ ...current, dispatcherName: event.target.value })); setSaved(false) }} placeholder="e.g. Ada Dispatcher" />
+                  <Input value={profile.dispatcherName} onChange={event => { setProfile(current => ({ ...current, dispatcherName: event.target.value })); setSaved(false) }} placeholder="e.g. Ada Dispatcher" />
                 </label>
                 {error && <p role="alert" className="settings-error">{error}</p>}
               </div>
               <footer className="settings-card-footer">
                 <p>{footerStatus} Settings are saved in this browser only.</p>
-                <button type="button" onClick={save} disabled={!dirty}><Save size={16} /> Save changes</button>
+                <Button type="button" onClick={save} disabled={!dirty}><Save size={16} /> Save changes</Button>
               </footer>
             </section>
           )}
@@ -194,9 +196,9 @@ export default function Settings() {
                   </select>
                 </label>
                 <p className="storage-note">Alerts also escalate when departure is under {DEPARTURE_ESCALATION_MINUTES / 60} hours away. Monitoring stops after departure.</p>
-                <button type="button" className="market-button secondary" onClick={() => void requestNotifications()}>
+                <Button type="button" variant="outline" onClick={() => void requestNotifications()}>
                   {notificationPermission === 'granted' ? 'Browser notifications allowed' : 'Allow browser notifications'}
-                </button>
+                </Button>
               </div>
             </section>
           )}

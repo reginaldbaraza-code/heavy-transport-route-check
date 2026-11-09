@@ -2,9 +2,12 @@ import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Home, Settings, Map, DatabaseZap, Route, ShieldAlert,
-  Bell, Search, ChevronDown, Activity, X, Menu,
-  HelpCircle, Briefcase
+  Bell, Search, ChevronDown, X, Menu, HelpCircle, Briefcase,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Separator } from '@/components/ui/separator'
 import RouteCheckLogo from './RouteCheckLogo'
 import MobileTabBar from './MobileTabBar'
 import { useRouteMonitoring } from '../context/RouteMonitoringContext'
@@ -43,6 +46,54 @@ function documentTitleFor(pathname: string) {
   if (!match) return `Not found · ${APP_DOCUMENT_TITLE}`
   if (match.path === '/') return APP_DOCUMENT_TITLE
   return `${match.label} · ${APP_DOCUMENT_TITLE}`
+}
+
+function NavItem({
+  path,
+  label,
+  icon: Icon,
+  exact,
+  collapsed,
+  onClick,
+}: {
+  path: string
+  label: string
+  icon: typeof Home
+  exact?: boolean
+  collapsed: boolean
+  onClick: () => void
+}) {
+  return (
+    <NavLink
+      to={path}
+      end={exact}
+      title={collapsed ? label : undefined}
+      className="block"
+      onClick={onClick}
+    >
+      {({ isActive }) => (
+        <div
+          className={cn(
+            'relative flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm transition-colors',
+            collapsed ? 'justify-center' : 'justify-start',
+            isActive
+              ? 'bg-white/12 text-white'
+              : 'text-white/70 hover:bg-white/8 hover:text-white',
+          )}
+        >
+          {isActive && (
+            <span className="absolute top-1/2 left-0 h-4 w-0.5 -translate-y-1/2 rounded-r-full bg-white" />
+          )}
+          <Icon size={18} strokeWidth={1.75} className="shrink-0" />
+          {!collapsed && (
+            <span className={cn('truncate tracking-tight', isActive ? 'font-semibold' : 'font-medium')}>
+              {label}
+            </span>
+          )}
+        </div>
+      )}
+    </NavLink>
+  )
 }
 
 export default function Layout() {
@@ -100,49 +151,25 @@ export default function Layout() {
     }
   }
 
-  return (
-    <div className="app-frame flex h-screen overflow-hidden" style={{ background: 'var(--bg-base)' }}>
+  const closeMobile = () => setMobileOpen(false)
 
-      {/* ── Sidebar ───────────────────────────────────────────────── */}
+  return (
+    <div className="app-frame flex h-screen overflow-hidden bg-background">
       <aside
-        className={`app-sidebar ${mobileOpen ? 'mobile-open' : ''}`}
-        style={{
-          width: collapsed ? 64 : 220,
-          background: 'var(--navy)',
-          transition: 'width 250ms cubic-bezier(0.4,0,0.2,1)',
-          display: 'flex',
-          flexDirection: 'column',
-          flexShrink: 0,
-          overflow: 'hidden',
-        }}
+        className={cn('app-sidebar flex shrink-0 flex-col overflow-hidden text-sidebar-foreground', mobileOpen && 'mobile-open')}
+        style={{ width: collapsed ? 64 : 220, background: 'var(--navy)' }}
       >
-        {/* Logo row */}
-        <div className={`sidebar-brand ${collapsed ? 'is-collapsed' : ''}`}>
+        <div className={cn('sidebar-brand', collapsed && 'is-collapsed')}>
           {collapsed ? (
-            <button
-              type="button"
-              className="sidebar-htr"
-              onClick={() => navigate('/')}
-              aria-label="Heavy transport route check"
-            >
+            <button type="button" className="sidebar-htr" onClick={() => navigate('/')} aria-label="Heavy transport route check">
               HTR
             </button>
           ) : (
             <div className="sidebar-lockup">
-              <button
-                type="button"
-                className="sidebar-logo"
-                onClick={() => navigate('/')}
-                aria-label="Go to home"
-              >
+              <button type="button" className="sidebar-logo" onClick={() => navigate('/')} aria-label="Go to home">
                 <RouteCheckLogo size={32} tone="dark" decorative />
               </button>
-              <button
-                type="button"
-                className="sidebar-wordmark"
-                onClick={() => navigate('/')}
-                aria-label="Heavy transport route check"
-              >
+              <button type="button" className="sidebar-wordmark" onClick={() => navigate('/')} aria-label="Heavy transport route check">
                 <span>Heavy transport</span>
                 <span>route check</span>
               </button>
@@ -158,164 +185,48 @@ export default function Layout() {
           </button>
         </div>
 
-        {/* Nav */}
-        <nav style={{ flex: 1, padding: '10px 8px', overflowY: 'auto', overflowX: 'hidden' }}>
-          {!collapsed && (
-            <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: '0.08em', color: 'rgba(255,255,255,0.72)', padding: '4px 8px 6px', textTransform: 'uppercase' }}>
-              Heavy transport
-            </div>
-          )}
-          {collapsed && <div style={{ height: 8 }} />}
-
-          {navItems.map(({ path, label, icon: Icon, exact }) => (
-            <NavLink
-              key={path}
-              to={path}
-              end={exact}
-              title={collapsed ? label : undefined}
-              style={{ display: 'block', marginBottom: 2 }}
-              className="group"
-              onClick={() => setMobileOpen(false)}
-            >
-              {({ isActive }) => (
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: collapsed ? '9px 10px' : '8px 10px',
-                  borderRadius: 8,
-                  background: isActive ? 'rgba(255,255,255,0.12)' : 'transparent',
-                  color: isActive ? '#ffffff' : 'rgba(255,255,255,0.72)',
-                  cursor: 'pointer',
-                  justifyContent: collapsed ? 'center' : 'flex-start',
-                  transition: 'all 120ms',
-                  position: 'relative',
-                }}>
-                  {isActive && (
-                    <div style={{
-                      position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
-                      width: 3, height: 18, background: '#f5c518', borderRadius: '0 3px 3px 0',
-                    }} />
-                  )}
-                  <Icon size={18} strokeWidth={1.75} style={{ flexShrink: 0 }} />
-                  {!collapsed && (
-                    <span style={{ fontSize: 14, fontWeight: isActive ? 600 : 400, letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
-                      {label}
-                    </span>
-                  )}
-                </div>
-              )}
-            </NavLink>
-          ))}
-
-          <div style={{ height: 16 }} />
-          {!collapsed && (
-            <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: '0.08em', color: 'rgba(255,255,255,0.72)', padding: '4px 8px 6px', textTransform: 'uppercase' }}>
-              Coming later
-            </div>
-          )}
-          {collapsed && <div style={{ height: 2, background: 'rgba(255,255,255,0.07)', margin: '0 4px 8px' }} />}
-
-          {connectorItems.map(({ path, label, icon: Icon }) => (
-            <NavLink
-              key={path}
-              to={path}
-              title={collapsed ? label : undefined}
-              style={{ display: 'block', marginBottom: 2 }}
-              onClick={() => setMobileOpen(false)}
-            >
-              {({ isActive }) => (
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: collapsed ? '9px 10px' : '8px 10px',
-                  borderRadius: 8,
-                  background: isActive ? 'rgba(255,255,255,0.12)' : 'transparent',
-                  color: isActive ? '#ffffff' : 'rgba(255,255,255,0.72)',
-                  cursor: 'pointer',
-                  justifyContent: collapsed ? 'center' : 'flex-start',
-                  transition: 'all 120ms',
-                  position: 'relative',
-                }}>
-                  {isActive && (
-                    <div style={{
-                      position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
-                      width: 3, height: 18, background: '#f5c518', borderRadius: '0 3px 3px 0',
-                    }} />
-                  )}
-                  <Icon size={18} strokeWidth={1.75} style={{ flexShrink: 0 }} />
-                  {!collapsed && (
-                    <span style={{ fontSize: 14, fontWeight: isActive ? 600 : 400, letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
-                      {label}
-                    </span>
-                  )}
-                </div>
-              )}
-            </NavLink>
-          ))}
-        </nav>
-
-        {/* Settings */}
-        <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', padding: '8px' }}>
-          <NavLink to="/settings" title={collapsed ? 'Settings' : undefined} onClick={() => setMobileOpen(false)}>
-            {({ isActive }) => (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '8px 10px',
-                borderRadius: 8,
-                background: isActive ? 'rgba(255,255,255,0.12)' : 'transparent',
-                color: isActive ? '#fff' : 'rgba(255,255,255,0.72)',
-                cursor: 'pointer',
-                justifyContent: collapsed ? 'center' : 'flex-start',
-              }}>
-                <Settings size={18} strokeWidth={1.75} />
-                {!collapsed && <span style={{ fontSize: 14, fontWeight: 400, letterSpacing: '-0.01em' }}>Settings</span>}
+        <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 py-2">
+            {!collapsed && (
+              <div className="px-2.5 pt-1 pb-1.5 text-[11px] font-semibold tracking-[0.08em] text-white/55 uppercase">
+                Heavy transport
               </div>
             )}
-          </NavLink>
+            {navItems.map(item => (
+              <NavItem key={item.path} {...item} collapsed={collapsed} onClick={closeMobile} />
+            ))}
+            <Separator className="my-3 bg-white/10" />
+            {!collapsed && (
+              <div className="px-2.5 pt-1 pb-1.5 text-[11px] font-semibold tracking-[0.08em] text-white/55 uppercase">
+                Coming later
+              </div>
+            )}
+            {connectorItems.map(item => (
+              <NavItem key={item.path} {...item} collapsed={collapsed} onClick={closeMobile} />
+            ))}
+        </nav>
+
+        <div className="border-t border-white/10 p-2">
+          <NavItem path="/settings" label="Settings" icon={Settings} collapsed={collapsed} onClick={closeMobile} />
         </div>
       </aside>
-      {mobileOpen && <button type="button" className="mobile-nav-backdrop" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}
+      {mobileOpen && <button type="button" className="mobile-nav-backdrop" aria-label="Close navigation" onClick={closeMobile} />}
 
-      {/* ── Main ──────────────────────────────────────────────────── */}
-      <div className="app-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
-
-        {/* Topbar */}
-        <header className="app-topbar" style={{
-          height: 56,
-          background: 'rgba(242,242,247,0.85)',
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
-          borderBottom: '1px solid rgba(0,0,0,0.06)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          padding: '0 20px',
-          flexShrink: 0,
-          position: 'relative',
-          zIndex: 20,
-        }}>
-          <button type="button" className="mobile-nav-trigger" aria-label="Open navigation" onClick={() => { setCollapsed(false); setMobileOpen(true) }}>
+      <div className="app-main flex min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="app-topbar flex h-14 shrink-0 items-center gap-3 border-b border-border bg-white/90 px-4 backdrop-blur-xl">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="mobile-nav-trigger"
+            aria-label="Open navigation"
+            onClick={() => { setCollapsed(false); setMobileOpen(true) }}
+          >
             <Menu size={17} />
-          </button>
-          {/* Search */}
-          <div className="topbar-search" ref={searchRef} style={{
-            flex: 1,
-            maxWidth: 360,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            background: 'rgba(0,0,0,0.06)',
-            borderRadius: 10,
-            padding: '0 12px',
-            height: 34,
-            position: 'relative',
-          }}>
-            <Search size={14} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
-            <input
+          </Button>
+
+          <div className="topbar-search relative flex h-9 max-w-md min-w-0 flex-1 items-center gap-2 rounded-xl border border-border bg-muted/70 px-3" ref={searchRef}>
+            <Search size={15} className="shrink-0 text-muted-foreground" />
+            <Input
               type="search"
               aria-label="Search permits, routes, roads, and alerts"
               value={searchQuery}
@@ -326,17 +237,10 @@ export default function Layout() {
               onFocus={() => setSearchOpen(true)}
               onKeyDown={handleSearch}
               placeholder="Search"
-              style={{
-                background: 'transparent',
-                border: 'none',
-                outline: 'none',
-                fontSize: 14,
-                color: 'var(--text-primary)',
-                width: '100%',
-              }}
+              className="h-8 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
             />
             {searchQuery && (
-              <button onClick={() => setSearchQuery('')} aria-label="Clear search" style={{ color: 'var(--text-tertiary)', display: 'flex', padding: 2 }}>
+              <button type="button" onClick={() => setSearchQuery('')} aria-label="Clear search" className="text-muted-foreground">
                 <X size={12} />
               </button>
             )}
@@ -365,79 +269,51 @@ export default function Layout() {
             )}
           </div>
 
-          <div style={{ flex: 1 }} />
-
-          {/* Actions */}
-          <div className="topbar-actions" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <div className="topbar-notifications" style={{ position: 'relative' }}>
-              <button
+          <div className="ml-auto flex items-center gap-1">
+            <div className="topbar-notifications relative">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
                 onClick={() => setNotifOpen(!notifOpen)}
                 aria-label="Notifications"
                 aria-expanded={notifOpen}
-                style={{
-                  width: 34, height: 34,
-                  borderRadius: 9,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: 'transparent',
-                  color: 'var(--text-secondary)',
-                  position: 'relative',
-                }}
-                className="hover:!bg-black/[0.06] hover:!text-[var(--text-primary)]"
               >
                 <Bell size={17} />
                 {unreadCount > 0 && (
                   <span className="notification-count">{unreadCount > 9 ? '9+' : unreadCount}</span>
                 )}
-              </button>
-
+              </Button>
               {notifOpen && (
-                <div className="notification-popover" style={{
-                  position: 'absolute',
-                  top: 42, right: 0,
-                  width: 400,
-                  background: 'var(--bg-card)',
-                  borderRadius: 14,
-                  boxShadow: 'var(--shadow-xl)',
-                  border: '1px solid var(--border)',
-                  overflow: 'hidden',
-                  zIndex: 100,
-                }}>
-                  <div style={{ padding: '14px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--divider)' }}>
-                    <span style={{ fontWeight: 600, fontSize: 14, letterSpacing: '-0.01em' }}>Notifications</span>
-                    <button onClick={() => setNotifOpen(false)} aria-label="Close notifications" style={{ color: 'var(--text-tertiary)', display: 'flex' }}>
+                <div className="notification-popover">
+                  <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                    <span className="text-sm font-semibold">Notifications</span>
+                    <button type="button" onClick={() => setNotifOpen(false)} aria-label="Close notifications" className="text-muted-foreground">
                       <X size={15} />
                     </button>
                   </div>
                   {notifications.length === 0 && (
-                    <div style={{ padding: '16px', fontSize: 14, color: 'var(--text-secondary)' }}>
+                    <div className="px-4 py-4 text-sm text-muted-foreground">
                       No alerts yet. Alerts appear after you run a route check in this browser.
                     </div>
                   )}
                   {notifications.map((n, i) => (
                     <button
                       key={n.id}
+                      type="button"
                       onClick={() => { acknowledgeAlert(n.id); navigate(n.link); setNotifOpen(false) }}
-                      style={{
-                        width: '100%', textAlign: 'left',
-                        padding: '12px 16px',
-                        display: 'flex', gap: 10, alignItems: 'flex-start',
-                        borderBottom: i < notifications.length - 1 ? '1px solid var(--divider)' : 'none',
-                        background: 'transparent',
-                        cursor: 'pointer',
-                      }}
-                      className="hover:!bg-[var(--muted)]"
+                      className={cn('flex w-full items-start gap-2.5 px-4 py-3 text-left hover:bg-muted', i < notifications.length - 1 && 'border-b border-border')}
                     >
-                      <div style={{ width: 7, height: 7, borderRadius: '50%', marginTop: 5, flexShrink: 0 }} className={n.color} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', lineHeight: 1.4 }}>{n.title}</div>
-                        <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.desc}</div>
+                      <div className={cn('mt-1.5 size-1.5 shrink-0 rounded-full', n.color)} />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium">{n.title}</div>
+                        <div className="mt-0.5 truncate text-sm text-muted-foreground">{n.desc}</div>
                       </div>
-                      <span style={{ fontSize: 14, color: 'var(--text-tertiary)', flexShrink: 0, marginTop: 2 }}>{n.time}</span>
+                      <span className="mt-0.5 shrink-0 text-xs text-muted-foreground">{n.time}</span>
                     </button>
                   ))}
-                  <div style={{ padding: '10px 16px', borderTop: '1px solid var(--divider)' }}>
-                    <button onClick={() => { navigate('/activity'); setNotifOpen(false) }}
-                      style={{ fontSize: 14, fontWeight: 500, color: 'var(--accent)', background: 'none', cursor: 'pointer' }}>
+                  <div className="border-t border-border px-4 py-2.5">
+                    <button type="button" className="text-sm font-medium text-[var(--accent)]" onClick={() => { navigate('/activity'); setNotifOpen(false) }}>
                       View all notifications
                     </button>
                   </div>
@@ -445,63 +321,45 @@ export default function Layout() {
               )}
             </div>
 
-            <button
-              className="topbar-help hover:!bg-black/[0.06] hover:!text-[var(--text-primary)]"
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="topbar-help"
               onClick={() => navigate('/settings')}
               aria-label="Help and settings"
-              style={{ width: 34, height: 34, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}
             >
               <HelpCircle size={17} />
-            </button>
+            </Button>
 
-            <div className="topbar-divider" style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.1)', margin: '0 6px' }} />
+            <Separator orientation="vertical" className="topbar-divider mx-1.5 h-5" />
 
             <button
               type="button"
-              className="topbar-org-button hover:!bg-black/[0.06]"
+              className="topbar-org-button flex items-center gap-2 rounded-xl px-1.5 py-1 hover:bg-muted"
               onClick={() => navigate('/settings')}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '4px 8px 4px 4px',
-                borderRadius: 10,
-                background: 'transparent',
-                cursor: 'pointer',
-              }}
             >
               <span className="sr-only">{displayName} · {orgTypeLabel}</span>
               <div
                 aria-hidden="true"
-                style={{
-                width: 28, height: 28, borderRadius: 9,
-                background: 'var(--navy-mid)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontWeight: 700, fontSize: 14, color: 'white',
-                letterSpacing: '-0.01em',
-                flexShrink: 0,
-              }}>
+                className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-[var(--navy-mid)] text-[11px] font-bold tracking-tight text-white"
+              >
                 {orgInitials(complete ? displayName : 'Dispatcher')}
               </div>
-              <div aria-hidden="true">
-                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.3, letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
-                  {displayName}
-                </div>
-                <div style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.2 }}>{orgTypeLabel}</div>
+              <div aria-hidden="true" className="hidden text-left sm:block">
+                <div className="text-sm leading-tight font-semibold">{displayName}</div>
+                <div className="text-xs leading-tight text-muted-foreground">{orgTypeLabel}</div>
               </div>
-              <ChevronDown size={12} aria-hidden="true" style={{ color: 'var(--text-tertiary)' }} />
+              <ChevronDown size={12} aria-hidden="true" className="text-muted-foreground" />
             </button>
           </div>
         </header>
 
-        {/* Page */}
-        <main className="app-page-host"
-          style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}
-          onClick={() => notifOpen && setNotifOpen(false)}
-        >
+        <main className="app-page-host min-h-0 flex-1 overflow-y-auto" onClick={() => notifOpen && setNotifOpen(false)}>
           <Outlet />
         </main>
       </div>
-      
-      {/* Mobile bottom tab bar */}
+
       <MobileTabBar />
     </div>
   )
