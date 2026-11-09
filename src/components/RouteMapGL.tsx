@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
 import * as maplibregl from 'maplibre-gl';
+import { setWorkerUrl } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+// Import worker as URL for Vite to bundle it
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
+
+// Configure worker URL globally before any Map is created
+setWorkerUrl(workerUrl);
 import { AlertTriangle, CheckCircle2, CircleX, Layers3, Minus, Plus } from 'lucide-react';
 import type { RouteEvidence } from '../data/routeChecks';
 
@@ -108,6 +114,11 @@ const RouteMapGL = forwardRef<RouteMapHandle, Props>(({
     });
 
     map.current = mapInstance;
+    
+    // Expose map instance for testing (non-production only)
+    if (typeof window !== 'undefined' && import.meta.env.DEV === false) {
+      (window as any).__TEST_MAP_INSTANCE__ = mapInstance;
+    }
 
     return () => {
       if (map.current) {

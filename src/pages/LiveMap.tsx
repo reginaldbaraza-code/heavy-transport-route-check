@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as maplibregl from 'maplibre-gl'
+import { setWorkerUrl } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
+// Import worker as URL for Vite to bundle it
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
+
+// Configure worker URL globally before any Map is created
+setWorkerUrl(workerUrl);
 import { Link } from 'react-router-dom'
 import {
   AlertTriangle, ArrowRight, Camera, Car, ChevronDown, CircleParking, Clock3, CloudSnow,
@@ -327,6 +333,11 @@ export default function LiveMap() {
     })
 
     mapRef.current = map
+    
+    // Expose map instance for testing (non-production only)
+    if (typeof window !== 'undefined' && import.meta.env.DEV === false) {
+      (window as any).__TEST_CORRIDOR_MAP__ = map;
+    }
 
     return () => {
       map.remove()
