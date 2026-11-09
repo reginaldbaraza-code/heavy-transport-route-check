@@ -84,6 +84,10 @@ async function main() {
   await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded' })
   await page.getByRole('button', { name: /show test permits/i }).click()
   await page.getByRole('button', { name: /Hamburg → Hannover/ }).click()
+  await page.locator('.clearance-tick input').waitFor({ timeout: 15000 })
+  if (await page.locator('.clearance-tick input').isChecked()) {
+    await page.locator('.clearance-tick input').uncheck()
+  }
   await page.getByRole('button', { name: 'Check route' }).click()
   await page.locator('.verdict-banner').waitFor({ timeout: 90000 })
   record('Route check finished', true, (await page.locator('.verdict-banner').innerText()).replace(/\s+/g, ' ').slice(0, 120))
@@ -145,6 +149,64 @@ async function main() {
 
   const csv = await downloadFile(page, 'Export CSV')
   record('Result CSV download is non-empty', csv.size > 50, `${csv.suggested} ${csv.size} bytes`)
+
+  await page.locator('.confirm-on-site-bar').waitFor({ timeout: 10000 })
+  await page.locator('.confirm-on-site-bar input').first().fill('QA Test')
+  const resultClearance = page.locator('.confirm-on-site-bar .clearance-tick input')
+  if (!(await resultClearance.isChecked())) await resultClearance.check()
+  const confirmRemaining = page.getByRole('button', { name: /Confirm remaining VERIFY on site/i })
+  if (await confirmRemaining.count()) await confirmRemaining.click()
+  await page.waitForFunction(() => /READY/i.test(document.querySelector('.verdict-banner')?.innerText || ''), null, { timeout: 15000 }).catch(() => {})
+  const readyBanner = (await page.locator('.verdict-banner').innerText()).replace(/\s+/g, ' ')
+  record('Result READY after result-screen clearance + acks', /READY/i.test(readyBanner), readyBanner.slice(0, 180))
+  const readyScreen = await page.locator('.evidence-section').innerText()
+  record(
+    'On-screen bridge card marked confirmed after result-screen tick',
+    /Bridge and clearance confirmed by dispatcher/i.test(readyScreen)
+      && !/Bridge and clearance data not available/i.test(readyScreen),
+    readyScreen.replace(/\s+/g, ' ').slice(0, 280),
+  )
+
+  const readyPdf = await downloadFile(page, 'Export PDF')
+  const readyCsv = await downloadFile(page, 'Export CSV')
+  const readyPdfText = decodePdfStrings(readyPdf.buffer)
+  const readyCsvText = readyCsv.buffer.toString('utf8')
+  const pdfCompact = readyPdfText.compact.replace(/\s+/g, ' ')
+  const swappedPdf = /11\.09\.2026/.test(pdfCompact) && /09\.11\.2026/.test(pdfCompact)
+  const swappedCsv = /11\.09\.2026/.test(readyCsvText) && /09\.11\.2026/.test(readyCsvText)
+  const pdfAckDates = [...pdfCompact.matchAll(/QA Test at (\d{2}\.\d{2}\.\d{4})/g)].map(match => match[1])
+  const csvAckDates = [...readyCsvText.matchAll(/QA Test at (\d{2}\.\d{2}\.\d{4})/g)].map(match => match[1])
+  record(
+    'PDF/CSV on-site dates stay de-DE without day/month swap',
+    !swappedPdf && !swappedCsv
+      && (pdfAckDates.length + csvAckDates.length) > 0
+      && [...pdfAckDates, ...csvAckDates].every(date => date !== '11.09.2026'),
+    `pdf=${pdfAckDates.join('|') || 'none'} csv=${csvAckDates.join('|') || 'none'}`,
+  )
+  record(
+    'PDF export uses post-ack clearance state',
+    /Clearance confirmed by QA Test at/i.test(pdfCompact)
+      && /Bridge and clearance confirmed by dispatcher/i.test(pdfCompact)
+      && !/Bridge and clearance are not dispatcher-confirmed/i.test(pdfCompact)
+      && !/Bridge and clearance data not available/i.test(pdfCompact),
+    pdfCompact.slice(0, 280),
+  )
+  record(
+    'CSV export uses post-ack clearance state',
+    /Clearance confirmed by QA Test at/i.test(readyCsvText)
+      && /Bridge and clearance confirmed by dispatcher/i.test(readyCsvText)
+      && !/Bridge and clearance are not dispatcher-confirmed/i.test(readyCsvText)
+      && !/Bridge and clearance data not available/i.test(readyCsvText),
+    readyCsvText.replace(/\s+/g, ' ').slice(0, 280),
+  )
+  record(
+    'CSV and PDF filenames use the current READY verdict',
+    /READY\.csv$/i.test(readyCsv.suggested)
+      && /READY\.pdf$/i.test(readyPdf.suggested)
+      && !/HOLD/i.test(readyCsv.suggested)
+      && !/HOLD/i.test(readyPdf.suggested),
+    `pdf=${readyPdf.suggested} csv=${readyCsv.suggested}`,
+  )
 
   await page.goto(base + '/jobs', { waitUntil: 'domcontentloaded' })
   const jobVisible = await page.locator('.job-row').count()

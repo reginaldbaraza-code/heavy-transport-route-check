@@ -48,3 +48,38 @@ test('client overlay: acknowledging VERIFY items yields READY; HOLD cannot be cl
   }], true)
   assert.equal(stillHold.verdict, 'HOLD')
 })
+
+test('result-screen clearance rewrites the bridge card and stale impact copy', () => {
+  const raw = result([
+    {
+      id: 'v1', title: 'Nearby A20', detail: '', source: 't', age: '', confidence: 'medium',
+      state: 'warning', category: 'roadworks', blocker: true,
+    },
+    {
+      id: 'bridge-clearance-unknown',
+      title: 'Bridge and clearance data not available',
+      detail: 'Unknown clearance cannot yield READY — confirm on site or tick dispatcher confirmation.',
+      source: 'Route check system',
+      age: '',
+      confidence: 'medium',
+      state: 'warning',
+      category: 'observations',
+      blocker: true,
+    },
+  ])
+  raw.impact = 'Selected vehicle: 3.20m W. 1 unresolved VERIFY items. Bridge and clearance are not dispatcher-confirmed.'
+  raw.clearanceConfirmed = false
+  const ready = applySiteAcknowledgements(raw, [{
+    evidenceId: 'v1', acknowledgedBy: 'QA Test', acknowledgedAt: '2026-11-09T12:00:00Z',
+  }], true, { by: 'QA Test', at: '2026-11-09T12:00:00Z' })
+  assert.equal(ready.verdict, 'READY')
+  const bridge = ready.evidence.find(item => String(item.id).startsWith('bridge-clearance'))
+  assert.equal(bridge?.id, 'bridge-clearance-confirmed')
+  assert.match(bridge?.title || '', /Bridge and clearance confirmed by dispatcher/)
+  assert.doesNotMatch(ready.impact, /not dispatcher-confirmed/)
+  assert.doesNotMatch(ready.impact, /unresolved VERIFY/)
+  assert.match(ready.impact, /Clearance confirmed by QA Test at/)
+  assert.match(ready.summary, /1 VERIFY item confirmed on site by QA Test at/)
+  assert.doesNotMatch(ready.summary, /11\.09\.2026/)
+  assert.match(ready.summary, /09\.11\.2026/)
+})

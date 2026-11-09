@@ -2,7 +2,13 @@ const BERLIN = 'Europe/Berlin'
 
 export function parseIso(value?: string | null): Date | null {
   if (!value) return null
-  const date = new Date(value)
+  const trimmed = value.trim()
+  // Only ISO-8601 / RFC-3339. Reject de-DE display strings so they are never
+  // re-parsed as MM.DD.YYYY (09.11.2026 would become 11 September).
+  if (!/^\d{4}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/.test(trimmed)) {
+    return null
+  }
+  const date = new Date(trimmed)
   return Number.isNaN(date.getTime()) ? null : date
 }
 

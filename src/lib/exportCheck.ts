@@ -3,7 +3,11 @@ import type { RouteEvidence, RouteVerdict } from '../data/routeChecks'
 import { formatBerlinDateTime } from './formatTime'
 import { formatVehicleDims, type VehicleDims } from './jobs'
 import type { RouteCheckResult } from './routeCheck'
-import { formatOnSiteConfirmationLine, stripUnresolvedVerifyCopy } from './siteAcknowledgements'
+import {
+  formatClearanceConfirmationLine,
+  formatOnSiteConfirmationLine,
+  stripUnresolvedVerifyCopy,
+} from './siteAcknowledgements'
 
 export type HistoryExportRecord = {
   verdict: RouteVerdict | string
@@ -23,6 +27,7 @@ export type HistoryExportRecord = {
 }
 
 export type ExportEvidence = {
+  id?: string
   title: string
   detail: string
   source: string
@@ -58,17 +63,22 @@ export type ExportSnapshot = {
   evidence: ExportEvidence[]
   confirmOnSite: string[]
   onSiteConfirmations: ExportAcknowledgement[]
+  clearanceConfirmed?: boolean
+  clearanceConfirmedBy?: string
+  clearanceConfirmedAt?: string
 }
 
-function isConfirmOnSite(item: Pick<RouteEvidence, 'id' | 'title' | 'detail' | 'longRunning' | 'category'>) {
+function isConfirmOnSite(item: Pick<RouteEvidence, 'id' | 'title' | 'detail' | 'longRunning' | 'category' | 'state'>) {
+  if (item.id === 'bridge-clearance-confirmed' || item.state === 'clear') return false
   const text = `${item.title} ${item.detail}`
   return Boolean(item.longRunning)
     || item.id === 'bridge-clearance-unknown'
-    || /verify on site|confirm on site|bridge and clearance/i.test(text)
+    || /verify on site|confirm on site|bridge and clearance data not available/i.test(text)
 }
 
 function evidenceRow(item: RouteEvidence, fallbackRetrieved?: string): ExportEvidence {
   return {
+    id: item.id,
     title: item.title,
     detail: item.detail,
     source: item.source,
@@ -79,25 +89,41 @@ function evidenceRow(item: RouteEvidence, fallbackRetrieved?: string): ExportEvi
     state: item.state,
     confirmOnSite: isConfirmOnSite(item),
     acknowledgedBy: item.acknowledgedBy || '',
-    acknowledgedAt: item.acknowledgedAt ? formatBerlinDateTime(item.acknowledgedAt) : '',
+    acknowledgedAt: item.acknowledgedAt || '',
   }
 }
 
 function acknowledgementRows(evidence: RouteEvidence[]): ExportAcknowledgement[] {
   return evidence
-    .filter(item => item.acknowledgedBy && item.acknowledgedAt)
+    .filter(item => item.acknowledgedBy && item.acknowledgedAt && item.id !== 'bridge-clearance-confirmed')
     .map(item => ({
       title: item.title,
       acknowledgedBy: item.acknowledgedBy || '',
-      acknowledgedAt: formatBerlinDateTime(item.acknowledgedAt) || item.acknowledgedAt || '',
+      acknowledgedAt: item.acknowledgedAt || '',
     }))
 }
 
-function readyCopy(verdict: RouteVerdict | string, summary: string, impact: string, acks: Array<{ acknowledgedBy?: string; acknowledgedAt?: string }>) {
-  if (verdict !== 'READY') return { summary, impact }
+function displayAckTime(value?: string) {
+  return formatBerlinDateTime(value) || value || ''
+}
+
+function readyCopy(
+  result: Pick<RouteCheckResult, 'verdict' | 'summary' | 'impact' | 'clearanceConfirmed' | 'clearanceConfirmedBy' | 'confirmedAt'>,
+  acks: Array<{ acknowledgedBy?: string; acknowledgedAt?: string }>,
+) {
+  const impact = stripUnresolvedVerifyCopy(result.impact || '')
+  const clearanceLine = result.clearanceConfirmed
+    ? formatClearanceConfirmationLine(result.clearanceConfirmedBy, result.confirmedAt)
+    : ''
+  if (result.verdict !== 'READY') {
+    return {
+      summary: result.summary,
+      impact: result.clearanceConfirmed ? [impact, clearanceLine].filter(Boolean).join(' ') : result.impact,
+    }
+  }
   return {
-    summary: acks.length ? formatOnSiteConfirmationLine(acks) : summary,
-    impact: stripUnresolvedVerifyCopy(impact || ''),
+    summary: acks.length ? formatOnSiteConfirmationLine(acks) : result.summary,
+    impact: [impact, clearanceLine].filter(Boolean).join(' '),
   }
 }
 
@@ -117,7 +143,7 @@ export function snapshotFromResult(
   const sourceEvidence = result.evidence || []
   const evidence = sourceEvidence.map(item => evidenceRow(item, result.retrievedAt))
   const onSiteConfirmations = acknowledgementRows(sourceEvidence)
-  const copy = readyCopy(result.verdict, result.summary, result.impact, sourceEvidence.filter(item => item.acknowledgedBy))
+  const copy = readyCopy(result, sourceEvidence.filter(item => item.acknowledgedBy && item.id !== 'bridge-clearance-confirmed'))
   return {
     verdict: result.verdict,
     title: result.title,
@@ -134,6 +160,9 @@ export function snapshotFromResult(
     evidence,
     confirmOnSite: confirmOnSiteTitles(sourceEvidence),
     onSiteConfirmations,
+    clearanceConfirmed: Boolean(result.clearanceConfirmed),
+    clearanceConfirmedBy: result.clearanceConfirmedBy || '',
+    clearanceConfirmedAt: result.confirmedAt || '',
   }
 }
 
@@ -141,7 +170,14 @@ export function snapshotFromHistory(record: HistoryExportRecord): ExportSnapshot
   const sourceEvidence = (record.evidence || []) as RouteEvidence[]
   const evidence = sourceEvidence.map(item => evidenceRow(item, record.retrievedAt))
   const onSiteConfirmations = acknowledgementRows(sourceEvidence)
-  const copy = readyCopy(record.verdict, record.summary, record.impact || '', sourceEvidence.filter(item => item.acknowledgedBy))
+  const copy = readyCopy({
+    verdict: record.verdict as RouteCheckResult['verdict'],
+    summary: record.summary,
+    impact: record.impact || '',
+    clearanceConfirmed: sourceEvidence.some(item => item.id === 'bridge-clearance-confirmed'),
+    clearanceConfirmedBy: sourceEvidence.find(item => item.id === 'bridge-clearance-confirmed')?.acknowledgedBy,
+    confirmedAt: sourceEvidence.find(item => item.id === 'bridge-clearance-confirmed')?.acknowledgedAt,
+  }, sourceEvidence.filter(item => item.acknowledgedBy && item.id !== 'bridge-clearance-confirmed'))
   return {
     verdict: record.verdict,
     title: record.title || `Route check: ${record.verdict}`,
@@ -158,6 +194,9 @@ export function snapshotFromHistory(record: HistoryExportRecord): ExportSnapshot
     evidence,
     confirmOnSite: record.confirmOnSite || evidence.filter(item => item.confirmOnSite).map(item => item.title),
     onSiteConfirmations,
+    clearanceConfirmed: copy.impact.includes('Clearance confirmed') || sourceEvidence.some(item => item.id === 'bridge-clearance-confirmed'),
+    clearanceConfirmedBy: sourceEvidence.find(item => item.id === 'bridge-clearance-confirmed')?.acknowledgedBy || '',
+    clearanceConfirmedAt: sourceEvidence.find(item => item.id === 'bridge-clearance-confirmed')?.acknowledgedAt || '',
   }
 }
 
@@ -165,8 +204,9 @@ function slug(value: string) {
   return value.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'route-check'
 }
 
-function filename(snapshot: ExportSnapshot, ext: string) {
-  return `route-check-${slug(snapshot.permitNumber || snapshot.permitName)}-${snapshot.verdict}.${ext}`
+export function exportFilename(snapshot: Pick<ExportSnapshot, 'permitNumber' | 'permitName' | 'verdict'>, ext: string) {
+  const verdict = String(snapshot.verdict || 'VERIFY').toUpperCase().replace(/[^A-Z]/g, '') || 'VERIFY'
+  return `route-check-${slug(snapshot.permitNumber || snapshot.permitName)}-${verdict}.${ext}`
 }
 
 function triggerDownload(blob: Blob, name: string) {
@@ -199,13 +239,15 @@ export function snapshotToCsv(snapshot: ExportSnapshot) {
     ['Run at', formatBerlinDateTime(snapshot.runAt) || snapshot.runAt],
     ['Retrieved', formatBerlinDateTime(snapshot.retrievedAt) || snapshot.retrievedAt],
     ['Confidence', snapshot.confidence],
-    ['Confirm on site', snapshot.confirmOnSite.join('; ') || 'None listed'],
+    ['Confirm on site', snapshot.clearanceConfirmed
+      ? formatClearanceConfirmationLine(snapshot.clearanceConfirmedBy, snapshot.clearanceConfirmedAt)
+      : (snapshot.confirmOnSite.join('; ') || 'None listed')],
     ['On-site confirmations', snapshot.onSiteConfirmations?.length
       ? formatOnSiteConfirmationLine(snapshot.onSiteConfirmations)
       : 'None listed'],
     [],
     ['On-site confirmation title', 'Confirmed by', 'Confirmed at'],
-    ...(snapshot.onSiteConfirmations || []).map(item => [item.title, item.acknowledgedBy, item.acknowledgedAt]),
+    ...(snapshot.onSiteConfirmations || []).map(item => [item.title, item.acknowledgedBy, displayAckTime(item.acknowledgedAt)]),
     [],
     ['Evidence title', 'Source', 'Start', 'Retrieved', 'Confidence', 'Category', 'State', 'Confirm on site', 'Confirmed by', 'Confirmed at', 'Detail'],
   ]
@@ -219,7 +261,7 @@ export function snapshotToCsv(snapshot: ExportSnapshot) {
     item.state,
     item.confirmOnSite ? 'yes' : 'no',
     item.acknowledgedBy || '',
-    item.acknowledgedAt || '',
+    displayAckTime(item.acknowledgedAt),
     item.detail,
   ])
   return [...header, ...evidenceRows].map(row => row.map(csvCell).join(',')).join('\n')
@@ -227,7 +269,7 @@ export function snapshotToCsv(snapshot: ExportSnapshot) {
 
 export function downloadCsv(snapshot: ExportSnapshot) {
   const blob = new Blob([snapshotToCsv(snapshot)], { type: 'text/csv;charset=utf-8' })
-  triggerDownload(blob, filename(snapshot, 'csv'))
+  triggerDownload(blob, exportFilename(snapshot, 'csv'))
 }
 
 /** jsPDF Helvetica is WinAnsi. Keep German umlauts; replace arrows and other Unicode. */
@@ -301,7 +343,7 @@ function drawEvidenceCard(
   const metaLines = wrapLines(doc, meta, innerW)
   const detailLines = wrapLines(doc, item.detail, innerW)
   const ackLine = item.acknowledgedBy
-    ? `Confirmed on site by ${item.acknowledgedBy} at ${item.acknowledgedAt}`
+    ? `Confirmed on site by ${item.acknowledgedBy} at ${displayAckTime(item.acknowledgedAt)}`
     : ''
   const ackLines = ackLine ? wrapLines(doc, ackLine, innerW) : []
   const titleH = 4.8
@@ -397,7 +439,9 @@ export function createPdfDocument(snapshot: ExportSnapshot) {
     ['Run at', formatBerlinDateTime(snapshot.runAt) || snapshot.runAt],
     ['Retrieved', formatBerlinDateTime(snapshot.retrievedAt) || snapshot.retrievedAt],
     ['Confidence', snapshot.confidence],
-    ['Confirm on site', snapshot.confirmOnSite.join('; ') || 'Bridge/clearance still a manual verify item'],
+    ['Confirm on site', snapshot.clearanceConfirmed
+      ? formatClearanceConfirmationLine(snapshot.clearanceConfirmedBy, snapshot.clearanceConfirmedAt)
+      : (snapshot.confirmOnSite.join('; ') || 'Bridge/clearance still a manual verify item')],
   ]
   const colW = width / 2 - 10
   const factRows: Array<Array<{ label: string; lines: string[] }>> = []
@@ -443,7 +487,7 @@ export function createPdfDocument(snapshot: ExportSnapshot) {
     const summaryLine = formatOnSiteConfirmationLine(confirmations)
     if (summaryLine) y = wrap(doc, summaryLine, margin, y, width, 4.5)
     confirmations.forEach(item => {
-      y = wrap(doc, `${item.title} - confirmed by ${item.acknowledgedBy} at ${item.acknowledgedAt}`, margin, y, width, 4.2)
+      y = wrap(doc, `${item.title} - confirmed by ${item.acknowledgedBy} at ${displayAckTime(item.acknowledgedAt)}`, margin, y, width, 4.2)
     })
     y += 4
   }
@@ -484,7 +528,7 @@ export function pdfBytesFromSnapshot(snapshot: ExportSnapshot): ArrayBuffer {
 }
 
 export function downloadPdf(snapshot: ExportSnapshot) {
-  createPdfDocument(snapshot).save(filename(snapshot, 'pdf'))
+  createPdfDocument(snapshot).save(exportFilename(snapshot, 'pdf'))
 }
 
 export function downloadSnapshot(snapshot: ExportSnapshot, format: 'pdf' | 'csv') {

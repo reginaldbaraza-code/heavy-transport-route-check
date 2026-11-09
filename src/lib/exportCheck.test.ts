@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { RouteEvidence } from '../data/routeChecks.ts'
-import { pdfBytesFromSnapshot, snapshotFromResult, snapshotToCsv } from './exportCheck.ts'
+import { exportFilename, pdfBytesFromSnapshot, snapshotFromResult, snapshotToCsv } from './exportCheck.ts'
 import type { RouteCheckResult } from './routeCheck.ts'
 import { applySiteAcknowledgements } from './siteAcknowledgements.ts'
 
@@ -90,6 +90,62 @@ test('PDF and CSV after dispatcher acks list confirmations, not unresolved VERIF
   assert.match(csv, /On-site confirmation title/)
   assert.match(csv, /Ada Dispatcher/)
   assert.match(csv, /A7 roadworks near Soltau/)
+})
+
+test('PDF and CSV keep one de-DE date, reflect result-screen clearance, and name files from READY', () => {
+  const evidence = [
+    verifyItem('v1', 'A7 roadworks near Soltau'),
+    verifyItem('v2', 'A7 lane shift near Hannover'),
+    verifyItem('v3', 'Temporary speed limit'),
+    verifyItem('v4', 'Bridge works on corridor'),
+    {
+      id: 'bridge-clearance-unknown',
+      title: 'Bridge and clearance data not available',
+      detail: 'Unknown clearance cannot yield READY — confirm on site or tick dispatcher confirmation.',
+      source: 'Route check system',
+      age: '',
+      confidence: 'medium' as const,
+      state: 'warning' as const,
+      category: 'observations' as const,
+      blocker: true,
+    },
+  ]
+  const raw = baseResult(evidence)
+  raw.impact = 'Selected vehicle: 3.20m W x 4.50m H x 28.5m L · 60t. 4 unresolved VERIFY items. Bridge and clearance are not dispatcher-confirmed.'
+  raw.summary = 'Bridge and clearance are not dispatcher-confirmed.'
+  raw.clearanceConfirmed = false
+  const overlaid = applySiteAcknowledgements(
+    raw,
+    evidence.filter(item => item.id !== 'bridge-clearance-unknown').map(item => ({
+      evidenceId: item.id,
+      acknowledgedBy: 'QA Test',
+      acknowledgedAt: '2026-11-09T12:00:00Z',
+    })),
+    true,
+    { by: 'QA Test', at: '2026-11-09T12:00:00Z' },
+  )
+  assert.equal(overlaid.verdict, 'READY')
+  const snapshot = snapshotFromResult(overlaid, { permitNumber: 'DE-HH-2026-01845', permitName: 'Hamburg → Hannover' })
+  assert.equal(exportFilename(snapshot, 'csv'), 'route-check-DE-HH-2026-01845-READY.csv')
+  assert.equal(exportFilename(snapshot, 'pdf'), 'route-check-DE-HH-2026-01845-READY.pdf')
+  assert.doesNotMatch(exportFilename(snapshot, 'csv'), /HOLD/)
+
+  const extracted = decodePdfStrings(pdfBytesFromSnapshot(snapshot))
+  assert.match(extracted.compact, /4 VERIFY items confirmed on site by QA Test at/)
+  assert.match(extracted.compact, /09\.11\.2026/)
+  assert.doesNotMatch(extracted.compact, /11\.09\.2026/)
+  assert.match(extracted.compact, /Clearance confirmed by QA Test at/)
+  assert.match(extracted.compact, /Bridge and clearance confirmed by dispatcher/)
+  assert.doesNotMatch(extracted.compact, /Bridge and clearance are not dispatcher-confirmed/)
+  assert.doesNotMatch(extracted.compact, /Bridge and clearance data not available/)
+
+  const csv = snapshotToCsv(snapshot)
+  assert.match(csv, /4 VERIFY items confirmed on site by QA Test at/)
+  assert.match(csv, /09\.11\.2026/)
+  assert.doesNotMatch(csv, /11\.09\.2026/)
+  assert.match(csv, /Clearance confirmed by QA Test at/)
+  assert.doesNotMatch(csv, /Bridge and clearance are not dispatcher-confirmed/)
+  assert.doesNotMatch(csv, /"Impact".*data not available/)
 })
 
 test('PDF wraps long evidence titles instead of clipping them', () => {

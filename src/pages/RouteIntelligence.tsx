@@ -77,6 +77,12 @@ export default function RouteIntelligencePolished() {
   const [confirmedAt, setConfirmedAt] = useState('')
   const [acknowledgements, setAcknowledgements] = useState<SiteAcknowledgement[]>([])
   const lastHistoryId = useRef<string | null>(null)
+  const clearanceConfirmedRef = useRef(clearanceConfirmed)
+  const clearanceByRef = useRef(clearanceBy)
+  const confirmedAtRef = useRef(confirmedAt)
+  clearanceConfirmedRef.current = clearanceConfirmed
+  clearanceByRef.current = clearanceBy
+  confirmedAtRef.current = confirmedAt
 
   const vehicle = {
     width: parseFloat(vehicleWidth) || 0,
@@ -397,7 +403,10 @@ export default function RouteIntelligencePolished() {
   }
 
   const displayed = result
-    ? applySiteAcknowledgements(result, acknowledgements, clearanceConfirmed)
+    ? applySiteAcknowledgements(result, acknowledgements, clearanceConfirmed, {
+      by: clearanceBy,
+      at: confirmedAt,
+    })
     : null
 
   const persistOverlay = (
@@ -407,7 +416,10 @@ export default function RouteIntelligencePolished() {
     at?: string,
   ) => {
     if (!result) return null
-    const overlaid = applySiteAcknowledgements(result, acks, nextClearance)
+    const overlaid = applySiteAcknowledgements(result, acks, nextClearance, {
+      by,
+      at,
+    })
     if (lastHistoryId.current) {
       patchHistory(lastHistoryId.current, {
         verdict: overlaid.verdict,
@@ -432,20 +444,30 @@ export default function RouteIntelligencePolished() {
   }
 
   const setResultClearance = (next: boolean) => {
-    const by = clearanceBy.trim() || 'Dispatcher'
-    const at = next ? (confirmedAt || new Date().toISOString()) : confirmedAt
-    setClearanceConfirmed(next)
+    const by = clearanceByRef.current.trim() || clearanceBy.trim() || 'Dispatcher'
+    const at = next ? (confirmedAtRef.current || confirmedAt || new Date().toISOString()) : (confirmedAtRef.current || confirmedAt)
+    clearanceConfirmedRef.current = next
     if (next) {
-      if (!clearanceBy.trim()) setClearanceBy(by)
-      if (!confirmedAt) setConfirmedAt(at)
+      if (!clearanceByRef.current.trim()) {
+        clearanceByRef.current = by
+        setClearanceBy(by)
+      }
+      if (!confirmedAtRef.current) {
+        confirmedAtRef.current = at
+        setConfirmedAt(at)
+      }
     }
+    setClearanceConfirmed(next)
     persistOverlay(acknowledgements, next, by, at)
   }
 
   const confirmOnSite = (ids: string[]) => {
     if (!result) return
-    const name = clearanceBy.trim() || 'Dispatcher'
-    if (!clearanceBy.trim()) setClearanceBy(name)
+    const name = clearanceByRef.current.trim() || clearanceBy.trim() || 'Dispatcher'
+    if (!clearanceByRef.current.trim()) {
+      clearanceByRef.current = name
+      setClearanceBy(name)
+    }
     const at = new Date().toISOString()
     const next = [...acknowledgements]
     let skippedHold = 0
@@ -466,7 +488,11 @@ export default function RouteIntelligencePolished() {
       return
     }
     setAcknowledgements(next)
-    const overlaid = persistOverlay(next, clearanceConfirmed, name, confirmedAt)
+    const clearance = clearanceConfirmedRef.current
+    const confirmed = clearance
+      ? (confirmedAtRef.current || new Date().toISOString())
+      : confirmedAtRef.current
+    const overlaid = persistOverlay(next, clearance, name, confirmed)
     setToast(overlaid?.verdict === 'READY' ? overlaid.title : `Confirmed ${added} item${added === 1 ? '' : 's'} on site`)
   }
 
@@ -936,11 +962,14 @@ export default function RouteIntelligencePolished() {
                   <div className="confirm-on-site-bar">
                     <label>
                       <span>Dispatcher name</span>
-                      <input
-                        value={clearanceBy}
-                        onChange={event => setClearanceBy(event.target.value)}
-                        placeholder="Name stored with each confirmation"
-                      />
+                        <input
+                          value={clearanceBy}
+                          onChange={event => {
+                            clearanceByRef.current = event.target.value
+                            setClearanceBy(event.target.value)
+                          }}
+                          placeholder="Name stored with each confirmation"
+                        />
                     </label>
                     <label className="clearance-tick">
                       <input
