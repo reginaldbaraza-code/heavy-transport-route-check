@@ -74,5 +74,6 @@ test('PDF header draws the mark as vectors, not an LFS/PNG asset', () => {
   assert.doesNotMatch(latin1, new RegExp(LFS_PREFIX))
   assert.doesNotMatch(latin1, /\/Subtype \/Image/)
   assert.match(latin1, /Heavy transport route check/)
+  assert.doesNotMatch(latin1, /\bMSD\b/)
   assert.match(latin1, /\sc\n/)
 })

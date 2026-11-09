@@ -17,7 +17,7 @@ export const LANE_INNER_PATH = "M19.2 43.6 C24.8 42 28.6 37.4 29.6 30.6"
 /** Outer (right) dashed lane — lower/middle S only. */
 export const LANE_OUTER_PATH = "M33 54.4 C40.6 49.6 44.8 43.2 42.6 36.8"
 
-const TITLE = "Heavy Transport Route Check"
+const TITLE = "Heavy transport route check"
 
 export default function RouteCheckLogo({
   size = 32,

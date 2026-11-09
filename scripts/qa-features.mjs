@@ -88,12 +88,41 @@ async function main() {
     )
   }
 
+  await page.goto(base + '/', { waitUntil: 'domcontentloaded', timeout: 60000 })
+  const skipOnboarding = page.getByRole('button', { name: /skip/i })
+  if (await skipOnboarding.count()) {
+    await skipOnboarding.first().click()
+  }
+  const homeTitle = await page.title()
+  record(
+    'Document title uses HTR brand',
+    homeTitle === 'HTR · Heavy transport route check',
+    homeTitle,
+  )
+  record(
+    'Sidebar wordmark is Heavy transport route check',
+    await page.getByRole('button', { name: 'Heavy transport route check' }).first().isVisible(),
+  )
+  const homeText = await page.locator('body').innerText()
+  record('No user-facing MSD brand text', !/\bMSD\b/.test(homeText), (homeText.match(/\bMSD\b/) || [''])[0])
+  await page.getByRole('button', { name: 'Collapse navigation' }).click()
+  record(
+    'Collapsed sidebar shows HTR',
+    await page.getByRole('button', { name: 'Heavy transport route check' }).filter({ hasText: 'HTR' }).first().isVisible(),
+  )
+  await page.getByRole('button', { name: 'Expand navigation' }).click()
+
   await page.goto(base + '/discover', { waitUntil: 'domcontentloaded', timeout: 60000 })
   const discoverBanner = await page.getByText(/leftover marketplace example data/i).isVisible()
   const discoverBadge = await page.getByText('Example data', { exact: true }).first().isVisible()
   record('Discover example-data banner visible', discoverBanner && discoverBadge)
 
   await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded' })
+  record(
+    'Per-page title keeps HTR suffix',
+    (await page.title()) === 'Route checks · HTR · Heavy transport route check',
+    await page.title(),
+  )
   await page.getByRole('button', { name: /show test permits/i }).click()
   await page.getByRole('button', { name: /Hamburg → Hannover/ }).click()
   await page.locator('.clearance-tick input').waitFor({ timeout: 15000 })
