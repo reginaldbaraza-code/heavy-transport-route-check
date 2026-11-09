@@ -469,7 +469,7 @@ export async function loadTestPermit(permit: TestPermit): Promise<{
   ]);
 
   if (!gpxRes.ok) {
-    throw new Error('Failed to load test permit GPX file');
+    throw new Error('Failed to load sample permit GPX file');
   }
 
   const gpxContent = await gpxRes.text();

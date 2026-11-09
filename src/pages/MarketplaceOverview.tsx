@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  AlertTriangle, ArrowRight, CheckCircle2, CircleX, FileJson, Map,
-  Route, ShieldCheck, Truck, Upload,
+  AlertTriangle, ArrowRight, CheckCircle2, CircleX, FileJson, FileText, Map,
+  Play, Route, ShieldCheck, Truck, Upload,
 } from 'lucide-react'
 import LazyPermitMap from '../components/LazyPermitMap'
 import PageHeader from '../components/PageHeader'
@@ -43,6 +43,76 @@ const verdictMeta = {
 }
 
 type SampleMode = 'example' | 'permits'
+
+function OverviewModeSwitch({
+  mode,
+  onChange,
+}: {
+  mode: SampleMode
+  onChange: (mode: SampleMode) => void
+}) {
+  const demoRef = useRef<HTMLButtonElement>(null)
+  const sampleRef = useRef<HTMLButtonElement>(null)
+
+  const select = (next: SampleMode, moveFocus = false) => {
+    onChange(next)
+    if (moveFocus) {
+      queueMicrotask(() => (next === 'example' ? demoRef : sampleRef).current?.focus())
+    }
+  }
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+    event.preventDefault()
+    if (event.key === 'Home') select('example', true)
+    else if (event.key === 'End') select('permits', true)
+    else select(mode === 'example' ? 'permits' : 'example', true)
+  }
+
+  return (
+    <div className="overview-mode-switch">
+      <div
+        className="overview-mode-toggle"
+        role="tablist"
+        aria-label="Overview content mode"
+        aria-describedby="overview-mode-hint"
+        onKeyDown={onKeyDown}
+      >
+        <button
+          ref={demoRef}
+          type="button"
+          role="tab"
+          id="overview-tab-demo"
+          aria-selected={mode === 'example'}
+          aria-controls="overview-panel-demo"
+          tabIndex={mode === 'example' ? 0 : -1}
+          className={mode === 'example' ? 'active' : ''}
+          onClick={() => onChange('example')}
+        >
+          Demo dashboard
+        </button>
+        <button
+          ref={sampleRef}
+          type="button"
+          role="tab"
+          id="overview-tab-sample"
+          aria-selected={mode === 'permits'}
+          aria-controls="overview-panel-sample"
+          tabIndex={mode === 'permits' ? 0 : -1}
+          className={mode === 'permits' ? 'active' : ''}
+          onClick={() => onChange('permits')}
+        >
+          Try a sample permit
+        </button>
+      </div>
+      <p id="overview-mode-hint" className="overview-mode-hint">
+        {mode === 'permits'
+          ? 'Live Autobahn check — saved to your history.'
+          : 'Preview only — never live, never saved.'}
+      </p>
+    </div>
+  )
+}
 
 export default function MarketplaceOverview() {
   const { history } = useRouteMonitoring()
@@ -149,28 +219,27 @@ export default function MarketplaceOverview() {
         </section>
       )}
 
-      <div className="example-data-panel">
-        <div className="example-data-banner" role="note">
-          <div className="example-data-banner-copy">
-            <span className="example-data-badge">{sampleMode === 'permits' ? 'Test / sample data' : 'Example data'}</span>
+      <div
+        className={`overview-mode-panel ${sampleMode === 'permits' ? 'is-sample' : 'is-demo'}`}
+        data-overview-mode={sampleMode === 'permits' ? 'sample' : 'demo'}
+      >
+        <div className="overview-mode-banner">
+          <div className="overview-mode-banner-copy" role="status">
+            <span className="overview-mode-badge">
+              {sampleMode === 'permits' ? <FileText size={13} aria-hidden /> : <Play size={13} aria-hidden />}
+              {sampleMode === 'permits' ? 'SAMPLE PERMIT' : 'DEMO'}
+            </span>
             <p>
               {sampleMode === 'permits'
-                ? 'These are the labelled sample permits from Route Checks. Opening one loads it for a live Autobahn check. Nothing is saved to alerts or history until you actually run a check.'
-                : 'These routes and sources are illustrative, not live. They do not affect alerts, history, or the notification badge.'}
+                ? 'Real sample permit files. Open one to run a live Autobahn check on its route; that check is saved to your history.'
+                : 'A fixed preview of what monitoring looks like. Made-up routes and verdicts, never live, never saved.'}
             </p>
           </div>
-          <div className="sample-mode-toggle" role="group" aria-label="Overview sample data mode">
-            <button type="button" className={sampleMode === 'example' ? 'active' : ''} onClick={() => setMode('example')} aria-pressed={sampleMode === 'example'}>
-              Example data
-            </button>
-            <button type="button" className={sampleMode === 'permits' ? 'active' : ''} onClick={() => setMode('permits')} aria-pressed={sampleMode === 'permits'}>
-              Test permits
-            </button>
-          </div>
+          <OverviewModeSwitch mode={sampleMode} onChange={setMode} />
         </div>
 
         {sampleMode === 'example' ? (
-          <>
+          <div role="tabpanel" id="overview-panel-demo" aria-labelledby="overview-tab-demo">
             <section className="transport-readiness">
               <div className="transport-readiness-copy">
                 <div className="transport-route-heading">
@@ -196,7 +265,7 @@ export default function MarketplaceOverview() {
                 <LazyPermitMap
                   permits={overviewPermits}
                   highlightPermitId={OVERVIEW_FEATURED_PERMIT_ID}
-                  badgeTitle="4 monitored routes"
+                  badgeTitle="Demo: 4 monitored routes"
                   badgeSubtitle="Example verdicts across Germany"
                   endpointMode="cities"
                   showLegend
@@ -266,9 +335,9 @@ export default function MarketplaceOverview() {
                 </div>
               </section>
             </div>
-          </>
+          </div>
         ) : (
-          <>
+          <div role="tabpanel" id="overview-panel-sample" aria-labelledby="overview-tab-sample">
             <section className="transport-readiness">
               <div className="transport-readiness-copy">
                 <div className="transport-route-heading">
@@ -278,8 +347,8 @@ export default function MarketplaceOverview() {
                     <h2>{heroPermit.origin} <ArrowRight size={18} /> {heroPermit.destination}</h2>
                   </div>
                 </div>
-                <div className="transport-status verify">
-                  <AlertTriangle size={18} />
+                <div className="transport-status sample">
+                  <FileText size={18} />
                   <div>
                     <strong>Sample permit – not yet checked</strong>
                     <span>Open this labelled sample to run a live Autobahn GmbH route check. History is only written after you run the check.</span>
@@ -290,11 +359,11 @@ export default function MarketplaceOverview() {
                   <div><span>Load</span><strong>{heroPermit.vehicle.grossWeight} t · {heroPermit.vehicle.width.toFixed(2)} m wide</strong></div>
                   <div><span>Route area</span><strong>{heroPermit.corridor} · {heroPermit.distance}</strong></div>
                 </div>
-                <div className="transport-warning verdict-verify">
-                  <AlertTriangle size={16} />
+                <div className="transport-warning sample">
+                  <FileText size={16} />
                   <div><strong>{heroPermit.routeDescription}</strong><span>Uses the same sample file as Route Checks.</span></div>
                 </div>
-                <Link to={`/route-checks?permit=${heroPermit.id}`} className="transport-review-link">Check this sample permit <ArrowRight size={16} /></Link>
+                <Link to={`/route-checks?permit=${heroPermit.id}`} className="transport-review-link">Run live check on this sample <ArrowRight size={16} /></Link>
               </div>
               <div className="transport-readiness-map">
                 <LazyPermitMap
@@ -319,7 +388,7 @@ export default function MarketplaceOverview() {
             <div className="market-two-column">
               <section className="market-section">
                 <div className="market-section-header compact">
-                  <div><span className="market-eyebrow">Sample permits</span><h2>Test permits from Route Checks</h2></div>
+                  <div><span className="market-eyebrow">Sample permits</span><h2>Sample permits from Route Checks</h2></div>
                   <Link to="/route-checks">Open Route Checks <ArrowRight size={16} /></Link>
                 </div>
                 <div className="transport-route-list">
@@ -331,12 +400,12 @@ export default function MarketplaceOverview() {
                       aria-pressed={permit.id === heroPermit.id}
                       onClick={() => setSelectedPermitId(permit.id)}
                     >
-                      <span className="transport-list-icon amber"><Route size={16} /></span>
+                      <span className="transport-list-icon blue"><FileText size={16} /></span>
                       <div>
                         <strong>{permit.originShort} → {permit.destinationShort}</strong>
                         <span>{permit.permitNumber} · {permit.corridor} · {permit.distance}</span>
                       </div>
-                      <b className="verify">Sample</b>
+                      <b className="sample">Sample</b>
                       <ArrowRight size={16} />
                     </button>
                   ))}
@@ -367,7 +436,7 @@ export default function MarketplaceOverview() {
                 </div>
               </section>
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>

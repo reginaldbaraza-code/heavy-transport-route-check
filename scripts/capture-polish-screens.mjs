@@ -49,7 +49,7 @@ async function waitForMap(page) {
 async function runCheck(page, nameRe) {
   await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded', timeout: 60000 })
   await skipOnboarding(page)
-  const toggle = page.getByRole('button', { name: /show test permits/i })
+  const toggle = page.getByRole('button', { name: /show sample permits/i })
   if (await toggle.count()) await toggle.click()
   await page.getByRole('button', { name: nameRe }).click()
   await page.getByRole('button', { name: 'Check route' }).click()
