@@ -9,7 +9,7 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 setWorkerUrl(workerUrl);
 import { Link } from 'react-router-dom'
 import {
-  AlertTriangle, ArrowRight, Clock3,
+  AlertTriangle, ArrowRight, ChevronDown, Clock3,
   Construction, Layers3, LocateFixed, Map as MapIcon, Maximize2,
   Radio, RefreshCw, Route, Search, XCircle
 } from 'lucide-react'
