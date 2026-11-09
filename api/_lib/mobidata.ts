@@ -25,5 +25,9 @@ export const MIA_LICENSE = {
 
 export const BW_SOURCE = 'MobiData BW (BEMaS)'
 export const MIA_SOURCE = 'Autobahn GmbH MIA via Mobilithek/MobiData BW'
-export const MIA_STALE_MS = 12 * 60 * 60 * 1000
+export const MIA_STALE_HOURS = 8
+export const MIA_STALE_MS = MIA_STALE_HOURS * 60 * 60 * 1000
+export const MIA_LIVE_CACHE_MS = 10 * 60 * 1000
+export const MIA_LIVE_TIMEOUT_MS = 8000
+export const MIA_LIVE_FAILURE_MS = 60 * 1000
 export const BW_CACHE_MS = 10 * 60 * 1000

@@ -24,6 +24,7 @@ export type CheckHistoryRecord = {
   evidence?: RouteEvidence[]
   confirmOnSite?: string[]
   jobId?: string
+  alertEligible?: boolean
   siteAcknowledgements?: Array<{
     evidenceId: string
     acknowledgedBy: string
@@ -61,7 +62,7 @@ const emptyAlertState: AlertState = { readIds: [], resolvedIds: [] }
 
 function alertsFromHistory(history: CheckHistoryRecord[], alertState: AlertState): MonitoringAlert[] {
   return history
-    .filter(record => record.verdict === 'HOLD' || record.verdict === 'VERIFY')
+    .filter(record => record.alertEligible !== false && (record.verdict === 'HOLD' || record.verdict === 'VERIFY') && Boolean(record.jobId))
     .map(record => {
       const resolved = alertState.resolvedIds.includes(record.id)
       const read = resolved || alertState.readIds.includes(record.id)

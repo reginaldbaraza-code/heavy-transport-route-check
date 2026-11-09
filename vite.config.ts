@@ -14,6 +14,26 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    modulePreload: {
+      resolveDependencies(filename, deps) {
+        if (filename.includes('index')) {
+          return deps.filter(dep => !/jspdf|html2canvas|purify|canvg|dompurify/i.test(dep))
+        }
+        return deps
+      },
+    },
+    rollupOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            { name: 'maplibre', test: /node_modules[\\/]maplibre-gl/ },
+            { name: 'leaflet', test: /node_modules[\\/]leaflet/ },
+          ],
+        },
+      },
+    },
+  },
 })
 
 type FigmaSiteConfiguration = {

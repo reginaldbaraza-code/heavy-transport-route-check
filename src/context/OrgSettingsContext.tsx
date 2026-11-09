@@ -3,6 +3,7 @@ import { readJson, STORAGE_KEYS, writeJson } from '../lib/browserStore'
 
 export type OrgProfile = {
   orgName: string
+  dispatcherName: string
   website: string
   description: string
   orgType: string
@@ -11,7 +12,8 @@ export type OrgProfile = {
 
 export const defaultOrgProfile: OrgProfile = {
   orgName: '',
-  website: 'https://',
+  dispatcherName: '',
+  website: '',
   description: '',
   orgType: 'Heavy-haul logistics operator',
   country: 'Germany',
@@ -32,17 +34,8 @@ type StoredSettings = {
   notifications: NotificationPrefs
 }
 
-function websiteIsComplete(website: string): boolean {
-  try {
-    const url = new URL(website)
-    return Boolean(url.protocol === 'http:' || url.protocol === 'https:') && Boolean(url.hostname)
-  } catch {
-    return false
-  }
-}
-
 export function isOrgProfileComplete(profile: OrgProfile): boolean {
-  return Boolean(profile.orgName.trim()) && websiteIsComplete(profile.website)
+  return Boolean(profile.orgName.trim())
 }
 
 type OrgSettingsValue = {
@@ -65,8 +58,13 @@ export function OrgSettingsProvider({ children }: { children: ReactNode }) {
     ? null
     : readJson<StoredSettings | null>(STORAGE_KEYS.orgProfile, null)
 
-  const [profile, setProfileState] = useState<OrgProfile>(stored?.profile ?? defaultOrgProfile)
-  const [savedProfile, setSavedProfile] = useState<OrgProfile>(stored?.profile ?? defaultOrgProfile)
+  const hydrate = (profile?: Partial<OrgProfile> | null): OrgProfile => ({
+    ...defaultOrgProfile,
+    ...profile,
+    dispatcherName: profile?.dispatcherName || '',
+  })
+  const [profile, setProfileState] = useState<OrgProfile>(hydrate(stored?.profile))
+  const [savedProfile, setSavedProfile] = useState<OrgProfile>(hydrate(stored?.profile))
   const [notifications, setNotificationsState] = useState<NotificationPrefs>(
     stored?.notifications ?? defaultNotificationPrefs,
   )
@@ -88,20 +86,16 @@ export function OrgSettingsProvider({ children }: { children: ReactNode }) {
   }
 
   const saveProfile: OrgSettingsValue['saveProfile'] = () => {
-    if (!profile.orgName.trim()) {
-      return { ok: false, error: 'Enter an organisation name.' }
-    }
-    if (!websiteIsComplete(profile.website)) {
-      return { ok: false, error: 'Enter a complete website address, including https:// and a hostname.' }
-    }
     setSavedProfile(profile)
     persist(profile, notifications)
     return { ok: true }
   }
 
   const complete = isOrgProfileComplete(savedProfile)
-  const displayName = savedProfile.orgName.trim() || 'Your organisation'
-  const orgTypeLabel = savedProfile.orgType.trim() || 'Heavy-haul operator'
+  const displayName = savedProfile.orgName.trim() || 'Dispatcher'
+  const orgTypeLabel = complete
+    ? (savedProfile.dispatcherName.trim() || savedProfile.orgType.trim() || 'Operator')
+    : 'Set up profile'
 
   const value = useMemo<OrgSettingsValue>(() => ({
     profile,

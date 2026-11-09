@@ -1,11 +1,15 @@
 import { jsPDF, GState } from 'jspdf'
-import {
-  LANE_DASHOFFSET_LEFT,
-  LANE_DASHOFFSET_RIGHT,
-  LANE_LEFT_PATH,
-  LANE_RIGHT_PATH,
-  ROUTE_PATH,
-} from '../components/RouteCheckLogo'
+
+// Keep these path strings here so the PDF helper does not import the React logo
+// component (that would pull jsPDF into the homepage bundle).
+const ROUTE_PATH =
+  'M7 52 C22 52 36.5 48 36.5 39.5 C36.5 33.5 28.2 30.5 28.2 24.5 C28.2 19.6 34 15.6 39.6 11.8 L47.6 20 L56.6 11'
+const LANE_LEFT_PATH =
+  'M18.5 46.4 C24.6 44.6 29.4 40.6 30 35.6 C30.2 33.8 29.6 32.4 28.8 31.2'
+const LANE_RIGHT_PATH =
+  'M38.6 31.6 C42.4 35 43.6 40 41.8 44.4 C40.8 47 38.8 49.4 36.2 51.4'
+const LANE_DASHOFFSET_LEFT = '4.1'
+const LANE_DASHOFFSET_RIGHT = '2.35'
 
 function parsePath(d: string) {
   const tokens = d.replace(/,/g, ' ').trim().split(/\s+/)

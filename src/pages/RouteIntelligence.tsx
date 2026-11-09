@@ -1,14 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   AlertTriangle, ArrowLeft, Briefcase, CheckCircle2, ChevronDown, CircleX, Download,
   FileUp, Loader2, MapPin, ShieldCheck, Truck, Upload,
 } from 'lucide-react'
-import RouteMapGL, { type RouteMapHandle } from '../components/RouteMapGL'
+import type { RouteMapHandle } from '../components/RouteMapGL'
 import { Toast } from '../components/Feedback'
 import {
   checkRoute,
   loadTestPermit,
+  permitVehicleDims,
   readFileAsText,
   sampleTestPermits,
   scenarioTestPermits,
@@ -18,9 +19,10 @@ import {
 } from '../lib/routeCheck'
 import { useRouteMonitoring } from '../context/RouteMonitoringContext'
 import { useJobs } from '../context/JobsContext'
+import { useOrgSettings } from '../context/OrgSettingsContext'
 import { formatBerlinDateTime } from '../lib/formatTime'
 import type { RouteEvidence } from '../data/routeChecks'
-import { confirmOnSiteTitles, downloadSnapshot, snapshotFromResult } from '../lib/exportCheck'
+import { confirmOnSiteTitles, downloadSnapshot, formatStartLabel, pdfBytesFromSnapshot, sanitizePdfText, snapshotFromResult } from '../lib/exportCheck'
 import {
   DEFAULT_MONITOR_PREFS,
   MONITOR_INTERVAL_OPTIONS,
@@ -36,6 +38,10 @@ import {
   isNearbyOffRoute,
   type SiteAcknowledgement,
 } from '../lib/siteAcknowledgements'
+import { displayEvidenceTitle, evidenceOriginalGerman, looksGerman, looksTechnical, splitConcatenatedPlaces } from '../lib/evidenceSummary'
+import { GPX_FRIENDLY_TOO_LARGE, GpxParseError, parseGpxDocument, serializeGpxTrack, validateGpxFileSize } from '../lib/gpxParse'
+
+const RouteMapGL = lazy(() => import('../components/RouteMapGL'))
 
 const routeLayers = [
   { id: 'roadworks', label: 'Roadworks' },
@@ -59,6 +65,8 @@ export default function RouteIntelligencePolished() {
   const [gpxContent, setGpxContent] = useState('')
   const [toast, setToast] = useState('')
   const [error, setError] = useState('')
+  const [errorTechnical, setErrorTechnical] = useState('')
+  const [gpxSimplifyNote, setGpxSimplifyNote] = useState('')
   const [showTestPermits, setShowTestPermits] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const mapRef = useRef<RouteMapHandle>(null)
@@ -66,6 +74,7 @@ export default function RouteIntelligencePolished() {
   const [searchParams] = useSearchParams()
   const { recordCheck, patchHistory } = useRouteMonitoring()
   const { saveJob, getJob, updateJob, prefs, requestNotifications } = useJobs()
+  const { savedProfile } = useOrgSettings()
   const [plannedDeparture, setPlannedDeparture] = useState(toLocalInput(defaultDepartureIso(8)))
   const [jobName, setJobName] = useState('')
   const [jobInterval, setJobInterval] = useState(prefs.intervalMinutes)
@@ -94,10 +103,20 @@ export default function RouteIntelligencePolished() {
   const vehicleValid = vehicle.width > 0 && vehicle.height > 0 && vehicle.length > 0 && vehicle.grossWeight > 0
 
   const applyPermitClearance = (permit?: TestPermit | null, metadata?: any) => {
-    const confirmed = Boolean(metadata?.bridgeClearanceConfirmed ?? permit?.bridgeClearanceConfirmed)
+    const confirmed = Boolean(permit?.bridgeClearanceConfirmed ?? metadata?.bridgeClearanceConfirmed)
     setClearanceConfirmed(confirmed)
-    setClearanceBy(metadata?.clearanceConfirmedBy || permit?.clearanceConfirmedBy || '')
-    setConfirmedAt(metadata?.confirmedAt || permit?.confirmedAt || (confirmed ? new Date().toISOString() : ''))
+    setClearanceBy(permit?.clearanceConfirmedBy || metadata?.clearanceConfirmedBy || savedProfile.dispatcherName || '')
+    setConfirmedAt(permit?.confirmedAt || metadata?.confirmedAt || (confirmed ? new Date().toISOString() : ''))
+  }
+
+  const applyPermitVehicle = (permit?: TestPermit | null, metadata?: any) => {
+    const dims = permitVehicleDims(permit, metadata)
+    if (!dims) return
+    setVehicleProfile('custom')
+    setVehicleWidth(String(dims.width))
+    setVehicleHeight(String(dims.height))
+    setVehicleLength(String(dims.length))
+    setVehicleWeight(String(dims.grossWeight))
   }
 
   const runCheck = async (
@@ -106,13 +125,8 @@ export default function RouteIntelligencePolished() {
     permitOverride?: TestPermit,
     acks: SiteAcknowledgement[] = acknowledgements,
   ) => {
-    const dims = metadata?.vehicle ? {
-      width: Number(metadata.vehicle.width),
-      height: Number(metadata.vehicle.height),
-      length: Number(metadata.vehicle.length),
-      grossWeight: Number(metadata.vehicle.grossWeight),
-    } : vehicle
     const activePermit = permitOverride || testPermits.find(item => item.id === activePermitId)
+    const dims = permitVehicleDims(activePermit, metadata) || vehicle
     const permit = (activePermit?.kind === 'scenario' ? activePermit.permitNumber : null)
       || metadata?.permitNumber
       || permitNumber
@@ -120,15 +134,12 @@ export default function RouteIntelligencePolished() {
 
     setChecking(true)
     setError('')
+    setErrorTechnical('')
     
     try {
-      if (metadata) {
-        setPermitNumber(activePermit?.kind === 'scenario' ? (activePermit.permitNumber || permit) : (metadata.permitNumber || ''))
-        setVehicleProfile('custom')
-        setVehicleWidth(metadata.vehicle.width.toString())
-        setVehicleHeight(metadata.vehicle.height.toString())
-        setVehicleLength(metadata.vehicle.length.toString())
-        setVehicleWeight(metadata.vehicle.grossWeight.toString())
+      if (metadata || activePermit) {
+        setPermitNumber(activePermit?.kind === 'scenario' ? (activePermit.permitNumber || permit) : (metadata?.permitNumber || activePermit?.permitNumber || ''))
+        applyPermitVehicle(activePermit, metadata)
       }
 
       const checkResult = await checkRoute(content, dims, {
@@ -174,6 +185,7 @@ export default function RouteIntelligencePolished() {
         evidence: checkResult.evidence,
         confirmOnSite: confirmOnSiteTitles(checkResult.evidence),
         jobId: loadedJob.current || undefined,
+        alertEligible: !activePermit,
         siteAcknowledgements: acks,
       })
       lastHistoryId.current = history.id
@@ -190,10 +202,16 @@ export default function RouteIntelligencePolished() {
           siteAcknowledgements: acks,
         })
       }
-      setJobName(defaultJobName(routeFile, checkResult.route.origin, checkResult.route.destination, permit))
+      setJobName(defaultJobName(
+        activePermit?.name.split('·')[0].trim() || routeFile,
+        checkResult.route.origin,
+        checkResult.route.destination,
+        permit,
+      ))
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to check route'
       setError(errorMsg)
+      setErrorTechnical(err instanceof GpxParseError ? err.technical : '')
       setToast(errorMsg)
     } finally {
       setChecking(false)
@@ -208,28 +226,18 @@ export default function RouteIntelligencePolished() {
     setRouteFile(permit.name.split('·')[0].trim())
     setShowTestPermits(false)
     setError('')
+    setErrorTechnical('')
     setStep('vehicle')
     applyPermitClearance(permit)
+    applyPermitVehicle(permit)
+    setPermitNumber(permit.permitNumber)
     setAcknowledgements([])
 
     try {
       const { gpxContent: content, metadata } = await loadTestPermit(permit)
       setGpxContent(content)
-      if (metadata) {
-        setPermitNumber(permit.kind === 'scenario' ? permit.permitNumber : (metadata.permitNumber || ''))
-        setVehicleProfile('custom')
-        setVehicleWidth((metadata.vehicle?.width ?? permit.vehicle.width).toString())
-        setVehicleHeight((metadata.vehicle?.height ?? permit.vehicle.height).toString())
-        setVehicleLength((metadata.vehicle?.length ?? permit.vehicle.length).toString())
-        setVehicleWeight((metadata.vehicle?.grossWeight ?? permit.vehicle.grossWeight).toString())
-      } else {
-        setPermitNumber(permit.permitNumber)
-        setVehicleProfile('custom')
-        setVehicleWidth(permit.vehicle.width.toString())
-        setVehicleHeight(permit.vehicle.height.toString())
-        setVehicleLength(permit.vehicle.length.toString())
-        setVehicleWeight(permit.vehicle.grossWeight.toString())
-      }
+      applyPermitVehicle(permit, metadata)
+      setPermitNumber(permit.kind === 'scenario' ? permit.permitNumber : (metadata?.permitNumber || permit.permitNumber))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load test permit')
     }
@@ -237,36 +245,43 @@ export default function RouteIntelligencePolished() {
 
   const handleFileUpload = async (file: File) => {
     setError('')
-    
-    // Validate file extension
-    if (!file.name.toLowerCase().endsWith('.gpx')) {
-      setError('Invalid file format. Please upload a .gpx file.')
+    setErrorTechnical('')
+    setActivePermitId(null)
+
+    try {
+      validateGpxFileSize(file.size)
+    } catch (err) {
+      setError(err instanceof GpxParseError ? err.message : GPX_FRIENDLY_TOO_LARGE)
+      setErrorTechnical(err instanceof GpxParseError ? err.technical : '')
       setRouteFile('')
       return
     }
-    
+
+    if (!file.name.toLowerCase().endsWith('.gpx')) {
+      setError("This file isn't a valid GPX route. Export the route from VEMAGS as GPX and try again.")
+      setErrorTechnical(`Unexpected file name: ${file.name}`)
+      setRouteFile('')
+      return
+    }
+
     try {
       const content = await readFileAsText(file)
-      
-      // Validate GPX structure
-      if (!content.includes('<gpx') || !content.includes('</gpx>')) {
-        setError('Invalid GPX file. The file does not contain valid GPX data.')
-        setRouteFile('')
-        return
-      }
-      
-      // Check for track points
-      if (!content.includes('<trkpt')) {
-        setError('Invalid GPX file. No route track points found.')
-        setRouteFile('')
-        return
-      }
-      
+      const parsed = parseGpxDocument(content)
       setRouteFile(file.name)
-      setGpxContent(content)
+      if (parsed.downsampled || parsed.originalCount > parsed.points.length) {
+        const note = `Simplified from ${parsed.originalCount} to ${parsed.points.length} points`
+        setGpxContent(serializeGpxTrack(parsed.points, parsed.creator))
+        setGpxSimplifyNote(note)
+        setToast(parsed.vemags ? `VEMAGS route detected. ${note}` : note)
+      } else {
+        setGpxContent(content)
+        setGpxSimplifyNote('')
+        if (parsed.vemags) setToast('VEMAGS route detected.')
+      }
       setStep('vehicle')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to read file')
+      setError(err instanceof Error ? err.message : "This file isn't a valid GPX route. Export the route from VEMAGS as GPX and try again.")
+      setErrorTechnical(err instanceof GpxParseError ? err.technical : '')
       setRouteFile('')
     }
   }
@@ -276,6 +291,12 @@ export default function RouteIntelligencePolished() {
       runCheck(gpxContent)
     }
   }
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.__HT_TEST__) return
+    window.__HT_TEST__.pdfBytesFromSnapshot = pdfBytesFromSnapshot
+    window.__HT_TEST__.sanitizePdfText = sanitizePdfText
+  }, [])
 
   useEffect(() => {
     const jobId = searchParams.get('job')
@@ -334,14 +355,8 @@ export default function RouteIntelligencePolished() {
         setGpxContent(content)
         setShowTestPermits(false)
         setError('')
-        if (metadata) {
-          setPermitNumber(metadata.permitNumber || '')
-          setVehicleProfile('custom')
-          setVehicleWidth(metadata.vehicle.width.toString())
-          setVehicleHeight(metadata.vehicle.height.toString())
-          setVehicleLength(metadata.vehicle.length.toString())
-          setVehicleWeight(metadata.vehicle.grossWeight.toString())
-        }
+        setPermitNumber(permit.kind === 'scenario' ? permit.permitNumber : (metadata?.permitNumber || permit.permitNumber))
+        applyPermitVehicle(permit, metadata)
         setActivePermitId(permit.id)
         applyPermitClearance(permit, metadata)
         if (autoRun) {
@@ -361,6 +376,8 @@ export default function RouteIntelligencePolished() {
     setRouteFile('')
     setGpxContent('')
     setError('')
+    setErrorTechnical('')
+    setGpxSimplifyNote('')
     setPermitNumber('')
     setShowSaveJob(false)
     loadedJob.current = null
@@ -502,7 +519,6 @@ export default function RouteIntelligencePolished() {
       permitNumber,
       permitName: routeFile || permitNumber,
       vehicle,
-      runAt: displayed.retrievedAt,
     }), format)
   }
 
@@ -621,11 +637,17 @@ export default function RouteIntelligencePolished() {
             </div>
 
             {error && (
-              <div className="error-message" role="alert">
+              <div className="error-message" role="alert" data-testid="gpx-upload-error">
                 <AlertTriangle size={20} />
                 <div>
-                  <strong>Could not read file</strong>
+                  <strong>Could not use this file</strong>
                   <p>{error}</p>
+                  {errorTechnical && (
+                    <details className="error-technical">
+                      <summary>Technical details</summary>
+                      <pre>{errorTechnical}</pre>
+                    </details>
+                  )}
                 </div>
               </div>
             )}
@@ -702,6 +724,12 @@ export default function RouteIntelligencePolished() {
                     <strong>{permitNumber}</strong>
                   </div>
                 )}
+                {gpxSimplifyNote && (
+                  <div className="route-info-item">
+                    <span>Track</span>
+                    <strong>{gpxSimplifyNote}</strong>
+                  </div>
+                )}
               </div>
             )}
 
@@ -733,8 +761,7 @@ export default function RouteIntelligencePolished() {
               </label>
             </div>
 
-            {vehicleProfile === 'custom' ? (
-              <div className="dimensions-grid">
+            <div className="dimensions-grid">
                 {([
                   { label: 'Width', unit: 'm', value: vehicleWidth, setValue: setVehicleWidth },
                   { label: 'Height', unit: 'm', value: vehicleHeight, setValue: setVehicleHeight },
@@ -750,10 +777,11 @@ export default function RouteIntelligencePolished() {
                           inputMode="decimal"
                           pattern="[0-9]*[.,]?[0-9]*"
                           min="0"
-                          step="0.1"
+                          step="any"
                           value={field.value}
                           onChange={e => field.setValue(e.target.value)}
                           aria-label={`${field.label} in ${field.unit}`}
+                          data-testid={`vehicle-${field.label.toLowerCase().replace(/\s+/g, '-')}`}
                         />
                         <span className="unit">{field.unit}</span>
                       </div>
@@ -761,14 +789,6 @@ export default function RouteIntelligencePolished() {
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="dimensions-summary">
-                <div><span>Width</span><strong>{vehicleWidth} m</strong></div>
-                <div><span>Height</span><strong>{vehicleHeight} m</strong></div>
-                <div><span>Length</span><strong>{vehicleLength} m</strong></div>
-                <div><span>Gross weight</span><strong>{vehicleWeight} t</strong></div>
-              </div>
-            )}
 
             <div className="form-group">
               <label htmlFor="planned-departure">
@@ -931,18 +951,20 @@ export default function RouteIntelligencePolished() {
             {/* Map and Evidence */}
             <div className="results-layout">
               <div className="results-main">
-                <RouteMapGL
-                  ref={mapRef}
-                  coordinates={displayed.route.coordinates}
-                  origin={displayed.route.origin}
-                  destination={displayed.route.destination}
-                  evidence={displayed.evidence}
-                  verdict={displayed.verdict}
-                  activeLayer={activeLayer}
-                  layers={routeLayers}
-                  onLayerChange={setActiveLayer}
-                  className="results-map"
-                />
+                <Suspense fallback={<div className="results-map-fallback">Loading map…</div>}>
+                  <RouteMapGL
+                    ref={mapRef}
+                    coordinates={displayed.route.coordinates}
+                    origin={displayed.route.origin}
+                    destination={displayed.route.destination}
+                    evidence={displayed.evidence}
+                    verdict={displayed.verdict}
+                    activeLayer={activeLayer}
+                    layers={routeLayers}
+                    onLayerChange={setActiveLayer}
+                    className="results-map"
+                  />
+                </Suspense>
               </div>
 
               <div className="results-sidebar">
@@ -953,7 +975,7 @@ export default function RouteIntelligencePolished() {
                     <div><span>Destination</span><strong>{displayed.route.destination}</strong></div>
                     <div><span>Distance</span><strong>{displayed.route.distance} km</strong></div>
                     <div><span>Evidence found</span><strong>{displayed.evidence.length}</strong></div>
-                    <div><span>Retrieved</span><strong>{formatBerlinDateTime(displayed.retrievedAt) || 'Just now'}</strong></div>
+                    <div><span>Retrieved</span><strong data-testid="result-retrieved-at">{formatBerlinDateTime(displayed.retrievedAt) || 'Just now'}</strong></div>
                     <div><span>Source</span><strong>{displayed.source || 'Autobahn GmbH'}</strong></div>
                   </div>
                 </div>
@@ -963,6 +985,12 @@ export default function RouteIntelligencePolished() {
                     Evidence ({displayed.evidence.length})
                   </h3>
                   <div className="confirm-on-site-bar">
+                    {displayed.verdict === 'HOLD' && (
+                      <div className="evidence-hold-lock" role="note">
+                        <strong>Why HOLD items have no Confirm on site</strong>
+                        <p>HOLD items cannot be acknowledged away. They are confirmed mainline blocks (closure, height, width, or weight). Change the permitted route or wait until the restriction ends. VERIFY items below can still be confirmed on site.</p>
+                      </div>
+                    )}
                     <label>
                       <span>Dispatcher name</span>
                         <input
@@ -1063,6 +1091,13 @@ function EvidenceCard({
 }) {
   const canConfirm = onConfirm && isAcknowledgeable(item) && !item.acknowledgedAt
   const holdLocked = isHoldItem(item)
+  const title = displayEvidenceTitle(item)
+  const original = evidenceOriginalGerman(item)
+  const blob = `${item.title} ${item.detail}`
+  const summarized = title !== splitConcatenatedPlaces(item.title || '')
+  const keepOriginalAside = Boolean(original)
+    && original.replace(/\s+/g, ' ') !== title.replace(/\s+/g, ' ')
+    && (summarized || looksGerman(blob) || /[a-zäöüß][A-ZÄÖÜ]/.test(blob) || looksTechnical(blob))
   return (
     <div
       className={`evidence-card evidence-${item.state}`}
@@ -1070,12 +1105,19 @@ function EvidenceCard({
       style={{ cursor: item.lat != null && item.lng != null ? 'pointer' : 'default' }}
     >
       <div className="evidence-header">
-        <strong>{item.title}</strong>
+        <strong data-testid="evidence-title">{title}</strong>
         <span className={`confidence-badge confidence-${String(item.confidence).toLowerCase()}`}>
           {String(item.confidence).toLowerCase() === 'high' ? 'High confidence' : 'Medium confidence'}
         </span>
       </div>
-      <p>{item.detail}</p>
+      {keepOriginalAside ? (
+        <details className="evidence-original">
+          <summary>Original text (German)</summary>
+          <pre>{original}</pre>
+        </details>
+      ) : (
+        <p>{splitConcatenatedPlaces(item.detail || '')}</p>
+      )}
       {(item.reason || item.distanceKm != null) && (
         <p className="evidence-reason">
           {item.distanceKm != null && (
@@ -1087,7 +1129,7 @@ function EvidenceCard({
       <div className="evidence-meta">
         <span>{item.source}</span>
         <span>·</span>
-        <span>{item.startTimestamp ? `Started ${formatBerlinDateTime(item.startTimestamp)}` : 'Start not published'}</span>
+        <span>{formatStartLabel(item.startTimestamp ? formatBerlinDateTime(item.startTimestamp) : '')}</span>
         {item.endTimestamp && (
           <>
             <span>·</span>
@@ -1117,7 +1159,10 @@ function EvidenceCard({
         </button>
       )}
       {holdLocked && (
-        <p className="evidence-hold-lock">HOLD items cannot be acknowledged away.</p>
+        <div className="evidence-hold-lock" role="note">
+          <strong>Why this cannot be confirmed on site</strong>
+          <p>HOLD items cannot be acknowledged away. This is a confirmed mainline block (closure, height, width, or weight). Change the permitted route or wait until the restriction ends.</p>
+        </div>
       )}
     </div>
   )

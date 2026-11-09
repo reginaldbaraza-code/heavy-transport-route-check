@@ -9,8 +9,8 @@ declare global {
       getAlerts: () => Array<{ change: string; severity: string; status: string }>
       simulateVerdictChange: (jobId: string, verdict: 'READY' | 'HOLD' | 'VERIFY') => unknown
       tickMs?: number
-      pdfBytesFromSnapshot: (snapshot: any) => ArrayBuffer
-      sanitizePdfText: (value: string | number | boolean | null | undefined) => string
+      pdfBytesFromSnapshot: (snapshot: any) => ArrayBuffer | Promise<ArrayBuffer>
+      sanitizePdfText: (value: string | number | boolean | null | undefined) => string | Promise<string>
     }
   }
 }

@@ -8,13 +8,23 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: refresh-mia-roadworks
+  cancel-in-progress: false
+
 jobs:
   refresh:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: true
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -25,13 +35,18 @@ jobs:
         run: node scripts/refresh-mia-roadworks.mjs
 
       - name: Commit snapshot
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git add public/data/mia-roadworks.json
           if git diff --cached --quiet; then
-            echo 'No snapshot changes'
+            echo 'No snapshot changes; skipping commit'
             exit 0
           fi
           git commit -m 'data: refresh MIA roadworks'
-          git push
+          git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

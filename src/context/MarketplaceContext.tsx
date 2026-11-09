@@ -43,7 +43,8 @@ export function MarketplaceProvider({ children }: { children: ReactNode }) {
   const [dismissedRecommendationIds, setDismissedRecommendationIds] = useState<string[]>([])
   const [onboardingComplete, setOnboardingComplete] = useState(() => {
     try {
-      return window.sessionStorage.getItem('mds-onboarding-complete') === 'true'
+      return window.sessionStorage.getItem('htr-onboarding-complete') === 'true'
+        || window.sessionStorage.getItem('mds-onboarding-complete') === 'true'
     } catch {
       return false
     }
@@ -91,7 +92,7 @@ export function MarketplaceProvider({ children }: { children: ReactNode }) {
       if (update) setPreferences(current => ({ ...current, ...update }))
       setOnboardingComplete(true)
       try {
-        window.sessionStorage.setItem('mds-onboarding-complete', 'true')
+        window.sessionStorage.setItem('htr-onboarding-complete', 'true')
       } catch {
         // Restricted preview contexts may disable web storage; in-memory state still works.
       }

@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Home, Settings, Map, DatabaseZap, Route, ShieldAlert,
   Bell, Search, ChevronDown, Activity, X, Menu,
@@ -8,7 +8,9 @@ import {
 import RouteCheckLogo from './RouteCheckLogo'
 import MobileTabBar from './MobileTabBar'
 import { useRouteMonitoring } from '../context/RouteMonitoringContext'
+import { useJobs } from '../context/JobsContext'
 import { useOrgSettings } from '../context/OrgSettingsContext'
+import { SEARCH_EMPTY_HELP, searchAppData } from '../lib/appSearch'
 import { formatBerlinDateTime, orgInitials } from '../lib/formatTime'
 
 const navItems = [
@@ -27,16 +29,8 @@ const APP_DOCUMENT_TITLE = 'HTR · Heavy transport route check'
 
 const extraTitleRoutes = [
   { path: '/settings', label: 'Settings' },
-  { path: '/discover', label: 'Discover data' },
-  { path: '/connectors', label: 'Connectors' },
-  { path: '/connector', label: 'Connector' },
-  { path: '/providers', label: 'Providers' },
-  { path: '/recommendations', label: 'Recommendations' },
-  { path: '/needs', label: 'Data needs' },
-  { path: '/offers', label: 'Offers' },
-  { path: '/requests', label: 'Requests' },
-  { path: '/deals', label: 'Deals' },
-  { path: '/compare', label: 'Compare' },
+  { path: '/search', label: 'Search' },
+  { path: '/data-partners', label: 'Data partners' },
 ]
 
 function documentTitleFor(pathname: string) {
@@ -46,7 +40,8 @@ function documentTitleFor(pathname: string) {
       ? pathname === item.path
       : pathname === item.path || pathname.startsWith(`${item.path}/`),
   )
-  if (!match || match.path === '/') return APP_DOCUMENT_TITLE
+  if (!match) return `Not found · ${APP_DOCUMENT_TITLE}`
+  if (match.path === '/') return APP_DOCUMENT_TITLE
   return `${match.label} · ${APP_DOCUMENT_TITLE}`
 }
 
@@ -55,10 +50,17 @@ export default function Layout() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
+  const searchRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
   const location = useLocation()
-  const { alerts, unreadCount, acknowledgeAlert } = useRouteMonitoring()
-  const { displayName, orgTypeLabel } = useOrgSettings()
+  const { alerts, history, unreadCount, acknowledgeAlert } = useRouteMonitoring()
+  const { jobs } = useJobs()
+  const { displayName, orgTypeLabel, complete } = useOrgSettings()
+  const searchHits = useMemo(
+    () => searchAppData({ query: searchQuery, jobs, history, alerts }),
+    [alerts, history, jobs, searchQuery],
+  )
   const notifications = alerts.slice(0, 4).map(alert => ({
     id: alert.id,
     title: alert.escalated ? `Escalated · ${alert.change}` : alert.change,
@@ -77,16 +79,24 @@ export default function Layout() {
       if (event.key === 'Escape') {
         setNotifOpen(false)
         setMobileOpen(false)
+        setSearchOpen(false)
       }
     }
     document.addEventListener('keydown', closeMenus)
     return () => document.removeEventListener('keydown', closeMenus)
   }, [])
 
+  const goSearch = (href?: string) => {
+    const q = searchQuery.trim()
+    if (href) navigate(href)
+    else if (q) navigate(`/search?q=${encodeURIComponent(q)}`)
+    setSearchOpen(false)
+    setSearchQuery('')
+  }
+
   const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && searchQuery.trim()) {
-      navigate(`/discover?q=${encodeURIComponent(searchQuery.trim())}`)
-      setSearchQuery('')
+      goSearch(searchHits[0]?.href)
     }
   }
 
@@ -292,7 +302,7 @@ export default function Layout() {
             <Menu size={17} />
           </button>
           {/* Search */}
-          <div className="topbar-search" style={{
+          <div className="topbar-search" ref={searchRef} style={{
             flex: 1,
             maxWidth: 360,
             display: 'flex',
@@ -302,15 +312,20 @@ export default function Layout() {
             borderRadius: 10,
             padding: '0 12px',
             height: 34,
+            position: 'relative',
           }}>
             <Search size={14} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
             <input
-              type="text"
+              type="search"
               aria-label="Search permits, routes, roads, and alerts"
               value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
+              onChange={e => {
+                setSearchQuery(e.target.value)
+                setSearchOpen(true)
+              }}
+              onFocus={() => setSearchOpen(true)}
               onKeyDown={handleSearch}
-              placeholder="Search…"
+              placeholder="Search"
               style={{
                 background: 'transparent',
                 border: 'none',
@@ -324,6 +339,29 @@ export default function Layout() {
               <button onClick={() => setSearchQuery('')} aria-label="Clear search" style={{ color: 'var(--text-tertiary)', display: 'flex', padding: 2 }}>
                 <X size={12} />
               </button>
+            )}
+            {searchOpen && searchQuery.trim() && (
+              <div id="app-search-results" className="app-search-dropdown" role="listbox">
+                {searchHits.length === 0 && (
+                  <p className="app-search-empty">{SEARCH_EMPTY_HELP}</p>
+                )}
+                {searchHits.slice(0, 8).map(hit => (
+                  <button
+                    type="button"
+                    key={hit.id}
+                    className="app-search-hit"
+                    onMouseDown={event => event.preventDefault()}
+                    onClick={() => goSearch(hit.href)}
+                  >
+                    <small>{hit.kind}</small>
+                    <strong>{hit.title}</strong>
+                    <span>{hit.detail}</span>
+                  </button>
+                ))}
+                <button type="button" className="app-search-all" onMouseDown={event => event.preventDefault()} onClick={() => goSearch()}>
+                  View all results
+                </button>
+              </div>
             )}
           </div>
 
@@ -419,9 +457,9 @@ export default function Layout() {
             <div className="topbar-divider" style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.1)', margin: '0 6px' }} />
 
             <button
+              type="button"
               className="topbar-org-button hover:!bg-black/[0.06]"
               onClick={() => navigate('/settings')}
-              aria-label="Open organization settings"
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '4px 8px 4px 4px',
@@ -430,7 +468,10 @@ export default function Layout() {
                 cursor: 'pointer',
               }}
             >
-              <div style={{
+              <span className="sr-only">{displayName} · {orgTypeLabel}</span>
+              <div
+                aria-hidden="true"
+                style={{
                 width: 28, height: 28, borderRadius: 9,
                 background: 'var(--navy-mid)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -438,15 +479,15 @@ export default function Layout() {
                 letterSpacing: '-0.01em',
                 flexShrink: 0,
               }}>
-                {orgInitials(displayName)}
+                {orgInitials(complete ? displayName : 'Dispatcher')}
               </div>
-              <div>
+              <div aria-hidden="true">
                 <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.3, letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
                   {displayName}
                 </div>
                 <div style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.2 }}>{orgTypeLabel}</div>
               </div>
-              <ChevronDown size={12} style={{ color: 'var(--text-tertiary)' }} />
+              <ChevronDown size={12} aria-hidden="true" style={{ color: 'var(--text-tertiary)' }} />
             </button>
           </div>
         </header>

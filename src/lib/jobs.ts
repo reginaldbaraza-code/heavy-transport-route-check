@@ -105,9 +105,19 @@ export function applyCheckToJob(job: SavedJob, result: RouteCheckResult, nowIso:
 }
 
 export function defaultJobName(routeFile: string, origin?: string, destination?: string, permitNumber?: string) {
+  const namedFile = routeFile?.trim()
+  if (namedFile && !/\.gpx$/i.test(namedFile) && !/^VEMAGS_/i.test(namedFile)) return namedFile
   if (origin && destination) return `${origin} → ${destination}`
   if (permitNumber) return permitNumber
-  return routeFile || 'Saved job'
+  return namedFile || 'Saved job'
+}
+
+export function nextCheckIso(job: Pick<SavedJob, 'lastCheckedAt' | 'monitorIntervalMinutes' | 'plannedDeparture'>) {
+  if (!shouldMonitorJob(job as SavedJob)) return ''
+  const intervalMs = Math.max(1, job.monitorIntervalMinutes || DEFAULT_MONITOR_PREFS.intervalMinutes) * 60 * 1000
+  const last = job.lastCheckedAt ? Date.parse(job.lastCheckedAt) : 0
+  const next = Number.isFinite(last) && last > 0 ? last + intervalMs : Date.now()
+  return new Date(next).toISOString()
 }
 
 export function toLocalInput(iso?: string) {

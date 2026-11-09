@@ -4,6 +4,7 @@ import {
   evidenceAgeLabel,
   isoNow,
 } from './_lib/autobahnTimes.js';
+import { guardApi } from './_lib/httpGuard.js';
 
 export const config = {
   maxDuration: 30,
@@ -85,7 +86,7 @@ function mapAutobahnEvent(
     id: item.identifier || `evt-${Date.now()}-${Math.random()}`,
     title: freshness.longRunning ? `${item.title || fallbackTitle} (long-running / verify on site)` : (item.title || fallbackTitle),
     description: normalizeDescription([
-      ...(Array.isArray(item.subtitle) ? item.subtitle : item.subtitle ? [item.subtitle] : []),
+      ...(Array.isArray(item.subtitle) ? item.subtitle : item.subtitle ? [String(item.subtitle).replace(/([a-zäöüß])([A-ZÄÖÜ])/g, '$1 – $2')] : []),
       ...(Array.isArray(item.description) ? item.description : item.description ? [item.description] : []),
     ]) || fallbackDescription,
     lat: parseFloat(item.coordinate?.lat),
@@ -236,17 +237,7 @@ export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (!guardApi(req, res, 'GET, OPTIONS')) return
 
   try {
     // Support roads query param

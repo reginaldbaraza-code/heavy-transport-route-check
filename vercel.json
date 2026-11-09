@@ -1,12 +1,13 @@
 {
   "functions": {
     "api/check-route.ts": {
-      "includeFiles": "public/data/mia-roadworks.json"
+      "includeFiles": "{public/data/mia-roadworks.json,api/_lib/mia-datex.mjs}"
     }
   },
   "rewrites": [
+    { "source": "/favicon.ico", "destination": "/favicon-32.png" },
     {
-      "source": "/(.*)",
+      "source": "/((?!api(?:/|$)|assets(?:/|$)|test-permits(?:/|$)|data(?:/|$)|favicon|icon-|apple-touch|robots\\.txt|sitemap\\.xml|site\\.webmanifest).*)",
       "destination": "/index.html"
     }
   ]

@@ -408,3 +408,17 @@ test('distance helper returns ~0 on the line', () => {
   const km = distanceToRouteKm(line, 53.55, 9.99)
   assert.ok(km < 0.05)
 })
+
+test('concatenated place names are split in classified titles and details', () => {
+  const item = classifyCandidate(candidate({
+    road: 'A9',
+    title: 'A9 Sperrung BayreuthKulmbach',
+    description: 'Vollsperrung BayreuthKulmbach in Fahrtrichtung Süd',
+    category: 'closures',
+    isBlocked: true,
+  }), { ...baseCtx, permittedRoads: ['A9'] })
+  assert.ok(item)
+  const blob = `${item.title} ${item.detail}`
+  assert.match(blob, /Bayreuth – Kulmbach/)
+  assert.doesNotMatch(blob, /BayreuthKulmbach/)
+})

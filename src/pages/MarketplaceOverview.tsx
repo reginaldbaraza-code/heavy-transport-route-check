@@ -5,7 +5,7 @@ import {
   Route, ShieldCheck, Truck, Upload,
 } from 'lucide-react'
 import LazyPermitMap from '../components/LazyPermitMap'
-import { MarketplacePageHeader } from '../components/MarketplaceUI'
+import PageHeader from '../components/PageHeader'
 import {
   defaultVehicleProfile, getRouteCheckResult, permittedRoutes,
 } from '../data/routeChecks'
@@ -21,6 +21,20 @@ import {
 } from '../lib/overviewTracks'
 import { readJson, STORAGE_KEYS, writeJson } from '../lib/browserStore'
 import { formatVehicleDims, shouldMonitorJob } from '../lib/jobs'
+
+const DISPATCH_EXAMPLES: Array<{ routeId: string; permitId: string; daysAhead: number; hour: number }> = [
+  { routeId: 'hamburg-kassel', permitId: 'hamburg-hannover', daysAhead: 1, hour: 22 },
+  { routeId: 'duisburg-munich', permitId: 'munchen-stuttgart', daysAhead: 2, hour: 23 },
+  { routeId: 'bremen-hannover', permitId: 'bremen-dortmund', daysAhead: 3, hour: 1 },
+  { routeId: 'leipzig-nuremberg', permitId: 'leipzig-nurnberg', daysAhead: 4, hour: 0 },
+]
+
+function exampleDeparture(daysAhead: number, hour: number) {
+  const date = new Date()
+  date.setDate(date.getDate() + daysAhead)
+  date.setHours(hour, hour === 0 ? 30 : 0, 0, 0)
+  return formatBerlinDateTime(date.toISOString())
+}
 
 const verdictMeta = {
   READY: { label: 'Ready', icon: CheckCircle2, iconClass: 'green', badgeClass: 'ready' },
@@ -54,7 +68,7 @@ export default function MarketplaceOverview() {
 
   return (
     <div className="market-page transport-overview">
-      <MarketplacePageHeader
+      <PageHeader
         eyebrow="Heavy transport operations"
         title="Know whether the permitted route is usable"
         description="Check the exact approved route against current roadworks, closures, and trusted on-site reports before the transport departs."
@@ -206,13 +220,20 @@ export default function MarketplaceOverview() {
                 </div>
                 <div className="transport-route-list">
                   {permittedRoutes.map(route => {
+                    const example = DISPATCH_EXAMPLES.find(item => item.routeId === route.id)
+                    const permit = sampleTestPermits.find(item => item.id === example?.permitId)
                     const result = getRouteCheckResult(route, defaultVehicleProfile)
                     const meta = verdictMeta[result.verdict]
                     const VerdictIcon = meta.icon
+                    const href = permit ? `/route-checks?permit=${permit.id}&run=1` : '/route-checks'
+                    const when = example ? exampleDeparture(example.daysAhead, example.hour) : route.queueDeparture
                     return (
-                      <Link to="/route-checks" key={route.id}>
+                      <Link to={href} key={route.id}>
                         <span className={`transport-list-icon ${meta.iconClass}`}><Route size={16} /></span>
-                        <div><strong>{route.originShort} → {route.destinationShort}</strong><span>{route.permitId} · {route.queueDeparture}</span></div>
+                        <div>
+                          <strong>{permit ? `${permit.originShort} → ${permit.destinationShort}` : `${route.originShort} → ${route.destinationShort}`}</strong>
+                          <span>Example · {permit?.permitNumber || route.permitId} · Departs {when}</span>
+                        </div>
                         <b className={meta.badgeClass}><VerdictIcon size={14} /> {meta.label}</b>
                         <ArrowRight size={16} />
                       </Link>
@@ -224,7 +245,7 @@ export default function MarketplaceOverview() {
               <section className="market-section">
                 <div className="market-section-header compact">
                   <div><span className="market-eyebrow">Source status</span><h2>Information covering your next route</h2></div>
-                  <Link to="/discover">Manage data <ArrowRight size={16} /></Link>
+                  <Link to="/settings">Data sources <ArrowRight size={16} /></Link>
                 </div>
                 <div className="transport-source-list">
                   <div>

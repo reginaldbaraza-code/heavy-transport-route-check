@@ -4,6 +4,7 @@
     "module": "CommonJS",
     "moduleResolution": "node",
     "noEmit": true,
+    "allowJs": true,
     "allowImportingTsExtensions": false
   },
   "include": ["api/**/*"],

@@ -7,14 +7,13 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 
 // Configure worker URL globally before any Map is created
 setWorkerUrl(workerUrl);
-import { Link } from 'react-router-dom'
 import {
-  AlertTriangle, ArrowRight, ChevronDown, CircleParking, Clock3,
+  AlertTriangle, ChevronDown, CircleParking, Clock3,
   Construction, Layers3, LocateFixed, Map as MapIcon, Maximize2,
   Radio, RefreshCw, Route, Search, XCircle
 } from 'lucide-react'
 import {
-  cities, germanyOutline, regionalCities, rivers, roadVectors, stateBoundaries,
+  germanyOutline, roadVectors,
 } from '../data/germanyMap'
 import {
   type OperationalEvent, type OperationalEventType,
@@ -90,7 +89,7 @@ export default function LiveMap() {
           road: extractRoad(e.description) || 'Unknown',
           lat: e.lat,
           lng: e.lng,
-          updated: e.age || [e.startTimestamp ? `Started ${formatBerlinDateTime(e.startTimestamp)}` : 'Start not published', e.retrievedAt ? `Retrieved ${formatBerlinDateTime(e.retrievedAt)}` : ''].filter(Boolean).join(' · '),
+          updated: e.age || [e.startTimestamp ? `Start: ${formatBerlinDateTime(e.startTimestamp)}` : 'Start: not published', e.retrievedAt ? `Retrieved ${formatBerlinDateTime(e.retrievedAt)}` : ''].filter(Boolean).join(' · '),
           confidence: e.confidence === 'high' ? 90 : 70,
           source: data.source,
           dataCategory: 'operational',
@@ -104,7 +103,7 @@ export default function LiveMap() {
           road: extractRoad(e.description) || 'Unknown',
           lat: e.lat,
           lng: e.lng,
-          updated: e.age || [e.startTimestamp ? `Started ${formatBerlinDateTime(e.startTimestamp)}` : 'Start not published', e.retrievedAt ? `Retrieved ${formatBerlinDateTime(e.retrievedAt)}` : ''].filter(Boolean).join(' · '),
+          updated: e.age || [e.startTimestamp ? `Start: ${formatBerlinDateTime(e.startTimestamp)}` : 'Start: not published', e.retrievedAt ? `Retrieved ${formatBerlinDateTime(e.retrievedAt)}` : ''].filter(Boolean).join(' · '),
           confidence: 95,
           source: data.source,
           dataCategory: 'operational',
@@ -118,7 +117,7 @@ export default function LiveMap() {
           road: extractRoad(e.description) || 'Unknown',
           lat: e.lat,
           lng: e.lng,
-          updated: e.age || [e.startTimestamp ? `Started ${formatBerlinDateTime(e.startTimestamp)}` : 'Start not published', e.retrievedAt ? `Retrieved ${formatBerlinDateTime(e.retrievedAt)}` : ''].filter(Boolean).join(' · '),
+          updated: e.age || [e.startTimestamp ? `Start: ${formatBerlinDateTime(e.startTimestamp)}` : 'Start: not published', e.retrievedAt ? `Retrieved ${formatBerlinDateTime(e.retrievedAt)}` : ''].filter(Boolean).join(' · '),
           confidence: e.confidence === 'high' ? 85 : 65,
           source: data.source,
           dataCategory: 'operational',
@@ -132,7 +131,7 @@ export default function LiveMap() {
           road: extractRoad(`${e.title} ${e.description}`) || 'Unknown',
           lat: e.lat,
           lng: e.lng,
-          updated: e.age || [e.startTimestamp ? `Started ${formatBerlinDateTime(e.startTimestamp)}` : 'Start not published', e.retrievedAt ? `Retrieved ${formatBerlinDateTime(e.retrievedAt)}` : ''].filter(Boolean).join(' · '),
+          updated: e.age || [e.startTimestamp ? `Start: ${formatBerlinDateTime(e.startTimestamp)}` : 'Start: not published', e.retrievedAt ? `Retrieved ${formatBerlinDateTime(e.retrievedAt)}` : ''].filter(Boolean).join(' · '),
           confidence: 70,
           source: data.source,
           dataCategory: 'parking',
@@ -488,16 +487,15 @@ export default function LiveMap() {
           }}>
             <Maximize2 size={13} /> Fit Germany
           </button>
-          <Link to="/discover" className="market-button primary">Find related offers</Link>
         </div>
       </header>
 
       <div className="live-map-tabs" role="tablist" aria-label="Map scope">
         <button type="button" className={scope === 'national' ? 'active' : ''} onClick={() => setScope('national')}>
-          <MapIcon size={13} /> Germany data coverage
+          <MapIcon size={13} /> Germany
         </button>
         <button type="button" className={scope === 'munich' ? 'active' : ''} onClick={() => setScope('munich')}>
-          <LocateFixed size={13} /> Munich mobility use case
+          <LocateFixed size={13} /> Bavaria focus
         </button>
         <span />
         <button type="button" className={baseMap === 'road' ? 'active' : ''} onClick={() => setBaseMap('road')}>Road</button>
@@ -508,7 +506,7 @@ export default function LiveMap() {
         <aside className="live-event-panel">
           <div className="live-event-search">
             <Search size={14} />
-            <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search road, place, or mobility signal…" />
+            <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search road or place…" />
             {query && <button type="button" onClick={() => setQuery('')}><XCircle size={13} /></button>}
           </div>
           <div className="live-event-summary">
@@ -523,9 +521,8 @@ export default function LiveMap() {
               <p>{selectedEvent.detail}</p>
               <dl>
                 <div><dt>Evidence</dt><dd>{selectedEvent.source} · {selectedEvent.confidence}% confidence</dd></div>
-                <div><dt>Data need</dt><dd>{selectedEvent.dataCategory} could support routing, safety, or infrastructure decisions here.</dd></div>
+                <div><dt>Road</dt><dd>{selectedEvent.road}</dd></div>
               </dl>
-              <Link to={`/discover?q=${encodeURIComponent(`${selectedEvent.marketQuery} ${selectedEvent.road}`)}`}>Find data for this problem <ArrowRight size={12} /></Link>
             </div>
           )}
           <div className="live-event-list">
@@ -584,8 +581,8 @@ export default function LiveMap() {
 
           <div className="live-map-kpis">
             <div><Route size={14} /><span>Operational signals</span><strong>{events.length}</strong></div>
-            <div><AlertTriangle size={14} /><span>Potential data needs</span><strong>{events.filter(event => event.type === 'warnings').length}</strong></div>
-            <div><RefreshCw size={14} /><span>Network coverage</span><strong>{roadVectors.length} Autobahns</strong></div>
+            <div><AlertTriangle size={14} /><span>Warnings</span><strong>{events.filter(event => event.type === 'warnings').length}</strong></div>
+            <div><RefreshCw size={14} /><span>Autobahns in view</span><strong>{roadVectors.length}</strong></div>
           </div>
         </main>
       </div>

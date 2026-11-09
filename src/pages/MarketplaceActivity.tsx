@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   AlertTriangle, BellRing, CheckCircle2, ChevronRight, CircleX, Download, History, Route,
 } from 'lucide-react'
-import { MarketplacePageHeader } from '../components/MarketplaceUI'
+import PageHeader from '../components/PageHeader'
 import { useRouteMonitoring } from '../context/RouteMonitoringContext'
 import { formatBerlinDateTime } from '../lib/formatTime'
 import { downloadSnapshot, snapshotFromHistory } from '../lib/exportCheck'
@@ -27,7 +27,7 @@ export default function MarketplaceActivity() {
 
   return (
     <div className="market-page route-alert-page">
-      <MarketplacePageHeader
+      <PageHeader
         eyebrow="Live route monitoring"
         title="Alerts & history"
         description="Alerts and history come only from route checks you actually ran in this browser, plus their Autobahn GmbH results."

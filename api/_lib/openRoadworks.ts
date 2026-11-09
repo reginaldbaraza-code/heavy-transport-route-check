@@ -5,11 +5,15 @@ import * as turf from '@turf/turf'
 import {
   BW_CACHE_MS,
   BW_SOURCE,
+  MIA_LIVE_CACHE_MS,
+  MIA_LIVE_FAILURE_MS,
+  MIA_LIVE_TIMEOUT_MS,
   MIA_SOURCE,
   MIA_STALE_MS,
   MOBIDATA_FEEDS,
   MOBIDATA_USER_AGENT,
 } from './mobidata.js'
+import { buildMiaSnapshot } from './mia-datex.mjs'
 
 export type VehicleDimensions = {
   width: number
@@ -46,6 +50,14 @@ export type MiaSnapshot = {
   attribution: string
   counts?: { kept?: number }
   items: MiaItem[]
+  live?: boolean
+}
+
+export type MiaResolveResult = {
+  snapshot: MiaSnapshot | null
+  stale: boolean
+  live: boolean
+  error?: string
 }
 
 export type BwRoadwork = {
@@ -69,8 +81,15 @@ export type DimConflict = {
 }
 
 type BwCache = { at: number; items: BwRoadwork[]; retrievedAt: string }
+type LiveMiaCache = { at: number; snapshot: MiaSnapshot }
+type LiveMiaFailure = { at: number; error: string }
+
 let bwCache: BwCache | null = null
 let miaCache: MiaSnapshot | null | undefined
+let liveMiaCache: LiveMiaCache | null = null
+let liveMiaFailure: LiveMiaFailure | null = null
+let liveMiaInflight: Promise<MiaSnapshot> | null = null
+let miaFetchImpl: typeof fetch | undefined
 
 function parseTime(value?: string | null): number | null {
   if (!value) return null
@@ -174,6 +193,93 @@ export function miaSnapshotAgeMs(snapshot: MiaSnapshot, now = Date.now()) {
 
 export function miaSnapshotIsStale(snapshot: MiaSnapshot, now = Date.now()) {
   return miaSnapshotAgeMs(snapshot, now) > MIA_STALE_MS
+}
+
+export function resetMiaCaches() {
+  miaCache = undefined
+  liveMiaCache = null
+  liveMiaFailure = null
+  liveMiaInflight = null
+  miaFetchImpl = undefined
+}
+
+export function setMiaSnapshotForTests(snapshot: MiaSnapshot | null | undefined) {
+  miaCache = snapshot
+}
+
+export function setMiaFetchForTests(fetchImpl?: typeof fetch) {
+  miaFetchImpl = fetchImpl
+}
+
+function liveErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    if (error.name === 'TimeoutError' || error.name === 'AbortError') {
+      return 'Live DATEX refresh timed out'
+    }
+    return error.message
+  }
+  return 'Live DATEX refresh failed'
+}
+
+async function fetchMiaSnapshotLive(now: number): Promise<MiaSnapshot> {
+  const snapshot = await buildMiaSnapshot({
+    now,
+    timeoutMs: MIA_LIVE_TIMEOUT_MS,
+    fetchImpl: miaFetchImpl,
+  }) as MiaSnapshot
+  snapshot.live = true
+  return snapshot
+}
+
+async function fetchLiveOnce(now: number): Promise<MiaSnapshot> {
+  if (liveMiaCache && now - liveMiaCache.at < MIA_LIVE_CACHE_MS) {
+    return liveMiaCache.snapshot
+  }
+  if (liveMiaInflight) return liveMiaInflight
+  liveMiaInflight = fetchMiaSnapshotLive(now)
+    .then(snapshot => {
+      liveMiaCache = { at: Date.now(), snapshot }
+      liveMiaFailure = null
+      return snapshot
+    })
+    .finally(() => {
+      liveMiaInflight = null
+    })
+  return liveMiaInflight
+}
+
+export async function resolveMiaSnapshot(now = Date.now()): Promise<MiaResolveResult> {
+  const file = loadMiaSnapshot()
+  if (file && !miaSnapshotIsStale(file, now)) {
+    return { snapshot: file, stale: false, live: false }
+  }
+
+  if (liveMiaCache && now - liveMiaCache.at < MIA_LIVE_CACHE_MS) {
+    return { snapshot: liveMiaCache.snapshot, stale: false, live: true }
+  }
+
+  if (liveMiaFailure && now - liveMiaFailure.at < MIA_LIVE_FAILURE_MS) {
+    return {
+      snapshot: file,
+      stale: Boolean(file),
+      live: false,
+      error: liveMiaFailure.error,
+    }
+  }
+
+  try {
+    const snapshot = await fetchLiveOnce(now)
+    return { snapshot, stale: false, live: true }
+  } catch (error) {
+    const message = liveErrorMessage(error)
+    liveMiaFailure = { at: now, error: message }
+    return {
+      snapshot: file,
+      stale: Boolean(file),
+      live: false,
+      error: message,
+    }
+  }
 }
 
 export function corridorBbox(corridor: Feature<Polygon | MultiPolygon>) {

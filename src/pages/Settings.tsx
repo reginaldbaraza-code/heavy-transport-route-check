@@ -46,12 +46,12 @@ export default function Settings() {
     setSaved(true)
   }
 
-  const statusLabel = !complete ? 'Setup required' : dirty ? 'Unsaved changes' : 'Profile complete'
+  const statusLabel = dirty ? 'Unsaved changes' : complete ? 'Saved in this browser' : 'Optional profile'
   const footerStatus = dirty
     ? 'You have unsaved changes.'
     : complete
-      ? 'Required organisation fields are complete.'
-      : 'Organisation profile is incomplete until required fields are filled.'
+      ? 'Organisation name is saved in this browser only.'
+      : 'Add an organisation name when you want it in the header. Nothing is required to run a check.'
 
   return (
     <div className="app-page settings-page">
@@ -71,8 +71,8 @@ export default function Settings() {
           <div className="settings-org-mark">
             <span><Building2 size={18} /></span>
             <div>
-              <strong>{profile.orgName || 'Your organisation'}</strong>
-              <small className={complete ? 'status-complete' : 'status-incomplete'}>{complete ? 'Profile complete' : 'Profile setup'}</small>
+              <strong>{profile.orgName || 'Dispatcher'}</strong>
+              <small className={complete ? 'status-complete' : ''}>{complete ? 'Saved locally' : 'No profile yet'}</small>
             </div>
           </div>
           <nav aria-label="Settings">
@@ -92,29 +92,19 @@ export default function Settings() {
                   <span className="settings-card-icon"><Building2 size={18} /></span>
                   <div><h2>Organisation profile</h2><p>This identity appears in the header. It is stored only in this browser.</p></div>
                 </div>
-                <span className={`setup-pill ${complete && !dirty ? 'complete' : ''}`}>{statusLabel}</span>
+                <span className={`setup-pill ${complete && !dirty ? 'complete' : 'quiet'}`}>{statusLabel}</span>
               </header>
               <div className="settings-form">
                 <label className="settings-field">
                   <span>Organisation name</span>
-                  <small>Required. Your registered operator or legal entity name.</small>
-                  <input required value={profile.orgName} onChange={event => { setProfile(current => ({ ...current, orgName: event.target.value })); setSaved(false) }} aria-invalid={Boolean(error && !profile.orgName.trim())} />
+                  <small>Shown in the header. Stored only in this browser.</small>
+                  <input value={profile.orgName} onChange={event => { setProfile(current => ({ ...current, orgName: event.target.value })); setSaved(false) }} placeholder="e.g. Nordhauler GmbH" aria-invalid={Boolean(error && !profile.orgName.trim())} />
                 </label>
                 <label className="settings-field">
-                  <span>Website</span>
-                  <small>Required. Use the complete public URL, including https:// and a hostname.</small>
-                  <input type="url" value={profile.website} onChange={event => { setProfile(current => ({ ...current, website: event.target.value })); setSaved(false) }} />
+                  <span>Dispatcher name</span>
+                  <small>Used as the default name on on-site confirmations.</small>
+                  <input value={profile.dispatcherName} onChange={event => { setProfile(current => ({ ...current, dispatcherName: event.target.value })); setSaved(false) }} placeholder="e.g. Ada Dispatcher" />
                 </label>
-                <label className="settings-field">
-                  <span>Description</span>
-                  <small>Optional. Describe the operator role in heavy-transport dispatch.</small>
-                  <textarea maxLength={500} rows={3} value={profile.description} onChange={event => { setProfile(current => ({ ...current, description: event.target.value })); setSaved(false) }} />
-                  <i>{profile.description.length} / 500</i>
-                </label>
-                <div className="settings-field-row">
-                  <label className="settings-field"><span>Organisation type</span><input value={profile.orgType} onChange={event => { setProfile(current => ({ ...current, orgType: event.target.value })); setSaved(false) }} /></label>
-                  <label className="settings-field"><span>Country</span><select value={profile.country} onChange={event => { setProfile(current => ({ ...current, country: event.target.value })); setSaved(false) }}><option>Germany</option><option>Austria</option><option>Switzerland</option></select></label>
-                </div>
                 {error && <p role="alert" className="settings-error">{error}</p>}
               </div>
               <footer className="settings-card-footer">
@@ -187,7 +177,7 @@ export default function Settings() {
                 {monitoringActive
                   ? `${monitoredCount} job${monitoredCount === 1 ? '' : 's'} currently monitored in this tab.`
                   : 'No jobs are in the monitoring window.'}
-                {' '}Vercel Hobby cron is once per day, so background monitoring is not added. Email and SMS stay disabled.
+                {' '}Monitoring runs while this tab is open. Keep it open until departure to get alerts. Email and SMS stay disabled.
               </p>
               <div className="settings-preference-section">
                 <h3>Re-check and escalation</h3>

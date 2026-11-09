@@ -1,5 +1,6 @@
 import type { Feature, LineString } from 'geojson'
 import * as turf from '@turf/turf'
+import { splitConcatenatedPlaces } from './autobahnTimes.js'
 
 export type VehicleDimensions = {
   width: number
@@ -241,6 +242,11 @@ function roadMatchesPermit(input: CandidateInput, permittedRoads: string[]): { r
 }
 
 export function classifyCandidate(input: CandidateInput, ctx: ClassifyContext): ClassifiedEvidence | null {
+  input = {
+    ...input,
+    title: splitConcatenatedPlaces(input.title),
+    description: splitConcatenatedPlaces(input.description),
+  }
   const text = `${input.title} ${input.description}`
   if (startsAfterWindow(input.startTimestamp, ctx.windowEndMs)) return null
   if (input.endTimestamp && Date.parse(input.endTimestamp) < ctx.windowStartMs) return null
@@ -366,10 +372,10 @@ export function classifyCandidate(input: CandidateInput, ctx: ClassifyContext): 
   if (state === 'clear' || state === 'info') blocker = false
   if (state === 'danger') blocker = true
 
-  const detail = [input.description, reason].filter(Boolean).join(' · ')
+  const detail = splitConcatenatedPlaces([input.description, reason].filter(Boolean).join(' · '))
   return {
     id: input.id,
-    title,
+    title: splitConcatenatedPlaces(title),
     detail,
     source: input.source,
     confidence: state === 'danger' ? 'high' : 'medium',

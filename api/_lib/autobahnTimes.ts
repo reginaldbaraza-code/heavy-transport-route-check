@@ -143,7 +143,7 @@ export function evidenceAgeLabel(freshness: AutobahnFreshness): string {
   const retrieved = formatBerlinDateTime(freshness.retrievedAt)
   const until = formatBerlinDateTime(freshness.endTimestamp)
   const parts: string[] = []
-  parts.push(started ? `Started ${started}` : 'Start not published')
+  parts.push(started ? `Start: ${started}` : 'Start: not published')
   if (until) parts.push(`Until ${until}`)
   if (retrieved) parts.push(`Retrieved ${retrieved}`)
   if (freshness.longRunning) parts.push('Long-running / verify on site')
@@ -164,12 +164,18 @@ export function berlinClock(iso?: string | null): string {
   }).format(date)
 }
 
+export function splitConcatenatedPlaces(text: string): string {
+  return String(text || '').replace(/([a-zäöüß])([A-ZÄÖÜ])/g, '$1 – $2').replace(/\s{2,}/g, ' ').trim()
+}
+
 export function descriptionFromAutobahnItem(item: { subtitle?: unknown; description?: unknown }): string {
   const parts = [
     ...(Array.isArray(item.subtitle) ? item.subtitle : item.subtitle ? [item.subtitle] : []),
     ...(Array.isArray(item.description) ? item.description : item.description ? [item.description] : []),
   ]
-  return parts.filter(Boolean).join(' · ')
+    .map(part => splitConcatenatedPlaces(String(part || '')))
+    .filter(Boolean)
+  return parts.join(' / ')
 }
 
 export { pad }

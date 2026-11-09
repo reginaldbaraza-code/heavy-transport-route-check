@@ -1,21 +1,23 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import * as turf from '@turf/turf';
-import * as xml2js from 'xml2js';
 import {
   descriptionFromAutobahnItem,
   eventFreshness,
   evidenceAgeLabel,
   isoNow,
+  splitConcatenatedPlaces,
 } from './_lib/autobahnTimes.js';
+import { GpxParseError, parseGpxDocument } from './_lib/gpxParse.js';
+import { guardApi, rejectOversizedBody } from './_lib/httpGuard.js';
 import {
   BW_SOURCE,
   MIA_SOURCE,
   fetchBwRoadworks,
-  loadMiaSnapshot,
   miaSnapshotAgeMs,
-  miaSnapshotIsStale,
+  resolveMiaSnapshot,
   type BwRoadwork,
 } from './_lib/openRoadworks.js';
+import { MIA_STALE_HOURS } from './_lib/mobidata.js';
 import { isScenarioId, SCENARIOS } from './_lib/scenarios.js';
 import {
   classifyCandidate,
@@ -91,64 +93,18 @@ type RouteCheckResult = {
   clearanceConfirmed?: boolean;
 };
 
-async function parseGPX(gpxContent: string): Promise<GPXPoint[]> {
-  try {
-    const parser = new xml2js.Parser({
-      explicitArray: false,
-      mergeAttrs: true,
-    });
-    
-    const parsed = await parser.parseStringPromise(gpxContent);
+function parseGPX(gpxContent: string): GPXPoint[] {
+  const parsed = parseGpxDocument(gpxContent)
+  return parsed.points
+}
 
-    const points: GPXPoint[] = [];
-    const track = parsed?.gpx?.trk;
-    
-    if (!track) {
-      throw new Error('No track data found in GPX file');
-    }
-
-    const segment = Array.isArray(track) ? track[0]?.trkseg : track?.trkseg;
-    const trackPoints = Array.isArray(segment) ? segment[0]?.trkpt : segment?.trkpt;
-    
-    if (!trackPoints) {
-      throw new Error('No track points found in GPX file');
-    }
-
-    const pointsArray = Array.isArray(trackPoints) ? trackPoints : [trackPoints];
-    
-    for (const pt of pointsArray) {
-      const lat = parseFloat(pt.lat || pt.$.lat);
-      const lon = parseFloat(pt.lon || pt.$.lon || pt.long);
-      
-      if (isNaN(lat) || isNaN(lon)) {
-        continue;
-      }
-
-      points.push({
-        lat,
-        lng: lon,
-        ele: pt.ele ? parseFloat(pt.ele) : undefined,
-        name: pt.name || undefined,
-      });
-    }
-
-    if (points.length < 2) {
-      throw new Error('GPX file must contain at least 2 valid track points');
-    }
-
-    return points;
-  } catch (error) {
-    console.error('GPX parsing error:', error);
-    
-    if (error instanceof Error) {
-      if (error.message.includes('track') || error.message.includes('points')) {
-        throw error;
-      }
-      throw new Error(`Invalid GPX file format: ${error.message}`);
-    }
-    
-    throw new Error('Invalid GPX file: Unable to parse XML structure');
+function waypointLabel(point?: GPXPoint): string {
+  const name = String(point?.name || '').trim()
+  if (!point || !name || /^(starts?|end|ende|ziel)$/i.test(name)) {
+    if (!point || !Number.isFinite(point.lat) || !Number.isFinite(point.lng)) return 'Unknown'
+    return `${point.lat.toFixed(4)}, ${point.lng.toFixed(4)}`
   }
+  return name
 }
 
 function calculateRouteDistance(points: GPXPoint[]): number {
@@ -241,7 +197,7 @@ function processAutobahnItem(
 
   return {
     id: item.identifier || `evt-${Date.now()}-${Math.random()}`,
-    title: item.title || fallbackTitle,
+    title: splitConcatenatedPlaces(item.title || fallbackTitle),
     description: descriptionFromAutobahnItem(item) || fallbackDescription,
     lat,
     lng,
@@ -314,7 +270,7 @@ async function fetchAutobahnEventsForRoute(roads: string[], retrievedAt: string)
         type: 'parking' as const,
         severity: String(item.isBlocked) === 'true' ? 'warning' as const : 'info' as const,
         isBlocked: String(item.isBlocked) === 'true',
-        subtitle: Array.isArray(item.subtitle) ? item.subtitle.join(' ') : String(item.subtitle || ''),
+        subtitle: Array.isArray(item.subtitle) ? item.subtitle.map(String).join(' / ') : String(item.subtitle || ''),
       }))
     ).filter(isUsableEvent);
 
@@ -360,8 +316,8 @@ function timestampFields(event: {
 function toRouteEvidence(item: ClassifiedEvidence, age: string): RouteEvidence {
   return {
     id: item.id,
-    title: item.title,
-    detail: item.detail,
+    title: splitConcatenatedPlaces(item.title),
+    detail: splitConcatenatedPlaces(item.detail),
     source: item.source,
     age,
     confidence: item.confidence,
@@ -407,17 +363,8 @@ export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (!guardApi(req, res, 'POST, OPTIONS')) return
+  if (!rejectOversizedBody(req, res)) return
 
   try {
     const {
@@ -437,6 +384,9 @@ export default async function handler(
       acknowledgements,
     } = req.body;
 
+    const gpxBytes = typeof gpxContent === 'string' ? Buffer.byteLength(gpxContent, 'utf8') : 0
+    if (!rejectOversizedBody(req, res, gpxBytes)) return
+
     if (!gpxContent) {
       return res.status(400).json({ 
         error: 'GPX content is required',
@@ -453,17 +403,19 @@ export default async function handler(
 
     let routePoints: GPXPoint[];
     try {
-      routePoints = await parseGPX(gpxContent);
+      routePoints = parseGPX(gpxContent);
     } catch (parseError) {
+      const technical = parseError instanceof GpxParseError ? parseError.technical : ''
       return res.status(400).json({ 
         error: parseError instanceof Error ? parseError.message : 'Invalid GPX file',
         hint: 'Please upload a valid GPX file with track points containing latitude and longitude coordinates.',
+        technical,
       });
     }
     
     const distance = calculateRouteDistance(routePoints);
-    const origin = routePoints[0].name || 'Start';
-    const destination = routePoints[routePoints.length - 1].name || 'End';
+    const origin = waypointLabel(routePoints[0]);
+    const destination = waypointLabel(routePoints[routePoints.length - 1]);
     
     const routeLine = routeLineFromPoints(routePoints);
     const permittedRoads = inferPermittedRoads(
@@ -471,7 +423,6 @@ export default async function handler(
       Array.isArray(requestedRoads) ? requestedRoads : [],
     );
     const affectedRoads = permittedRoads.length ? permittedRoads : determineAffectedRoads(routePoints);
-    console.log('Checking roads:', affectedRoads.join(', '));
     const window = departureWindow({
       departureStart,
       departureEnd,
@@ -526,7 +477,7 @@ export default async function handler(
     }
 
     const retrievedAt = isoNow();
-    const [autobahnData, bwResult] = await Promise.all([
+    const [autobahnData, bwResult, miaResult] = await Promise.all([
       fetchAutobahnEventsForRoute(affectedRoads, retrievedAt),
       fetchBwRoadworks(retrievedAt)
         .then(items => ({ items, error: null as string | null }))
@@ -534,6 +485,7 @@ export default async function handler(
           items: [] as BwRoadwork[],
           error: error instanceof Error ? error.message : 'BEMaS unavailable',
         })),
+      resolveMiaSnapshot(),
     ]);
     const degraded = !autobahnData;
     const source = 'Autobahn GmbH + MobiData BW';
@@ -644,12 +596,14 @@ export default async function handler(
       });
     }
 
-    const mia = loadMiaSnapshot();
+    const mia = miaResult.snapshot;
     if (!mia) {
       classified.push({
         id: 'mia-snapshot-missing',
         title: 'MIA roadworks snapshot not loaded',
-        detail: 'The compact Autobahn MIA snapshot is missing. Route checks still use the live Autobahn GmbH API.',
+        detail: miaResult.error
+          ? `The compact Autobahn MIA snapshot is missing and live DATEX refresh failed (${miaResult.error}). Route checks still use the live Autobahn GmbH API.`
+          : 'The compact Autobahn MIA snapshot is missing. Route checks still use the live Autobahn GmbH API.',
         source: MIA_SOURCE,
         confidence: 'medium',
         state: 'warning',
@@ -662,27 +616,28 @@ export default async function handler(
       });
     } else {
       const ageHours = Math.max(0, Math.round(miaSnapshotAgeMs(mia) / 3600000));
-      if (miaSnapshotIsStale(mia)) {
+      if (miaResult.stale) {
         classified.push({
           id: 'mia-snapshot-stale',
-          title: 'MIA roadworks snapshot is older than 12 hours',
-          detail: `Snapshot ${mia.snapshotAt} (${ageHours}h old). Live Autobahn API events are still used.`,
+          title: `MIA roadworks snapshot is older than ${MIA_STALE_HOURS} hours`,
+          detail: `Snapshot ${mia.snapshotAt} (${ageHours}h old).${miaResult.error ? ` Live DATEX refresh failed (${miaResult.error}).` : ''} Live Autobahn API events are still used.`,
           source: MIA_SOURCE,
           confidence: 'medium',
           state: 'warning',
           category: 'observations',
           distanceKm: null,
-          reason: 'Snapshot older than 12h.',
+          reason: `Snapshot older than ${MIA_STALE_HOURS}h.`,
           locationKind: 'unknown',
           blocker: false,
           retrievedAt: mia.snapshotAt,
         });
       }
+      const freshness = miaResult.live ? 'Live DATEX' : 'Snapshot';
       for (const item of mia.items) {
         pushClassified(classified, {
           id: `mia-${item.id}`,
-          title: item.description || `${item.road || 'Autobahn'} MIA roadworks`,
-          description: `${item.description} ${item.term === 'long' ? 'Long-term MIA record' : 'Short-term MIA record'} · Snapshot ${mia.snapshotAt}`,
+          title: splitConcatenatedPlaces(item.description || `${item.road || 'Autobahn'} MIA roadworks`),
+          description: splitConcatenatedPlaces(`${item.description} ${item.term === 'long' ? 'Long-term MIA record' : 'Short-term MIA record'} · ${freshness} ${mia.snapshotAt}`),
           source: MIA_SOURCE,
           lat: item.lat,
           lng: item.lng,
@@ -802,10 +757,10 @@ export default async function handler(
     let fallbackRoute;
     try {
       const fallbackGpx = typeof req.body?.gpxContent === 'string' ? req.body.gpxContent : ''
-      const points = await parseGPX(fallbackGpx);
+      const points = parseGPX(fallbackGpx);
       const distance = calculateRouteDistance(points);
-      const origin = points[0]?.name || `${points[0]?.lat.toFixed(4)}, ${points[0]?.lng.toFixed(4)}`;
-      const destination = points[points.length - 1]?.name || `${points[points.length - 1]?.lat.toFixed(4)}, ${points[points.length - 1]?.lng.toFixed(4)}`;
+      const origin = waypointLabel(points[0]);
+      const destination = waypointLabel(points[points.length - 1]);
       
       fallbackRoute = {
         coordinates: points.map(p => [p.lat, p.lng]),
