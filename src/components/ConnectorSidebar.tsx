@@ -30,8 +30,8 @@ export default function ConnectorSidebar() {
           <RouteCheckLogo size={40} tone="light" decorative className="w-full h-full" />
         </div>
         <div>
-          <div className="font-bold text-sm leading-tight text-[var(--foreground)]">Mobility</div>
-          <div className="font-bold text-sm leading-tight text-[var(--foreground)]">Data Space</div>
+          <div className="font-bold text-sm leading-tight text-[var(--foreground)]">Heavy transport</div>
+          <div className="font-bold text-sm leading-tight text-[var(--foreground)]">route check</div>
         </div>
       </div>
 

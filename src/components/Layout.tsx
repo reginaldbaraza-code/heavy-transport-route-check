@@ -1,4 +1,4 @@
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import {
   Home, Settings, Map, DatabaseZap, Route, ShieldAlert,
@@ -23,12 +23,40 @@ const connectorItems = [
   { path: '/data-partners', label: 'Data partners', icon: DatabaseZap },
 ]
 
+const APP_DOCUMENT_TITLE = 'HTR · Heavy transport route check'
+
+const extraTitleRoutes = [
+  { path: '/settings', label: 'Settings' },
+  { path: '/discover', label: 'Discover data' },
+  { path: '/connectors', label: 'Connectors' },
+  { path: '/connector', label: 'Connector' },
+  { path: '/providers', label: 'Providers' },
+  { path: '/recommendations', label: 'Recommendations' },
+  { path: '/needs', label: 'Data needs' },
+  { path: '/offers', label: 'Offers' },
+  { path: '/requests', label: 'Requests' },
+  { path: '/deals', label: 'Deals' },
+  { path: '/compare', label: 'Compare' },
+]
+
+function documentTitleFor(pathname: string) {
+  const routes = [...navItems, ...connectorItems, ...extraTitleRoutes]
+  const match = routes.find(item =>
+    ('exact' in item && item.exact) || item.path === '/'
+      ? pathname === item.path
+      : pathname === item.path || pathname.startsWith(`${item.path}/`),
+  )
+  if (!match || match.path === '/') return APP_DOCUMENT_TITLE
+  return `${match.label} · ${APP_DOCUMENT_TITLE}`
+}
+
 export default function Layout() {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const navigate = useNavigate()
+  const location = useLocation()
   const { alerts, unreadCount, acknowledgeAlert } = useRouteMonitoring()
   const { displayName, orgTypeLabel } = useOrgSettings()
   const notifications = alerts.slice(0, 4).map(alert => ({
@@ -39,6 +67,10 @@ export default function Layout() {
     color: alert.escalated || alert.severity === 'HOLD' ? 'bg-red-500' : alert.severity === 'VERIFY' ? 'bg-amber-500' : 'bg-green-500',
     link: alert.jobId ? `/jobs` : '/activity',
   }))
+
+  useEffect(() => {
+    document.title = documentTitleFor(location.pathname)
+  }, [location.pathname])
 
   useEffect(() => {
     const closeMenus = (event: KeyboardEvent) => {
@@ -79,12 +111,24 @@ export default function Layout() {
           height: 56,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: collapsed ? 'center' : undefined,
-          padding: collapsed ? 0 : '0 16px',
-          gap: 10,
+          justifyContent: collapsed ? 'space-between' : undefined,
+          padding: collapsed ? '0 6px' : '0 16px',
+          gap: collapsed ? 0 : 10,
           borderBottom: '1px solid rgba(255,255,255,0.07)',
         }}>
-          {!collapsed && (
+          {collapsed ? (
+            <button
+              onClick={() => navigate('/')}
+              aria-label="Heavy transport route check"
+              style={{
+                fontFamily: 'Inter', fontWeight: 700, fontSize: 10, letterSpacing: '0.06em',
+                color: 'rgba(255,255,255,0.92)', lineHeight: 1,
+                flex: 1, minWidth: 0, textAlign: 'left',
+              }}
+            >
+              HTR
+            </button>
+          ) : (
             <>
               <button
                 onClick={() => navigate('/')}
@@ -93,9 +137,16 @@ export default function Layout() {
               >
                 <RouteCheckLogo size={28} tone="dark" decorative />
               </button>
-              <button onClick={() => navigate('/')} style={{ flex: 1, textAlign: 'left', paddingTop: 1 }}>
-                <div style={{ fontFamily: 'Inter', fontWeight: 600, fontSize: 14, color: 'rgba(255,255,255,0.92)', lineHeight: 1.2, letterSpacing: '-0.01em' }}>
-                  Mobility Data Space
+              <button
+                onClick={() => navigate('/')}
+                aria-label="Heavy transport route check"
+                style={{ flex: 1, textAlign: 'left', paddingTop: 1 }}
+              >
+                <div style={{ fontFamily: 'Inter', fontWeight: 600, fontSize: 13, color: 'rgba(255,255,255,0.92)', lineHeight: 1.2, letterSpacing: '-0.01em' }}>
+                  Heavy transport
+                </div>
+                <div style={{ fontFamily: 'Inter', fontWeight: 600, fontSize: 13, color: 'rgba(255,255,255,0.92)', lineHeight: 1.2, letterSpacing: '-0.01em' }}>
+                  route check
                 </div>
               </button>
             </>

@@ -1,6 +1,6 @@
-# MSD - Heavy Transport Route Check MVP
+# HTR · Heavy transport route check MVP
 
-This is the **Heavy Transport Route Check MVP** prototype exported from Figma Make. It's a React single-page application demonstrating data marketplace and route intelligence features for heavy transport logistics.
+This is the **Heavy transport route check** MVP prototype exported from Figma Make. It's a React single-page application demonstrating data marketplace and route intelligence features for heavy transport logistics.
 
 **⚠️ Note: This is a prototype with mock data.** All data, maps, and functionality are simulated for demonstration purposes.
 

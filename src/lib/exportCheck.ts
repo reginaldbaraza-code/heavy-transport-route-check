@@ -398,6 +398,12 @@ function drawEvidenceCard(
 export function createPdfDocument(snapshot: ExportSnapshot) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   doc.setCharSpace(0)
+  doc.setProperties({
+    title: 'Heavy transport route check',
+    subject: snapshot.title,
+    author: 'Heavy transport route check',
+    creator: 'HTR',
+  })
   const margin = 16
   const width = 210 - margin * 2
   let y = 18
