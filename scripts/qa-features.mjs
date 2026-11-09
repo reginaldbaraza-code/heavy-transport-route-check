@@ -76,6 +76,18 @@ async function main() {
   await context.grantPermissions(['notifications'])
   const page = await context.newPage()
 
+  for (const iconPath of ['/favicon-32.png', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png']) {
+    const res = await page.goto(base + iconPath, { timeout: 15000 })
+    const buf = res ? Buffer.from(await res.body()) : Buffer.alloc(0)
+    const png = buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47
+    const head = buf.subarray(0, 40).toString('latin1')
+    record(
+      `Served ${iconPath} is a PNG blob, not an LFS pointer`,
+      Boolean(res?.ok()) && png,
+      `status=${res?.status()} head=${JSON.stringify(head.slice(0, 32))}`,
+    )
+  }
+
   await page.goto(base + '/discover', { waitUntil: 'domcontentloaded', timeout: 60000 })
   const discoverBanner = await page.getByText(/leftover marketplace example data/i).isVisible()
   const discoverBadge = await page.getByText('Example data', { exact: true }).first().isVisible()
