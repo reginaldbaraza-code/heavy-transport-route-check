@@ -15,7 +15,7 @@ type AutobahnEvent = {
   description: string;
   lat: number;
   lng: number;
-  type: 'roadworks' | 'closures' | 'warnings';
+  type: 'roadworks' | 'closures' | 'warnings' | 'parking';
   severity: 'danger' | 'warning' | 'info';
   timestamp?: string | null;
   startTimestamp?: string | null;
@@ -30,6 +30,7 @@ type AutobahnEventsResponse = {
   roadworks: AutobahnEvent[];
   closures: AutobahnEvent[];
   warnings: AutobahnEvent[];
+  parking: AutobahnEvent[];
   cachedAt: string;
   retrievedAt: string;
   source: string;
@@ -102,7 +103,7 @@ function mapAutobahnEvent(
   };
 }
 
-async function fetchRoadEvents(road: string, type: 'roadworks' | 'closure' | 'warning'): Promise<any[]> {
+async function fetchRoadEvents(road: string, type: 'roadworks' | 'closure' | 'warning' | 'parking_lorry'): Promise<any[]> {
   try {
     const response = await fetch(
       `${AUTOBAHN_API_BASE}/${road}/services/${type}`,
@@ -115,7 +116,10 @@ async function fetchRoadEvents(road: string, type: 'roadworks' | 'closure' | 'wa
     if (!response.ok) return [];
     
     const data = await response.json();
-    const key = type === 'roadworks' ? 'roadworks' : type === 'closure' ? 'closure' : 'warning';
+    const key = type === 'roadworks' ? 'roadworks'
+      : type === 'closure' ? 'closure'
+      : type === 'warning' ? 'warning'
+      : 'parking_lorry';
     return data[key] || [];
   } catch (error) {
     console.error(`Error fetching ${type} for ${road}:`, error);
@@ -142,13 +146,14 @@ async function fetchAutobahnEvents(roads?: string[]): Promise<AutobahnEventsResp
     
     const allEvents = await Promise.all(
       roadsToFetch.slice(0, 15).map(async (road) => {
-        const [roadworks, closures, warnings] = await Promise.all([
+        const [roadworks, closures, warnings, parking] = await Promise.all([
           fetchRoadEvents(road, 'roadworks'),
           fetchRoadEvents(road, 'closure'),
           fetchRoadEvents(road, 'warning'),
+          fetchRoadEvents(road, 'parking_lorry'),
         ]);
         
-        return { road, roadworks, closures, warnings };
+        return { road, roadworks, closures, warnings, parking };
       })
     );
 
@@ -179,10 +184,20 @@ async function fetchAutobahnEvents(roads?: string[]): Promise<AutobahnEventsResp
       })
     ).filter(isUsableEvent);
 
+    const processedParking: AutobahnEvent[] = allEvents.flatMap(({ parking }) =>
+      parking.map((item: any) => {
+        const mapped = mapAutobahnEvent(item, 'Lorry parking', 'HGV parking', retrievedAt, 'medium');
+        mapped.type = 'parking';
+        mapped.severity = String(item.isBlocked) === 'true' ? 'warning' : 'info';
+        return mapped;
+      })
+    ).filter(isUsableEvent).slice(0, 120);
+
     const response: AutobahnEventsResponse = {
       roadworks: processedRoadworks,
       closures: processedClosures,
       warnings: processedWarnings,
+      parking: processedParking,
       cachedAt: retrievedAt,
       retrievedAt,
       source: 'Autobahn GmbH (verkehr.autobahn.de)',
@@ -209,6 +224,7 @@ async function fetchAutobahnEvents(roads?: string[]): Promise<AutobahnEventsResp
       roadworks: [],
       closures: [],
       warnings: [],
+      parking: [],
       cachedAt: isoNow(),
       retrievedAt: isoNow(),
       source: 'Autobahn GmbH (verkehr.autobahn.de) - Service unavailable',
@@ -249,6 +265,7 @@ export default async function handler(
       roadworks: [],
       closures: [],
       warnings: [],
+      parking: [],
       cachedAt: isoNow(),
       retrievedAt: isoNow(),
       source: 'Error',

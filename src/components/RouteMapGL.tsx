@@ -38,6 +38,7 @@ const EVIDENCE_COLORS = {
   clear: '#12b76a',
   warning: '#e59b24',
   danger: '#dc3f52',
+  conflict: '#e59b24',
 };
 
 const RouteMapGL = forwardRef<RouteMapHandle, Props>(({
@@ -98,7 +99,7 @@ const RouteMapGL = forwardRef<RouteMapHandle, Props>(({
       },
       center: [10.45, 51.16], // Center of Germany
       zoom: 6,
-      attributionControl: true,
+      attributionControl: { compact: true },
       cooperativeGestures: true,
     });
 
@@ -145,7 +146,7 @@ const RouteMapGL = forwardRef<RouteMapHandle, Props>(({
     removeLayerAndSource('route-line', 'route-line');
 
     // Convert coordinates to [lng, lat] for MapLibre
-    const geoCoordinates = coordinates.map(([lat, lng]) => [lng, lat]);
+    const geoCoordinates: [number, number][] = coordinates.map(([lat, lng]) => [lng, lat]);
     
     console.log('Adding route with', coordinates.length, 'points');
     console.log('First point (input):', coordinates[0], '→ (geo):', geoCoordinates[0]);

@@ -33,7 +33,7 @@ export default function DiscoverData() {
   const results = useMemo(() => {
     const normalized = query.trim().toLowerCase()
     const filtered = offers.filter(offer => {
-      const providerText = offer.providerId.replaceAll('-', ' ')
+      const providerText = offer.providerId.replace(/-/g, ' ')
       const matchesQuery = !normalized || [offer.title, offer.summary, offer.category, providerText, ...offer.useCases, ...offer.geography].join(' ').toLowerCase().includes(normalized)
       const matchesCategory = category === 'All domains' || offer.category === category
       const matchesGeography = geography === 'All geographies' || offer.geography.some(item => item.includes(geography))
@@ -65,6 +65,12 @@ export default function DiscoverData() {
         title="Discover data"
         description="Find trusted mobility data by business objective, coverage, quality, delivery method, and commercial model."
       />
+      <div className="example-data-banner" role="note">
+        <div className="example-data-banner-copy">
+          <span className="example-data-badge">Example data</span>
+          <p>This catalogue is leftover marketplace example data. It is not a live mobility-data listing and does not affect route checks, jobs, alerts, or history.</p>
+        </div>
+      </div>
 
       <section className="discover-search-panel">
         <div className="discover-search">
@@ -95,7 +101,7 @@ export default function DiscoverData() {
       </section>
 
       <div className="discover-results-bar">
-        <div><strong>{results.length} data offers</strong><span>Verified marketplace providers</span></div>
+        <div><strong>{results.length} example offers</strong><span>Not live data</span></div>
         <label>Sort by<select value={sort} onChange={event => setSort(event.target.value)}><option>Relevance</option><option>Quality</option><option>Freshness</option><option>Popularity</option><option>Newest</option></select></label>
       </div>
 

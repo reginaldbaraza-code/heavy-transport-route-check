@@ -1,14 +1,24 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
-  AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, CircleX, 
+  AlertTriangle, ArrowLeft, Briefcase, CheckCircle2, ChevronDown, CircleX, Download,
   FileUp, Loader2, MapPin, ShieldCheck, Truck, Upload,
 } from 'lucide-react'
 import RouteMapGL, { type RouteMapHandle } from '../components/RouteMapGL'
 import { Toast } from '../components/Feedback'
 import { checkRoute, loadTestPermit, readFileAsText, testPermits, type RouteCheckResult } from '../lib/routeCheck'
 import { useRouteMonitoring } from '../context/RouteMonitoringContext'
+import { useJobs } from '../context/JobsContext'
 import { formatBerlinDateTime } from '../lib/formatTime'
+import { confirmOnSiteTitles, downloadSnapshot, snapshotFromResult } from '../lib/exportCheck'
+import {
+  DEFAULT_MONITOR_PREFS,
+  MONITOR_INTERVAL_OPTIONS,
+  defaultDepartureIso,
+  defaultJobName,
+  fromLocalInput,
+  toLocalInput,
+} from '../lib/jobs'
 
 const routeLayers = [
   { id: 'roadworks', label: 'Roadworks' },
@@ -38,6 +48,12 @@ export default function RouteIntelligencePolished() {
   const loadedPermit = useRef<string | null>(null)
   const [searchParams] = useSearchParams()
   const { recordCheck } = useRouteMonitoring()
+  const { saveJob, getJob, prefs, requestNotifications } = useJobs()
+  const [plannedDeparture, setPlannedDeparture] = useState(toLocalInput(defaultDepartureIso(8)))
+  const [jobName, setJobName] = useState('')
+  const [jobInterval, setJobInterval] = useState(prefs.intervalMinutes)
+  const [showSaveJob, setShowSaveJob] = useState(false)
+  const loadedJob = useRef<string | null>(null)
 
   const vehicle = {
     width: parseFloat(vehicleWidth) || 0,
@@ -76,17 +92,27 @@ export default function RouteIntelligencePolished() {
       setActiveLayer('roadworks')
       setStep('result')
       setToast(`Route checked: ${checkResult.verdict}`)
+      const runAt = new Date().toISOString()
       recordCheck({
         permitName: permit || routeFile || `${checkResult.route.origin} → ${checkResult.route.destination}`,
         routeLabel: `${checkResult.route.origin} → ${checkResult.route.destination}`,
-        runAt: new Date().toISOString(),
+        runAt,
         verdict: checkResult.verdict,
         evidenceCount: checkResult.evidence.length,
-        retrievedAt: checkResult.retrievedAt || new Date().toISOString(),
+        retrievedAt: checkResult.retrievedAt || runAt,
         source: checkResult.source || 'Autobahn GmbH',
         summary: checkResult.summary,
         degraded: checkResult.degraded,
+        permitNumber: permit,
+        vehicle: dims,
+        title: checkResult.title,
+        impact: checkResult.impact,
+        confidence: checkResult.confidence,
+        evidence: checkResult.evidence,
+        confirmOnSite: confirmOnSiteTitles(checkResult.evidence),
+        jobId: loadedJob.current || undefined,
       })
+      setJobName(defaultJobName(routeFile, checkResult.route.origin, checkResult.route.destination, permit))
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to check route'
       setError(errorMsg)
@@ -164,6 +190,37 @@ export default function RouteIntelligencePolished() {
   }
 
   useEffect(() => {
+    const jobId = searchParams.get('job')
+    if (jobId) {
+      if (loadedJob.current === jobId) return
+      const job = getJob(jobId)
+      if (!job) {
+        setError('That saved job was not found in this browser.')
+        return
+      }
+      loadedJob.current = jobId
+      loadedPermit.current = jobId
+      setRouteFile(job.routeFileName)
+      setGpxContent(job.gpxContent)
+      setPermitNumber(job.permitNumber)
+      setVehicleProfile('custom')
+      setVehicleWidth(String(job.vehicle.width))
+      setVehicleHeight(String(job.vehicle.height))
+      setVehicleLength(String(job.vehicle.length))
+      setVehicleWeight(String(job.vehicle.grossWeight))
+      setPlannedDeparture(toLocalInput(job.plannedDeparture || defaultDepartureIso(8)))
+      setJobName(job.name)
+      setJobInterval(job.monitorIntervalMinutes || prefs.intervalMinutes)
+      setShowTestPermits(false)
+      setError('')
+      if (searchParams.get('run') === '1') {
+        void runCheck(job.gpxContent, { permitNumber: job.permitNumber, vehicle: job.vehicle })
+      } else {
+        setStep('vehicle')
+      }
+      return
+    }
+
     const permitId = searchParams.get('permit')
     if (!permitId || loadedPermit.current === permitId) return
     loadedPermit.current = permitId
@@ -194,7 +251,7 @@ export default function RouteIntelligencePolished() {
         setError(err instanceof Error ? err.message : 'Failed to load test permit')
       }
     })()
-  }, [searchParams])
+  }, [getJob, prefs.intervalMinutes, searchParams])
 
   const resetFlow = () => {
     setStep('import')
@@ -203,6 +260,44 @@ export default function RouteIntelligencePolished() {
     setGpxContent('')
     setError('')
     setPermitNumber('')
+    setShowSaveJob(false)
+    loadedJob.current = null
+  }
+
+  const handleSaveJob = () => {
+    if (!gpxContent) return
+    const name = jobName.trim() || defaultJobName(routeFile, result?.route.origin, result?.route.destination, permitNumber)
+    const saved = saveJob({
+      name,
+      permitNumber,
+      routeFileName: routeFile || name,
+      gpxContent,
+      origin: result?.route.origin || '',
+      destination: result?.route.destination || '',
+      corridor: result?.route.corridor || '',
+      vehicle,
+      plannedDeparture: fromLocalInput(plannedDeparture),
+      monitorIntervalMinutes: jobInterval || prefs.intervalMinutes,
+      lastCheckedAt: new Date().toISOString(),
+      lastVerdict: result?.verdict,
+      lastSummary: result?.summary,
+      lastRetrievedAt: result?.retrievedAt,
+      lastSource: result?.source,
+      monitoringStoppedReason: null,
+    }, loadedJob.current || undefined)
+    loadedJob.current = saved.id
+    setShowSaveJob(false)
+    setToast('Job saved in this browser only.')
+  }
+
+  const exportCurrent = (format: 'pdf' | 'csv') => {
+    if (!result) return
+    downloadSnapshot(snapshotFromResult(result, {
+      permitNumber,
+      permitName: routeFile || permitNumber,
+      vehicle,
+      runAt: result.retrievedAt,
+    }), format)
   }
 
   const VerdictIcon = result?.verdict === 'READY' ? CheckCircle2 
@@ -424,15 +519,15 @@ export default function RouteIntelligencePolished() {
 
             {vehicleProfile === 'custom' ? (
               <div className="dimensions-grid">
-                {[
-                  ['Width', 'm', vehicleWidth, setVehicleWidth],
-                  ['Height', 'm', vehicleHeight, setVehicleHeight],
-                  ['Length', 'm', vehicleLength, setVehicleLength],
-                  ['Gross weight', 't', vehicleWeight, setVehicleWeight],
-                ].map(([label, unit, value, setValue], idx) => (
-                  <div className="form-group" key={idx}>
+                {([
+                  { label: 'Width', unit: 'm', value: vehicleWidth, setValue: setVehicleWidth },
+                  { label: 'Height', unit: 'm', value: vehicleHeight, setValue: setVehicleHeight },
+                  { label: 'Length', unit: 'm', value: vehicleLength, setValue: setVehicleLength },
+                  { label: 'Gross weight', unit: 't', value: vehicleWeight, setValue: setVehicleWeight },
+                ]).map(field => (
+                  <div className="form-group" key={field.label}>
                     <label>
-                      <span>{label}</span>
+                      <span>{field.label}</span>
                       <div className="input-with-unit">
                         <input
                           type="number"
@@ -440,11 +535,11 @@ export default function RouteIntelligencePolished() {
                           pattern="[0-9]*[.,]?[0-9]*"
                           min="0"
                           step="0.1"
-                          value={value as string}
-                          onChange={e => (setValue as (v: string) => void)(e.target.value)}
-                          aria-label={`${label} in ${unit}`}
+                          value={field.value}
+                          onChange={e => field.setValue(e.target.value)}
+                          aria-label={`${field.label} in ${field.unit}`}
                         />
-                        <span className="unit">{unit}</span>
+                        <span className="unit">{field.unit}</span>
                       </div>
                     </label>
                   </div>
@@ -458,6 +553,19 @@ export default function RouteIntelligencePolished() {
                 <div><span>Gross weight</span><strong>{vehicleWeight} t</strong></div>
               </div>
             )}
+
+            <div className="form-group">
+              <label htmlFor="planned-departure">
+                <span>Planned departure</span>
+                <input
+                  id="planned-departure"
+                  type="datetime-local"
+                  value={plannedDeparture}
+                  onChange={event => setPlannedDeparture(event.target.value)}
+                />
+              </label>
+              <p className="storage-note">Used if you save this as a job. Monitoring only runs while the tab is open and stops after this time.</p>
+            </div>
 
             <div className="form-actions">
               <button type="button" className="btn-secondary" onClick={resetFlow}>
@@ -507,6 +615,51 @@ export default function RouteIntelligencePolished() {
                 Check another route
               </button>
             </div>
+
+            <div className="result-actions">
+              <button type="button" className="btn-primary" onClick={() => setShowSaveJob(true)}>
+                <Briefcase size={16} /> Save as job
+              </button>
+              <button type="button" className="btn-secondary" onClick={() => exportCurrent('pdf')}>
+                <Download size={16} /> Export PDF
+              </button>
+              <button type="button" className="btn-secondary" onClick={() => exportCurrent('csv')}>
+                <Download size={16} /> Export CSV
+              </button>
+            </div>
+
+            {showSaveJob && (
+              <div className="job-save-card" data-testid="save-job-form">
+                <h3>Save as job</h3>
+                <p>Stores the route file, permit number, vehicle dimensions, and planned departure in this browser only.</p>
+                <label>
+                  <span>Job name</span>
+                  <input value={jobName} onChange={event => setJobName(event.target.value)} />
+                </label>
+                <label>
+                  <span>Permit number</span>
+                  <input value={permitNumber} onChange={event => setPermitNumber(event.target.value)} />
+                </label>
+                <label>
+                  <span>Planned departure</span>
+                  <input type="datetime-local" value={plannedDeparture} onChange={event => setPlannedDeparture(event.target.value)} />
+                </label>
+                <label>
+                  <span>Re-check every</span>
+                  <select value={jobInterval} onChange={event => setJobInterval(Number(event.target.value))}>
+                    {MONITOR_INTERVAL_OPTIONS.map(minutes => (
+                      <option key={minutes} value={minutes}>{minutes} minutes</option>
+                    ))}
+                  </select>
+                </label>
+                <p className="storage-note">Monitoring runs only while this tab is open. It stops after departure. Browser notifications need an explicit Allow click.</p>
+                <div className="form-actions">
+                  <button type="button" className="btn-secondary" onClick={() => setShowSaveJob(false)}>Cancel</button>
+                  <button type="button" className="btn-secondary" onClick={() => void requestNotifications()}>Allow notifications</button>
+                  <button type="button" className="btn-primary" onClick={handleSaveJob}>Save job</button>
+                </div>
+              </div>
+            )}
 
             {/* Critical Disclaimer */}
             <div className="verdict-disclaimer">

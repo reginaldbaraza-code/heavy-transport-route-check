@@ -9,7 +9,7 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 setWorkerUrl(workerUrl);
 import { Link } from 'react-router-dom'
 import {
-  AlertTriangle, ArrowRight, ChevronDown, Clock3,
+  AlertTriangle, ArrowRight, ChevronDown, CircleParking, Clock3,
   Construction, Layers3, LocateFixed, Map as MapIcon, Maximize2,
   Radio, RefreshCw, Route, Search, XCircle
 } from 'lucide-react'
@@ -25,12 +25,15 @@ const layerOptions = [
   { id: 'roadworks', label: 'Road condition signals', icon: Construction, color: '#f59e0b' },
   { id: 'warnings', label: 'Safety signals', icon: AlertTriangle, color: '#ef4444' },
   { id: 'closures', label: 'Restrictions', icon: XCircle, color: '#334155' },
+  { id: 'parking', label: 'Lorry parking', icon: CircleParking, color: '#6366f1' },
 ] as const
 
-const eventMeta = {
+const eventMeta: Record<OperationalEventType, { label: string; short: string; color: string; icon: typeof Construction }> = {
   roadworks: { label: 'Roadwork', short: 'R', color: '#f59e0b', icon: Construction },
   warnings: { label: 'Warning', short: '!', color: '#ef4444', icon: AlertTriangle },
   closures: { label: 'Closure', short: '×', color: '#334155', icon: XCircle },
+  parking: { label: 'Parking', short: 'P', color: '#6366f1', icon: CircleParking },
+  webcams: { label: 'Webcam', short: 'C', color: '#0ea5e9', icon: Construction },
 }
 
 const formatBerlinTime = (date: Date) => new Intl.DateTimeFormat('de-DE', {
@@ -91,6 +94,7 @@ export default function LiveMap() {
           confidence: e.confidence === 'high' ? 90 : 70,
           source: data.source,
           dataCategory: 'operational',
+          marketQuery: 'roadworks',
         })),
         ...data.closures.map((e: any) => ({
           id: e.id,
@@ -104,6 +108,7 @@ export default function LiveMap() {
           confidence: 95,
           source: data.source,
           dataCategory: 'operational',
+          marketQuery: 'closures',
         })),
         ...data.warnings.map((e: any) => ({
           id: e.id,
@@ -117,6 +122,21 @@ export default function LiveMap() {
           confidence: e.confidence === 'high' ? 85 : 65,
           source: data.source,
           dataCategory: 'operational',
+          marketQuery: 'warnings',
+        })),
+        ...(data.parking || []).map((e: any) => ({
+          id: e.id,
+          type: 'parking' as const,
+          title: e.title,
+          detail: e.description,
+          road: extractRoad(`${e.title} ${e.description}`) || 'Unknown',
+          lat: e.lat,
+          lng: e.lng,
+          updated: e.age || [e.startTimestamp ? `Started ${formatBerlinDateTime(e.startTimestamp)}` : 'Start not published', e.retrievedAt ? `Retrieved ${formatBerlinDateTime(e.retrievedAt)}` : ''].filter(Boolean).join(' · '),
+          confidence: 70,
+          source: data.source,
+          dataCategory: 'parking',
+          marketQuery: 'lorry parking',
         })),
       ]
       
@@ -299,8 +319,8 @@ export default function LiveMap() {
         const clusterId = features[0]?.properties?.cluster_id
         if (clusterId) {
           const source = map.getSource('events') as maplibregl.GeoJSONSource
-          source.getClusterExpansionZoom(clusterId, (err, zoom) => {
-            if (err || !features[0].geometry || features[0].geometry.type !== 'Point') return
+          void source.getClusterExpansionZoom(clusterId).then(zoom => {
+            if (!features[0].geometry || features[0].geometry.type !== 'Point') return
             map.easeTo({
               center: features[0].geometry.coordinates as [number, number],
               zoom: zoom || 10,

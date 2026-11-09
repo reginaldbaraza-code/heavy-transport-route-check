@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import {
   Home, Settings, Map, DatabaseZap, Route, ShieldAlert,
   Bell, Search, ChevronDown, Activity, X, Menu,
-  HelpCircle
+  HelpCircle, Briefcase
 } from 'lucide-react'
 import MdsLogo from './MdsLogo'
 import MobileTabBar from './MobileTabBar'
@@ -14,6 +14,7 @@ import { formatBerlinDateTime, orgInitials } from '../lib/formatTime'
 const navItems = [
   { path: '/', label: 'Overview', icon: Home, exact: true },
   { path: '/route-checks', label: 'Route checks', icon: Route },
+  { path: '/jobs', label: 'Jobs', icon: Briefcase },
   { path: '/map-explorer', label: 'Corridor monitor', icon: Map },
   { path: '/activity', label: 'Alerts & history', icon: ShieldAlert },
 ]
@@ -32,11 +33,11 @@ export default function Layout() {
   const { displayName, orgTypeLabel } = useOrgSettings()
   const notifications = alerts.slice(0, 4).map(alert => ({
     id: alert.id,
-    title: alert.change,
+    title: alert.escalated ? `Escalated · ${alert.change}` : alert.change,
     desc: `${alert.routeLabel} · ${alert.source} · ${alert.detail}`,
     time: formatBerlinDateTime(alert.runAt) || alert.time,
-    color: alert.severity === 'HOLD' ? 'bg-red-500' : alert.severity === 'VERIFY' ? 'bg-amber-500' : 'bg-green-500',
-    link: '/activity',
+    color: alert.escalated || alert.severity === 'HOLD' ? 'bg-red-500' : alert.severity === 'VERIFY' ? 'bg-amber-500' : 'bg-green-500',
+    link: alert.jobId ? `/jobs` : '/activity',
   }))
 
   useEffect(() => {

@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import type { RouteEvidence, RouteVerdict } from '../data/routeChecks'
 import { readJson, STORAGE_KEYS, writeJson } from '../lib/browserStore'
+import type { VehicleDims } from '../lib/jobs'
 
 export type AlertStatus = 'New' | 'Acknowledged' | 'Resolved'
 
@@ -15,6 +16,14 @@ export type CheckHistoryRecord = {
   source: string
   summary: string
   degraded?: boolean
+  permitNumber?: string
+  vehicle?: VehicleDims | null
+  title?: string
+  impact?: string
+  confidence?: string
+  evidence?: RouteEvidence[]
+  confirmOnSite?: string[]
+  jobId?: string
 }
 
 export type MonitoringAlert = {
@@ -28,6 +37,12 @@ export type MonitoringAlert = {
   severity: RouteVerdict
   status: AlertStatus
   source: string
+  jobId?: string
+  previousVerdict?: RouteVerdict
+  nextVerdict?: RouteVerdict
+  escalated?: boolean
+  escalatedAt?: string
+  kind?: 'check' | 'verdict-change'
 }
 
 export type OnSiteOutcome = 'Open' | 'Closed' | 'Partly'
@@ -49,16 +64,33 @@ function alertsFromHistory(history: CheckHistoryRecord[], alertState: AlertState
         id: record.id,
         time: record.runAt,
         runAt: record.runAt,
-        routeId: record.id,
+        routeId: record.jobId || record.id,
         routeLabel: record.routeLabel || record.permitName,
         change: `Route check: ${record.verdict}`,
         detail: `${record.summary} · ${record.evidenceCount} evidence item${record.evidenceCount === 1 ? '' : 's'}.`,
         severity: record.verdict,
-        status: resolved ? 'Resolved' : read ? 'Acknowledged' : 'New',
+        status: (resolved ? 'Resolved' : read ? 'Acknowledged' : 'New') as AlertStatus,
         source: record.source || 'Autobahn GmbH',
+        jobId: record.jobId,
+        kind: 'check' as const,
       }
     })
 }
+
+function mergeAlerts(historyAlerts: MonitoringAlert[], extra: MonitoringAlert[], alertState: AlertState): MonitoringAlert[] {
+  const applied = extra.map(alert => {
+    const resolved = alertState.resolvedIds.includes(alert.id) || alert.status === 'Resolved'
+    const read = resolved || alertState.readIds.includes(alert.id) || alert.status === 'Acknowledged'
+    return {
+      ...alert,
+      status: (resolved ? 'Resolved' : read ? 'Acknowledged' : 'New') as AlertStatus,
+    }
+  })
+  const extraIds = new Set(applied.map(alert => alert.id))
+  return [...applied, ...historyAlerts.filter(alert => !extraIds.has(alert.id))]
+}
+
+export type NewAlertInput = Omit<MonitoringAlert, 'id' | 'time'> & { id?: string }
 
 type RouteMonitoringValue = {
   history: CheckHistoryRecord[]
@@ -67,7 +99,9 @@ type RouteMonitoringValue = {
   disruptions: Record<string, boolean>
   onSiteReports: Record<string, RouteEvidence[]>
   onSiteOutcomes: Record<string, OnSiteOutcome | undefined>
-  recordCheck: (record: Omit<CheckHistoryRecord, 'id'>) => CheckHistoryRecord
+  recordCheck: (record: Omit<CheckHistoryRecord, 'id'> & { id?: string }) => CheckHistoryRecord
+  addAlert: (alert: NewAlertInput) => MonitoringAlert
+  markAlertEscalated: (id: string) => void
   acknowledgeAlert: (id: string) => void
   resolveAlert: (id: string) => void
   simulateNewDisruption: (routeId: string) => void
@@ -84,6 +118,9 @@ export function RouteMonitoringProvider({ children }: { children: ReactNode }) {
   const [alertState, setAlertState] = useState<AlertState>(() => (
     typeof window === 'undefined' ? emptyAlertState : readJson<AlertState>(STORAGE_KEYS.alertState, emptyAlertState)
   ))
+  const [extraAlerts, setExtraAlerts] = useState<MonitoringAlert[]>(() => (
+    typeof window === 'undefined' ? [] : readJson<MonitoringAlert[]>(STORAGE_KEYS.extraAlerts, [])
+  ))
   const [disruptions, setDisruptions] = useState<Record<string, boolean>>({})
   const [onSiteReports, setOnSiteReports] = useState<Record<string, RouteEvidence[]>>({})
   const [onSiteOutcomes, setOnSiteOutcomes] = useState<Record<string, OnSiteOutcome | undefined>>({})
@@ -91,14 +128,37 @@ export function RouteMonitoringProvider({ children }: { children: ReactNode }) {
   const recordCheck = useCallback<RouteMonitoringValue['recordCheck']>(record => {
     const saved: CheckHistoryRecord = {
       ...record,
-      id: `check-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      id: record.id || `check-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     }
     setHistory(current => {
-      const next = [saved, ...current].slice(0, 100)
+      const next = [saved, ...current.filter(item => item.id !== saved.id)].slice(0, 100)
       writeJson(STORAGE_KEYS.checkHistory, next)
       return next
     })
     return saved
+  }, [])
+
+  const addAlert = useCallback<RouteMonitoringValue['addAlert']>(alert => {
+    const saved: MonitoringAlert = {
+      ...alert,
+      id: alert.id || `alert-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      time: alert.runAt,
+    }
+    setExtraAlerts(current => {
+      const next = [saved, ...current.filter(item => item.id !== saved.id)].slice(0, 100)
+      writeJson(STORAGE_KEYS.extraAlerts, next)
+      return next
+    })
+    return saved
+  }, [])
+
+  const markAlertEscalated = useCallback((id: string) => {
+    const at = new Date().toISOString()
+    setExtraAlerts(current => {
+      const next = current.map(alert => alert.id === id ? { ...alert, escalated: true, escalatedAt: alert.escalatedAt || at } : alert)
+      writeJson(STORAGE_KEYS.extraAlerts, next)
+      return next
+    })
   }, [])
 
   const acknowledgeAlert = useCallback((id: string) => {
@@ -106,6 +166,11 @@ export function RouteMonitoringProvider({ children }: { children: ReactNode }) {
       if (current.readIds.includes(id) || current.resolvedIds.includes(id)) return current
       const next = { ...current, readIds: [...current.readIds, id] }
       writeJson(STORAGE_KEYS.alertState, next)
+      return next
+    })
+    setExtraAlerts(current => {
+      const next = current.map(alert => alert.id === id && alert.status === 'New' ? { ...alert, status: 'Acknowledged' as const } : alert)
+      writeJson(STORAGE_KEYS.extraAlerts, next)
       return next
     })
   }, [])
@@ -117,6 +182,11 @@ export function RouteMonitoringProvider({ children }: { children: ReactNode }) {
         resolvedIds: current.resolvedIds.includes(id) ? current.resolvedIds : [...current.resolvedIds, id],
       }
       writeJson(STORAGE_KEYS.alertState, next)
+      return next
+    })
+    setExtraAlerts(current => {
+      const next = current.map(alert => alert.id === id ? { ...alert, status: 'Resolved' as const } : alert)
+      writeJson(STORAGE_KEYS.extraAlerts, next)
       return next
     })
   }, [])
@@ -148,7 +218,10 @@ export function RouteMonitoringProvider({ children }: { children: ReactNode }) {
     setOnSiteOutcomes(current => ({ ...current, [routeId]: outcome }))
   }
 
-  const alerts = useMemo(() => alertsFromHistory(history, alertState), [alertState, history])
+  const alerts = useMemo(
+    () => mergeAlerts(alertsFromHistory(history, alertState), extraAlerts, alertState),
+    [alertState, extraAlerts, history],
+  )
 
   const value = useMemo<RouteMonitoringValue>(() => ({
     history,
@@ -158,12 +231,14 @@ export function RouteMonitoringProvider({ children }: { children: ReactNode }) {
     onSiteReports,
     onSiteOutcomes,
     recordCheck,
+    addAlert,
+    markAlertEscalated,
     acknowledgeAlert,
     resolveAlert,
     simulateNewDisruption,
     clearDisruption,
     addOnSiteReport,
-  }), [acknowledgeAlert, alerts, disruptions, history, onSiteOutcomes, onSiteReports, recordCheck, resolveAlert])
+  }), [acknowledgeAlert, addAlert, alerts, disruptions, history, markAlertEscalated, onSiteOutcomes, onSiteReports, recordCheck, resolveAlert])
 
   return <RouteMonitoringContext.Provider value={value}>{children}</RouteMonitoringContext.Provider>
 }

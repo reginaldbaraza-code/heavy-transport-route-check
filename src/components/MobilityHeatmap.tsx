@@ -275,7 +275,6 @@ export default function MobilityHeatmap({
         fillColor: color,
         fillOpacity: 1,
         interactive: interactivePoints,
-        keyboard: interactivePoints,
       })
         .bindTooltip(`<strong>${point.label}</strong><br>${point.value}`, { direction: 'top', offset: [0, -6] })
         .on('click', () => onPointSelect?.(point.id))

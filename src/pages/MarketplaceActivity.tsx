@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  AlertTriangle, BellRing, CheckCircle2, ChevronRight, CircleX, History, Route,
+  AlertTriangle, BellRing, CheckCircle2, ChevronRight, CircleX, Download, History, Route,
 } from 'lucide-react'
 import { MarketplacePageHeader } from '../components/MarketplaceUI'
 import { useRouteMonitoring } from '../context/RouteMonitoringContext'
 import { formatBerlinDateTime } from '../lib/formatTime'
+import { downloadSnapshot, snapshotFromHistory } from '../lib/exportCheck'
 
 const filters = ['All', 'Hold', 'Verify', 'Resolved'] as const
 
@@ -75,6 +76,7 @@ export default function MarketplaceActivity() {
                   <p>{alert.detail}</p>
                 </div>
                 <span className={`alert-status ${alert.status.toLowerCase()}`}>{alert.status}</span>
+                {alert.escalated && <span className="alert-status escalated">Escalated</span>}
                 <ChevronRight size={18} />
               </button>
               {alert.status !== 'Resolved' && (
@@ -114,6 +116,14 @@ export default function MarketplaceActivity() {
                 <span className={`alert-status ${record.verdict.toLowerCase()}`}>{record.verdict}</span>
                 <ChevronRight size={18} />
               </button>
+              <div className="history-export-actions">
+                <button type="button" className="resolve-alert" onClick={() => downloadSnapshot(snapshotFromHistory(record), 'pdf')}>
+                  <Download size={14} /> PDF
+                </button>
+                <button type="button" className="resolve-alert" onClick={() => downloadSnapshot(snapshotFromHistory(record), 'csv')}>
+                  <Download size={14} /> CSV
+                </button>
+              </div>
             </article>
           )
         })}

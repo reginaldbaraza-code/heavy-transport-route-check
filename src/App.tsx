@@ -30,8 +30,10 @@ import { MarketplaceProvider } from './context/MarketplaceContext'
 import CompareOffers from './pages/CompareOffers'
 import AppErrorBoundary from './components/AppErrorBoundary'
 import { RouteMonitoringProvider } from './context/RouteMonitoringContext'
+import { JobsProvider } from './context/JobsContext'
 import { OrgSettingsProvider } from './context/OrgSettingsContext'
 import DataPartners from './pages/DataPartners'
+import SavedJobs from './pages/SavedJobs'
 
 export default function App() {
   return (
@@ -39,10 +41,12 @@ export default function App() {
       <MarketplaceProvider>
         <OrgSettingsProvider>
         <RouteMonitoringProvider>
+        <JobsProvider>
           <BrowserRouter>
           <Routes>
           <Route path="/" element={<Layout />}>
           <Route index element={<MarketplaceOverview />} />
+          <Route path="jobs" element={<SavedJobs />} />
           <Route path="discover" element={<DiscoverData />} />
           <Route path="discover/:offerId" element={<OfferDetail />} />
           <Route path="providers/:providerId" element={<ProviderProfile />} />
@@ -83,6 +87,7 @@ export default function App() {
           </Route>
           </Routes>
           </BrowserRouter>
+        </JobsProvider>
         </RouteMonitoringProvider>
         </OrgSettingsProvider>
       </MarketplaceProvider>

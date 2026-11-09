@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { Feature, MultiPolygon, Polygon } from 'geojson';
 import * as turf from '@turf/turf';
-import xml2js from 'xml2js';
+import * as xml2js from 'xml2js';
 import {
   descriptionFromAutobahnItem,
   eventFreshness,
@@ -123,14 +124,17 @@ async function parseGPX(gpxContent: string): Promise<GPXPoint[]> {
   }
 }
 
-function createRouteCorridor(points: GPXPoint[], bufferKm: number = 5): turf.Feature<turf.Polygon | turf.MultiPolygon> {
+function createRouteCorridor(points: GPXPoint[], bufferKm: number = 5): Feature<Polygon | MultiPolygon> {
   const line = turf.lineString(points.map(p => [p.lng, p.lat]));
   const buffered = turf.buffer(line, bufferKm, { units: 'kilometers' });
-  return buffered;
+  if (!buffered) {
+    throw new Error('Unable to build a corridor from the GPX track');
+  }
+  return buffered as Feature<Polygon | MultiPolygon>;
 }
 
 function checkIntersection(
-  corridor: turf.Feature<turf.Polygon | turf.MultiPolygon>,
+  corridor: Feature<Polygon | MultiPolygon>,
   eventLat: number,
   eventLng: number
 ): boolean {
@@ -225,7 +229,10 @@ function checkVehicleAgainstEvent(
   return { exceeds: false };
 }
 
-async function fetchRoadEvents(road: string, type: 'roadworks' | 'closure' | 'warning'): Promise<any[]> {
+async function fetchRoadEvents(
+  road: string,
+  type: 'roadworks' | 'closure' | 'warning' | 'parking_lorry',
+): Promise<any[]> {
   try {
     const response = await fetch(
       `https://verkehr.autobahn.de/o/autobahn/${road}/services/${type}`,
@@ -238,7 +245,10 @@ async function fetchRoadEvents(road: string, type: 'roadworks' | 'closure' | 'wa
     if (!response.ok) return [];
     
     const data = await response.json();
-    const key = type === 'roadworks' ? 'roadworks' : type === 'closure' ? 'closure' : 'warning';
+    const key = type === 'roadworks' ? 'roadworks'
+      : type === 'closure' ? 'closure'
+      : type === 'warning' ? 'warning'
+      : 'parking_lorry';
     return data[key] || [];
   } catch (error) {
     console.error(`Error fetching ${type} for ${road}:`, error);
@@ -289,13 +299,14 @@ async function fetchAutobahnEventsForRoute(roads: string[], retrievedAt: string)
   try {
     const allEvents = await Promise.all(
       roads.map(async (road) => {
-        const [roadworks, closures, warnings] = await Promise.all([
+        const [roadworks, closures, warnings, parking] = await Promise.all([
           fetchRoadEvents(road, 'roadworks'),
           fetchRoadEvents(road, 'closure'),
           fetchRoadEvents(road, 'warning'),
+          fetchRoadEvents(road, 'parking_lorry'),
         ]);
         
-        return { road, roadworks, closures, warnings };
+        return { road, roadworks, closures, warnings, parking };
       })
     );
     
@@ -329,10 +340,21 @@ async function fetchAutobahnEventsForRoute(roads: string[], retrievedAt: string)
       }))
     ).filter(isUsableEvent);
 
+    const processedParking = allEvents.flatMap(({ parking }) =>
+      parking.map((item: any) => ({
+        ...processAutobahnItem(item, 'Lorry parking', 'HGV parking on this Autobahn', retrievedAt),
+        type: 'parking' as const,
+        severity: String(item.isBlocked) === 'true' ? 'warning' as const : 'info' as const,
+        isBlocked: String(item.isBlocked) === 'true',
+        subtitle: Array.isArray(item.subtitle) ? item.subtitle.join(' ') : String(item.subtitle || ''),
+      }))
+    ).filter(isUsableEvent);
+
     return {
       roadworks: processedRoadworks,
       closures: processedClosures,
       warnings: processedWarnings,
+      parking: processedParking,
       source: 'Autobahn GmbH (verkehr.autobahn.de)',
       roads: roads.join(', '),
       retrievedAt,
@@ -513,6 +535,23 @@ export default async function handler(
             lng: event.lng,
           });
         }
+      }
+
+      const parkingOnCorridor = (autobahnData.parking || []).filter((event: { lat: number; lng: number }) =>
+        checkIntersection(corridor, event.lat, event.lng)
+      );
+      for (const event of parkingOnCorridor.slice(0, 5)) {
+        evidence.push({
+          id: event.id,
+          title: event.isBlocked ? 'Lorry parking blocked on corridor' : `Lorry parking · ${event.subtitle || event.title}`,
+          detail: event.description || 'HGV parking site on the permitted Autobahn corridor. Informational only — does not change HOLD/VERIFY.',
+          source: `Autobahn GmbH parking_lorry · ${autobahnData.roads}`,
+          ...timestampFields({ ...event, confidence: 'medium' }),
+          state: event.isBlocked ? 'warning' : 'clear',
+          category: 'observations',
+          lat: event.lat,
+          lng: event.lng,
+        });
       }
     }
 
