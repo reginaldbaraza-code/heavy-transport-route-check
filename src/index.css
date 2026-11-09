@@ -231,6 +231,50 @@ button, a, input, select, textarea {
 .demo-controls { position: fixed; z-index: 900; right: 18px; bottom: 18px; width: 310px; overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: rgba(255,255,255,.97); box-shadow: var(--shadow-xl); backdrop-filter: blur(16px); }.demo-controls-trigger { width: 100%; min-height: 56px; padding: 8px 12px; display: flex; align-items: center; gap: 9px; color: var(--accent); text-align: left; }.demo-controls-trigger > span { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }.demo-controls-trigger strong { color: var(--text-primary); font-size: 14px; }.demo-controls-trigger small { color: var(--text-tertiary); font-size: 14px; }.demo-controls-trigger > svg:last-child { color: var(--text-tertiary); transition: transform 120ms; transform: rotate(180deg); }.demo-controls.open .demo-controls-trigger > svg:last-child { transform: rotate(0); }.demo-controls-body { padding: 10px; border-top: 1px solid var(--divider); }.demo-controls-body > p { margin-bottom: 7px; color: var(--text-tertiary); font-size: 14px !important; font-weight: 700; text-transform: uppercase; }.demo-controls-body > label { min-height: 58px; padding: 8px; display: flex; align-items: center; gap: 8px; border-radius: 8px; }.demo-controls-body > label:hover { background: var(--bg-base); }.demo-controls-body label > span { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }.demo-controls-body label strong { color: var(--text-primary); font-size: 14px; }.demo-controls-body label small { color: var(--text-tertiary); font-size: 14px; }.demo-controls-body input { width: 18px; height: 18px; flex: none; accent-color: var(--accent); }.demo-reset { width: 100%; min-height: 40px; margin-top: 6px; border-radius: 7px; background: var(--bg-base); color: var(--red-text); font-size: 14px; font-weight: 700; }
 
 /* Heavy transport operations overview */
+.example-data-panel { margin-top: 8px; }
+.example-data-banner {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid #fde68a;
+  border-radius: var(--r-lg);
+  background: var(--amber-bg);
+}
+.example-data-banner-copy { min-width: 0; display: flex; align-items: flex-start; gap: 10px; }
+.example-data-badge {
+  flex: none;
+  padding: 4px 8px;
+  border-radius: 99px;
+  background: #b45309;
+  color: white;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.example-data-banner p { margin: 0; color: var(--text-secondary); font-size: 14px; line-height: 1.4; }
+.sample-mode-toggle { display: flex; flex: none; padding: 3px; border-radius: 10px; background: white; border: 1px solid var(--border); }
+.sample-mode-toggle button { min-height: 34px; padding: 0 12px; border-radius: 8px; color: var(--text-secondary); font-size: 14px; font-weight: 700; }
+.sample-mode-toggle button.active { background: var(--navy); color: white; }
+.saved-checks-section { margin-bottom: 18px; }
+.saved-checks-empty { margin-bottom: 18px; }
+.storage-note { margin: 10px 0 0; color: var(--text-tertiary); font-size: 13px; line-height: 1.4; }
+.activity-storage-note, .settings-storage-note { margin: 0 0 16px; }
+.transport-empty-state { margin-bottom: 18px; }
+.empty-state-card { padding: 28px 22px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; border: 1px dashed var(--border-strong); border-radius: var(--r-lg); background: var(--bg-card); }
+.empty-state-card h2 { font-size: 18px; letter-spacing: -.02em; }
+.empty-state-card p { max-width: 520px; color: var(--text-secondary); font-size: 14px; line-height: 1.45; }
+.setup-pill { padding: 5px 8px; display: inline-flex; align-items: center; flex: none; border-radius: 99px; background: var(--amber-bg); color: var(--amber-text); font-size: 14px; font-weight: 700; }
+.setup-pill.complete { background: var(--green-bg); color: var(--green-text); }
+.settings-org-mark small.status-incomplete { color: var(--amber-text) !important; }
+.settings-org-mark small.status-complete { color: var(--green-text); }
+.check-history-log { margin-top: 18px; }
+.evidence-meta { flex-wrap: wrap; }
+.evidence-long-running { padding: 2px 6px; border-radius: 99px; background: var(--amber-bg); color: var(--amber-text); font-size: 12px; font-weight: 700; }
+.transport-source-list b { background: var(--amber-bg) !important; color: var(--amber-text) !important; }
 .transport-readiness { display: grid; grid-template-columns: 44% 56%; overflow: hidden; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--bg-card); box-shadow: var(--shadow-md); }.transport-readiness-copy { padding: 22px; }.transport-route-heading { display: flex; align-items: flex-start; gap: 10px; }.transport-route-heading h2 { margin-top: 4px; display: flex; align-items: center; gap: 6px; font-size: 16px; letter-spacing: -.02em; }.transport-icon { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 9px; background: var(--navy); color: white; }
 .transport-status { width: fit-content; margin-top: 17px; padding: 8px 10px; display: flex; align-items: center; gap: 7px; border-radius: 8px; }.transport-status.ready { background: var(--green-bg); color: var(--green-text); }.transport-status.hold { background: var(--red-bg); color: var(--red-text); }.transport-status.verify { background: var(--amber-bg); color: var(--amber-text); }.transport-status div { display: flex; flex-direction: column; gap: 1px; }.transport-status strong { font-size: 14px; }.transport-status span { color: var(--text-secondary); font-size: 14px; }
 .transport-facts { margin: 16px 0; display: grid; grid-template-columns: repeat(3, 1fr); overflow: hidden; border: 1px solid var(--divider); border-radius: 9px; }.transport-facts div { padding: 9px; }.transport-facts div + div { border-left: 1px solid var(--divider); }.transport-facts span, .transport-facts strong { display: block; }.transport-facts span { color: var(--text-tertiary); font-size: 14px; }.transport-facts strong { margin-top: 3px; font-size: 14px; }
@@ -251,6 +295,7 @@ button, a, input, select, textarea {
   .home-intelligence-card, .connector-coverage-card { grid-template-columns: 1fr; }.home-intelligence-map { min-height: 220px; }.connector-coverage-map { border-left: 0; border-top: 1px solid var(--divider); }
   .intelligence-modes { display: none; }
   .transport-readiness { grid-template-columns: 1fr; }.transport-readiness-map { min-height: 260px; border-left: 0; border-top: 1px solid var(--divider); }
+  .example-data-banner { align-items: stretch; flex-direction: column; }
 }
 
 /* Detailed live operations map */
@@ -2274,6 +2319,7 @@ h4 { font-size: 18px !important; line-height: 1.35 !important; }
 .evidence-meta {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
   font-size: 13px;
   color: var(--text-secondary);

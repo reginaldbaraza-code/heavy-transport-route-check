@@ -4,14 +4,14 @@ import { ChevronDown, Plus, Info, X, ExternalLink } from 'lucide-react'
 import { Toast } from '../components/Feedback'
 
 const connectors = [
-  { id: 'MDSLCN3QM1.C557VGC', name: 'Code Team 3.2', host: 'RheinLift Logistics', type: 'OWN', online: false, frontendUrl: '/connector/dashboard' },
-  { id: 'MDSLCN3QM1.C6444W1', name: 'Code team', host: 'RheinLift Logistics', type: 'OWN', online: false, frontendUrl: '/connector/dashboard' },
-  { id: 'MDSLCN3QM1.CCC7JBY', name: 'm-10_group-6', host: 'RheinLift Logistics', type: 'OWN', online: true, frontendUrl: '/connector/dashboard' },
-  { id: 'MDSLCN3QM1.CDK69LF', name: 'Code team on-prem', host: 'RheinLift Logistics', type: 'OWN', online: true, frontendUrl: '/connector/dashboard' },
+  { id: 'MDSLCN3QM1.C557VGC', name: 'Code Team 3.2', host: 'Your organisation', type: 'OWN', online: false, frontendUrl: '/connector/dashboard' },
+  { id: 'MDSLCN3QM1.C6444W1', name: 'Code team', host: 'Your organisation', type: 'OWN', online: false, frontendUrl: '/connector/dashboard' },
+  { id: 'MDSLCN3QM1.CCC7JBY', name: 'm-10_group-6', host: 'Your organisation', type: 'OWN', online: true, frontendUrl: '/connector/dashboard' },
+  { id: 'MDSLCN3QM1.CDK69LF', name: 'Code team on-prem', host: 'Your organisation', type: 'OWN', online: true, frontendUrl: '/connector/dashboard' },
   { id: 'MDSLCN3QM1.CFD4PQB', name: 'CODE Team 5', host: 'Think-iT GmbH', type: 'CAAS', online: true, frontendUrl: '/connector/dashboard' },
-  { id: 'MDSLCN3QM1.CQEFJU5', name: 'CODE Team 2 — MDS On-Prem Test', host: 'RheinLift Logistics', type: 'OWN', online: false, frontendUrl: '/connector/dashboard' },
+  { id: 'MDSLCN3QM1.CQEFJU5', name: 'CODE Team 2 — MDS On-Prem Test', host: 'Your organisation', type: 'OWN', online: false, frontendUrl: '/connector/dashboard' },
   { id: 'MDSLCN3QM1.CRJBHJX', name: 'CODE Team 2 — MDS CaaS', host: 'Think-iT GmbH', type: 'CAAS', online: true, frontendUrl: '/connector/dashboard' },
-  { id: 'MDSLCN3QM1.CY11MGY', name: 'CODE Team 3 — MDS Connector', host: 'RheinLift Logistics', type: 'OWN', online: false, frontendUrl: '/connector/dashboard' },
+  { id: 'MDSLCN3QM1.CY11MGY', name: 'CODE Team 3 — MDS Connector', host: 'Your organisation', type: 'OWN', online: false, frontendUrl: '/connector/dashboard' },
 ]
 
 type AddMode = 'caas' | 'onprem' | null
@@ -40,7 +40,7 @@ export default function Connectors() {
     setItems(current => [...current, {
       id: `MDSLCN3QM1.C${String(current.length + 1).padStart(6, '0')}`,
       name: newName.trim(),
-      host: mode === 'caas' ? 'Think-iT GmbH' : 'RheinLift Logistics',
+      host: mode === 'caas' ? 'Think-iT GmbH' : 'Your organisation',
       type: mode === 'caas' ? 'CAAS' : 'OWN',
       online: false,
       frontendUrl: '/connector/dashboard',

@@ -25,7 +25,7 @@ const activity = [
 ]
 
 const members = [
-  'DHL AG', 'RheinLift Logistics', 'Centre for Research and Technology Hellas',
+  'DHL AG', 'Your organisation', 'Centre for Research and Technology Hellas',
 ]
 
 const dot: Record<string, string> = {
@@ -54,7 +54,7 @@ export default function Home() {
           color: 'var(--text-primary)',
           lineHeight: 1.2,
         }}>
-          {greeting}, RheinLift Logistics
+          {greeting}, Your organisation
         </h1>
         <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.5 }}>
           Here's what's happening across your data activity today.

@@ -8,7 +8,8 @@ import {
 import MdsLogo from './MdsLogo'
 import MobileTabBar from './MobileTabBar'
 import { useRouteMonitoring } from '../context/RouteMonitoringContext'
-import { getPermittedRoute } from '../data/routeChecks'
+import { useOrgSettings } from '../context/OrgSettingsContext'
+import { formatBerlinDateTime, orgInitials } from '../lib/formatTime'
 
 const navItems = [
   { path: '/', label: 'Overview', icon: Home, exact: true },
@@ -28,17 +29,15 @@ export default function Layout() {
   const [searchQuery, setSearchQuery] = useState('')
   const navigate = useNavigate()
   const { alerts, unreadCount, acknowledgeAlert } = useRouteMonitoring()
-  const notifications = alerts.slice(0, 4).map(alert => {
-    const route = getPermittedRoute(alert.routeId)
-    return {
-      id: alert.id,
-      title: alert.change,
-      desc: `${route.originShort} → ${route.destinationShort} · ${alert.detail}`,
-      time: alert.time,
-      color: alert.severity === 'HOLD' ? 'bg-red-500' : alert.severity === 'VERIFY' ? 'bg-amber-500' : 'bg-green-500',
-      link: `/route-checks?route=${alert.routeId}`,
-    }
-  })
+  const { displayName, orgTypeLabel } = useOrgSettings()
+  const notifications = alerts.slice(0, 4).map(alert => ({
+    id: alert.id,
+    title: alert.change,
+    desc: `${alert.routeLabel} · ${alert.source} · ${alert.detail}`,
+    time: formatBerlinDateTime(alert.runAt) || alert.time,
+    color: alert.severity === 'HOLD' ? 'bg-red-500' : alert.severity === 'VERIFY' ? 'bg-amber-500' : 'bg-green-500',
+    link: '/activity',
+  }))
 
   useEffect(() => {
     const closeMenus = (event: KeyboardEvent) => {
@@ -339,6 +338,11 @@ export default function Layout() {
                       <X size={15} />
                     </button>
                   </div>
+                  {notifications.length === 0 && (
+                    <div style={{ padding: '16px', fontSize: 14, color: 'var(--text-secondary)' }}>
+                      No alerts yet. Alerts appear after you run a route check in this browser.
+                    </div>
+                  )}
                   {notifications.map((n, i) => (
                     <button
                       key={n.id}
@@ -402,13 +406,13 @@ export default function Layout() {
                 letterSpacing: '-0.01em',
                 flexShrink: 0,
               }}>
-                RL
+                {orgInitials(displayName)}
               </div>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.3, letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
-                  RheinLift Logistics
+                  {displayName}
                 </div>
-                <div style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.2 }}>Heavy-haul operator</div>
+                <div style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.2 }}>{orgTypeLabel}</div>
               </div>
               <ChevronDown size={12} style={{ color: 'var(--text-tertiary)' }} />
             </button>

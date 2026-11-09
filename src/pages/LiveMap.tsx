@@ -19,6 +19,7 @@ import {
 import {
   type OperationalEvent, type OperationalEventType,
 } from '../data/mapOperations'
+import { formatBerlinDateTime } from '../lib/formatTime'
 
 const layerOptions = [
   { id: 'roadworks', label: 'Road condition signals', icon: Construction, color: '#f59e0b' },
@@ -86,7 +87,7 @@ export default function LiveMap() {
           road: extractRoad(e.description) || 'Unknown',
           lat: e.lat,
           lng: e.lng,
-          updated: e.age,
+          updated: e.age || [e.startTimestamp ? `Started ${formatBerlinDateTime(e.startTimestamp)}` : 'Start not published', e.retrievedAt ? `Retrieved ${formatBerlinDateTime(e.retrievedAt)}` : ''].filter(Boolean).join(' · '),
           confidence: e.confidence === 'high' ? 90 : 70,
           source: data.source,
           dataCategory: 'operational',
@@ -99,7 +100,7 @@ export default function LiveMap() {
           road: extractRoad(e.description) || 'Unknown',
           lat: e.lat,
           lng: e.lng,
-          updated: e.age,
+          updated: e.age || [e.startTimestamp ? `Started ${formatBerlinDateTime(e.startTimestamp)}` : 'Start not published', e.retrievedAt ? `Retrieved ${formatBerlinDateTime(e.retrievedAt)}` : ''].filter(Boolean).join(' · '),
           confidence: 95,
           source: data.source,
           dataCategory: 'operational',
@@ -112,7 +113,7 @@ export default function LiveMap() {
           road: extractRoad(e.description) || 'Unknown',
           lat: e.lat,
           lng: e.lng,
-          updated: e.age,
+          updated: e.age || [e.startTimestamp ? `Started ${formatBerlinDateTime(e.startTimestamp)}` : 'Start not published', e.retrievedAt ? `Retrieved ${formatBerlinDateTime(e.retrievedAt)}` : ''].filter(Boolean).join(' · '),
           confidence: e.confidence === 'high' ? 85 : 65,
           source: data.source,
           dataCategory: 'operational',

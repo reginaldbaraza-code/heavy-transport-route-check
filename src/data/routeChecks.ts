@@ -15,9 +15,15 @@ export type RouteEvidence = {
   detail: string
   source: string
   age: string
-  confidence: 'High' | 'Medium'
+  confidence: 'high' | 'medium' | 'High' | 'Medium'
   state: 'clear' | 'warning' | 'danger' | 'conflict'
   category: 'roadworks' | 'closures' | 'observations'
+  lat?: number
+  lng?: number
+  startTimestamp?: string | null
+  endTimestamp?: string | null
+  retrievedAt?: string
+  longRunning?: boolean
 }
 
 export type MapAlert = {

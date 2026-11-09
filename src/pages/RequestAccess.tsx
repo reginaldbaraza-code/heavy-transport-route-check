@@ -177,7 +177,7 @@ export default function RequestAccess() {
             <h2 className="font-bold text-lg text-[var(--foreground)] mb-1">Organization</h2>
             <p className="text-sm text-[var(--muted-foreground)] mb-5">Confirm your organization details that will appear in the contract.</p>
             <div className="bg-[var(--muted)] rounded-xl p-4 space-y-3 mb-4">
-              <Row label="Organization" value="RheinLift Logistics" />
+              <Row label="Organization" value="Your organisation" />
               <Row label="Role" value="Consumer" />
               <Row label="Contact person" value="Your account" />
               <Row label="MDS ID" value="MDSLCN3QM1" />
