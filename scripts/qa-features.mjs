@@ -11,11 +11,63 @@ function record(name, ok, detail = '') {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`)
 }
 
+async function overflowReport(page, selectors) {
+  return page.evaluate(sels => sels.map(sel => {
+    const el = document.querySelector(sel)
+    if (!el) return { sel, missing: true, overflow: false, scrollWidth: 0, clientWidth: 0 }
+    return {
+      sel,
+      missing: false,
+      overflow: el.scrollWidth > el.clientWidth + 1,
+      scrollWidth: el.scrollWidth,
+      clientWidth: el.clientWidth,
+    }
+  }), selectors)
+}
+
 function permitMapCounts(root) {
   return {
     tiles: root.querySelectorAll('img.leaflet-tile').length,
     paths: root.querySelectorAll('.leaflet-overlay-pane path').length,
+    height: root.clientHeight,
+    width: root.clientWidth,
   }
+}
+
+async function mapPaintMetrics(page, selector) {
+  await page.locator(selector).first().waitFor({ timeout: 25000 })
+  await page.waitForFunction(sel => {
+    const el = document.querySelector(sel)
+    return Boolean(el && el.clientHeight > 8)
+  }, selector, { timeout: 20000 }).catch(() => {})
+  const box = await page.locator(selector).first().evaluate(el => {
+    const canvas = el.querySelector('canvas')
+    const tiles = el.querySelectorAll('img.leaflet-tile').length
+    return {
+      width: Math.round(el.clientWidth),
+      height: Math.round(el.clientHeight),
+      canvasWidth: canvas ? Math.round(canvas.clientWidth) : 0,
+      canvasHeight: canvas ? Math.round(canvas.clientHeight) : 0,
+      tiles,
+    }
+  })
+  let pngSize = 0
+  let unique = 0
+  try {
+    const buf = await page.locator(selector).first().screenshot({ timeout: 15000 })
+    pngSize = buf.length
+    unique = new Set(buf.subarray(0, Math.min(buf.length, 8000))).size
+  } catch {
+    // Screenshot can fail if the node has 0 height.
+  }
+  return { ...box, pngSize, unique }
+}
+
+function mapLooksPainted(metrics) {
+  const tallEnough = metrics.height > 300
+  const leafletPainted = metrics.tiles > 0
+  const canvasPainted = metrics.canvasHeight > 300 && metrics.pngSize > 8000 && metrics.unique > 16
+  return tallEnough && (leafletPainted || canvasPainted)
 }
 
 async function waitForPreview(child) {
@@ -226,6 +278,11 @@ async function main() {
       hero.tiles > 0 && hero.paths >= 4,
       JSON.stringify(hero),
     )
+    record(
+      `Hero map at ${width}×${height} is taller than 300px`,
+      hero.height > 300,
+      JSON.stringify(hero),
+    )
     await page.getByRole('tab', { name: 'Try a sample permit' }).click()
     await page.locator('[data-permit-map="sample"]').waitFor({ timeout: 20000 })
     await page.locator('.transport-readiness').scrollIntoViewIfNeeded()
@@ -243,9 +300,78 @@ async function main() {
       sample.tiles > 0 && sample.paths >= 1,
       JSON.stringify(sample),
     )
+    record(
+      `Sample-permit map at ${width}×${height} is taller than 300px`,
+      sample.height > 300,
+      JSON.stringify(sample),
+    )
   }
   await assertDesktopPermitMaps(1280, 800)
   await assertDesktopPermitMaps(1920, 1200)
+  await page.setViewportSize({ width: 1440, height: 900 })
+
+  async function skipIfNeeded() {
+    const skip = page.getByRole('button', { name: /skip/i })
+    if (await skip.count()) await skip.first().click().catch(() => {})
+  }
+
+  const corridorViewports = [
+    [1440, 900],
+    [1024, 768],
+    [390, 844],
+  ]
+  for (const [width, height] of corridorViewports) {
+    await page.setViewportSize({ width, height })
+    await page.goto(base + '/map-explorer', { waitUntil: 'domcontentloaded', timeout: 60000 })
+    await skipIfNeeded()
+    await page.getByRole('heading', { name: 'Corridor monitor' }).waitFor({ timeout: 20000 })
+    await page.locator('[data-testid="corridor-map"]').waitFor({ timeout: 25000 })
+    await page.waitForFunction(() => {
+      const el = document.querySelector('[data-testid="corridor-map"]')
+      const canvas = el?.querySelector('canvas')
+      return Boolean(el && el.clientHeight > 300 && canvas && canvas.clientHeight > 300)
+    }, { timeout: 25000 }).catch(() => {})
+    const metrics = await mapPaintMetrics(page, '[data-testid="corridor-map"]')
+    record(
+      `Corridor map at ${width}×${height} is taller than 300px with painted tiles`,
+      mapLooksPainted(metrics),
+      JSON.stringify(metrics),
+    )
+    const panelOverflow = await overflowReport(page, ['.live-event-panel', '.live-event-summary', '.live-event-search'])
+    record(
+      `Corridor panel at ${width}×${height} has no horizontal overflow`,
+      panelOverflow.every(item => !item.missing && !item.overflow),
+      JSON.stringify(panelOverflow),
+    )
+    const searchInner = await page.evaluate(() => {
+      const wrap = document.querySelector('.live-event-search')
+      const input = wrap?.querySelector('input')
+      if (!wrap || !input) return { ok: false }
+      const wrapStyle = getComputedStyle(wrap)
+      const inputStyle = getComputedStyle(input)
+      const wrapBox = wrap.getBoundingClientRect()
+      const inputBox = input.getBoundingClientRect()
+      const innerBorder = Number.parseFloat(inputStyle.borderTopWidth) + Number.parseFloat(inputStyle.borderBottomWidth)
+      return {
+        ok: inputStyle.backgroundColor === 'rgba(0, 0, 0, 0)'
+          && innerBorder === 0
+          && wrapBox.height >= 40
+          && inputBox.height <= wrapBox.height
+          && inputBox.left >= wrapBox.left
+          && inputBox.right <= wrapBox.right,
+        wrapH: Math.round(wrapBox.height),
+        inputH: Math.round(inputBox.height),
+        border: innerBorder,
+        bg: inputStyle.backgroundColor,
+        wrapBorder: wrapStyle.borderTopWidth,
+      }
+    })
+    record(
+      `Corridor search input at ${width}×${height} fills the wrapper without an inner box`,
+      Boolean(searchInner.ok),
+      JSON.stringify(searchInner),
+    )
+  }
   await page.setViewportSize({ width: 1440, height: 900 })
 
   await page.goto(base + '/robots.txt', { waitUntil: 'domcontentloaded', timeout: 15000 })
@@ -302,6 +428,13 @@ async function main() {
   await page.getByRole('button', { name: 'Check route' }).click()
   await page.locator('.verdict-banner').waitFor({ timeout: 90000 })
   record('Route check finished', true, (await page.locator('.verdict-banner').innerText()).replace(/\s+/g, ' ').slice(0, 120))
+  await page.locator('.route-map-gl-container, .maplibregl-map, .results-map').first().waitFor({ timeout: 25000 }).catch(() => {})
+  const resultMap = await mapPaintMetrics(page, '.route-map-gl-container, .results-map .maplibre-map, .results-map')
+  record(
+    'Result map is taller than 300px with painted tiles',
+    mapLooksPainted(resultMap),
+    JSON.stringify(resultMap),
+  )
   await page.locator('.nearby-off-route-group').evaluateAll(nodes => nodes.forEach(node => { node.open = true })).catch(() => {})
   const hamburgEvidence = await page.locator('.evidence-section').innerText()
   record(
@@ -521,6 +654,54 @@ async function main() {
   await page.goto(base + '/activity', { waitUntil: 'domcontentloaded' })
   const alertText = await page.locator('.route-alert-log').first().innerText()
   record('Alerts page includes verdict-change HOLD', /HOLD/.test(alertText), alertText.slice(0, 180).replace(/\s+/g, ' '))
+
+  await page.evaluate(() => {
+    const raw = window.localStorage.getItem('htr-monitor-alerts')
+    const alerts = raw ? JSON.parse(raw) : []
+    if (alerts[0]) {
+      alerts[0].escalated = true
+      window.localStorage.setItem('htr-monitor-alerts', JSON.stringify(alerts))
+    }
+  })
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await skipIfNeeded()
+  const alertLayoutViewports = [
+    [1440, 900],
+    [1024, 768],
+    [390, 844],
+  ]
+  for (const [width, height] of alertLayoutViewports) {
+    await page.setViewportSize({ width, height })
+    await page.goto(base + '/activity', { waitUntil: 'domcontentloaded' })
+    await skipIfNeeded()
+    await page.locator('.route-alert-item').first().waitFor({ timeout: 15000 })
+    const layout = await page.evaluate(() => {
+      const item = document.querySelector('.route-alert-item')
+      const main = document.querySelector('.route-alert-main')
+      const chevron = document.querySelector('.route-alert-chevron')
+      const badges = [...document.querySelectorAll('.route-alert-item .alert-status')]
+      const truncated = badges.filter(el => el.scrollWidth > el.clientWidth + 1 || el.textContent.trim().length <= 1)
+      const chevronInRow = Boolean(item && chevron && Math.abs(chevron.getBoundingClientRect().top - item.getBoundingClientRect().top) < item.getBoundingClientRect().height)
+      return {
+        itemOverflow: Boolean(item && item.scrollWidth > item.clientWidth + 1),
+        mainOverflow: Boolean(main && main.scrollWidth > main.clientWidth + 1),
+        itemScroll: item ? [item.scrollWidth, item.clientWidth] : [],
+        badges: badges.map(el => el.textContent.trim()),
+        truncated: truncated.map(el => el.textContent.trim()),
+        chevronInRow,
+      }
+    })
+    record(
+      `Alert rows at ${width}×${height} keep Escalated untruncated with in-row chevron and no overflow`,
+      !layout.itemOverflow
+        && !layout.mainOverflow
+        && layout.badges.includes('Escalated')
+        && layout.truncated.length === 0
+        && layout.chevronInRow,
+      JSON.stringify(layout),
+    )
+  }
+  await page.setViewportSize({ width: 1440, height: 900 })
   const historyPdf = await downloadFile(page, 'PDF')
   record('History PDF download is non-empty', historyPdf.size > 200, `${historyPdf.suggested} ${historyPdf.size} bytes`)
   const historyCsv = await downloadFile(page, 'CSV')

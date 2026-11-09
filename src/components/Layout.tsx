@@ -494,7 +494,7 @@ export default function Layout() {
 
         {/* Page */}
         <main className="app-page-host"
-          style={{ flex: 1, overflowY: 'auto' }}
+          style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}
           onClick={() => notifOpen && setNotifOpen(false)}
         >
           <Outlet />

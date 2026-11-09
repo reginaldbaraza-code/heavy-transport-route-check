@@ -75,9 +75,11 @@ export default function MarketplaceActivity() {
                   <strong>{alert.change}</strong>
                   <p>{alert.detail}</p>
                 </div>
-                <span className={`alert-status ${alert.status.toLowerCase()}`}>{alert.status}</span>
-                {alert.escalated && <span className="alert-status escalated">Escalated</span>}
-                <ChevronRight size={18} />
+                <span className="route-alert-badges">
+                  <span className={`alert-status ${alert.status.toLowerCase()}`}>{alert.status}</span>
+                  {alert.escalated && <span className="alert-status escalated">Escalated</span>}
+                </span>
+                <ChevronRight size={18} className="route-alert-chevron" aria-hidden="true" />
               </button>
               {alert.status !== 'Resolved' && (
                 <button type="button" className="resolve-alert" onClick={() => resolveAlert(alert.id)}>Mark resolved</button>
@@ -113,8 +115,10 @@ export default function MarketplaceActivity() {
                   <strong>{record.verdict} · {record.routeLabel}</strong>
                   <p>{record.summary} · {record.evidenceCount} evidence · retrieved {formatBerlinDateTime(record.retrievedAt)}</p>
                 </div>
-                <span className={`alert-status ${record.verdict.toLowerCase()}`}>{record.verdict}</span>
-                <ChevronRight size={18} />
+                <span className="route-alert-badges">
+                  <span className={`alert-status ${record.verdict.toLowerCase()}`}>{record.verdict}</span>
+                </span>
+                <ChevronRight size={18} className="route-alert-chevron" aria-hidden="true" />
               </button>
               <div className="history-export-actions">
                 <button type="button" className="resolve-alert" onClick={() => downloadSnapshot(snapshotFromHistory(record), 'pdf')}>
