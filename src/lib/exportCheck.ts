@@ -6,7 +6,7 @@ import type { RouteCheckResult } from './routeCheck'
 import {
   formatClearanceConfirmationLine,
   formatOnSiteConfirmationLine,
-  stripUnresolvedVerifyCopy,
+  withClearanceConfirmation,
 } from './siteAcknowledgements'
 
 export type HistoryExportRecord = {
@@ -111,19 +111,18 @@ function readyCopy(
   result: Pick<RouteCheckResult, 'verdict' | 'summary' | 'impact' | 'clearanceConfirmed' | 'clearanceConfirmedBy' | 'confirmedAt'>,
   acks: Array<{ acknowledgedBy?: string; acknowledgedAt?: string }>,
 ) {
-  const impact = stripUnresolvedVerifyCopy(result.impact || '')
-  const clearanceLine = result.clearanceConfirmed
-    ? formatClearanceConfirmationLine(result.clearanceConfirmedBy, result.confirmedAt)
-    : ''
+  const impact = result.clearanceConfirmed
+    ? withClearanceConfirmation(result.impact || '', true, result.clearanceConfirmedBy, result.confirmedAt)
+    : result.impact
   if (result.verdict !== 'READY') {
     return {
       summary: result.summary,
-      impact: result.clearanceConfirmed ? [impact, clearanceLine].filter(Boolean).join(' ') : result.impact,
+      impact,
     }
   }
   return {
     summary: acks.length ? formatOnSiteConfirmationLine(acks) : result.summary,
-    impact: [impact, clearanceLine].filter(Boolean).join(' '),
+    impact,
   }
 }
 

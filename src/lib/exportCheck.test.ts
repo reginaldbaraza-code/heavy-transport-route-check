@@ -146,6 +146,13 @@ test('PDF and CSV keep one de-DE date, reflect result-screen clearance, and name
   assert.match(csv, /Clearance confirmed by QA Test at/)
   assert.doesNotMatch(csv, /Bridge and clearance are not dispatcher-confirmed/)
   assert.doesNotMatch(csv, /"Impact".*data not available/)
+  const csvImpact = (csv.split('\n').find(row => row.startsWith('"Impact",')) || '').replace(/^"Impact",/, '')
+  assert.equal((csvImpact.match(/Clearance confirmed by QA Test at/g) || []).length, 1)
+  const pdfImpact = extracted.compact.slice(
+    extracted.compact.indexOf('Selected vehicle:'),
+    extracted.compact.indexOf('Permit'),
+  )
+  assert.equal((pdfImpact.match(/Clearance confirmed by QA Test at/g) || []).length, 1)
 })
 
 test('PDF wraps long evidence titles instead of clipping them', () => {

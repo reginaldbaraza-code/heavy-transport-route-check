@@ -207,6 +207,19 @@ async function main() {
       && !/HOLD/i.test(readyPdf.suggested),
     `pdf=${readyPdf.suggested} csv=${readyCsv.suggested}`,
   )
+  const csvImpactRow = (readyCsvText.split(/\r?\n/).find(row => row.startsWith('"Impact",')) || '').replace(/^"Impact",/, '')
+  const pdfImpactStart = pdfCompact.indexOf('Selected vehicle:')
+  const pdfImpactEnd = pdfCompact.indexOf('Permit', pdfImpactStart)
+  const pdfImpactText = pdfImpactStart < 0
+    ? ''
+    : pdfCompact.slice(pdfImpactStart, pdfImpactEnd < 0 ? undefined : pdfImpactEnd)
+  const csvClearanceHits = (csvImpactRow.match(/Clearance confirmed by QA Test at/g) || []).length
+  const pdfClearanceHits = (pdfImpactText.match(/Clearance confirmed by QA Test at/g) || []).length
+  record(
+    'Clearance confirmed text appears exactly once in CSV Impact and PDF impact',
+    csvClearanceHits === 1 && pdfClearanceHits === 1,
+    `csvImpact=${csvClearanceHits} pdfImpact=${pdfClearanceHits} csv=${csvImpactRow.slice(0, 180)} pdf=${pdfImpactText.slice(0, 180)}`,
+  )
 
   await page.goto(base + '/jobs', { waitUntil: 'domcontentloaded' })
   const jobVisible = await page.locator('.job-row').count()
@@ -269,6 +282,40 @@ async function main() {
     'Stuttgart-area route shows MIA roadworks source',
     /Autobahn GmbH MIA via Mobilithek\/MobiData BW/.test(stuttgartEvidence),
     stuttgartEvidence.replace(/\s+/g, ' ').slice(0, 280),
+  )
+
+  async function runHoldScenario(nameRe) {
+    await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded' })
+    await page.getByRole('button', { name: /show test permits/i }).click()
+    await page.getByRole('button', { name: nameRe }).click()
+    await page.getByRole('button', { name: 'Check route' }).click()
+    await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
+    const banner = (await page.locator('.verdict-banner').innerText()).replace(/\s+/g, ' ')
+    const evidence = (await page.locator('.evidence-section').innerText()).replace(/\s+/g, ' ')
+    const chip = (await page.locator('.outcome-match').innerText().catch(() => '')).replace(/\s+/g, ' ')
+    return { banner, evidence, chip }
+  }
+
+  const heightHold = await runHoldScenario(/Simulated HOLD — A8 height/)
+  record(
+    'Scenario HOLD height shows Expected HOLD and limit vs vehicle',
+    /HOLD/i.test(heightHold.banner)
+      && /Expected HOLD — actual HOLD/i.test(heightHold.chip)
+      && /4\.00 m vs vehicle 4\.30 m/.test(heightHold.evidence)
+      && /HOLD items cannot be acknowledged away/i.test(heightHold.evidence)
+      && !/Confirm remaining VERIFY on site/i.test(heightHold.evidence),
+    `${heightHold.chip} ${heightHold.evidence.slice(0, 220)}`,
+  )
+
+  const weightHold = await runHoldScenario(/Simulated HOLD — A1 weight/)
+  record(
+    'Scenario HOLD weight shows Expected HOLD and limit vs vehicle',
+    /HOLD/i.test(weightHold.banner)
+      && /Expected HOLD — actual HOLD/i.test(weightHold.chip)
+      && /40 t vs vehicle 72 t/.test(weightHold.evidence)
+      && /HOLD items cannot be acknowledged away/i.test(weightHold.evidence)
+      && !/Confirm remaining VERIFY on site/i.test(weightHold.evidence),
+    `${weightHold.chip} ${weightHold.evidence.slice(0, 220)}`,
   )
 
   await page.goto(base + '/settings', { waitUntil: 'domcontentloaded' })

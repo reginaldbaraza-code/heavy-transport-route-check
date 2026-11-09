@@ -164,6 +164,52 @@ test('minLaneWidth exceeding vehicle is VERIFY, residualWidth HOLD', () => {
   assert.equal(classifiedResidual?.state, 'danger')
 })
 
+test('height exceeded => HOLD, height OK => not HOLD', () => {
+  const exceeded = dimDecision(baseCtx.vehicle, { heightLimit: 4.0, description: '' })
+  assert.equal(exceeded.hold, true)
+  assert.equal(exceeded.verify, false)
+  assert.equal(exceeded.type, 'height')
+
+  const ok = dimDecision(baseCtx.vehicle, { heightLimit: 4.6, description: '' })
+  assert.equal(ok.hold, false)
+  assert.equal(ok.verify, false)
+
+  const unknown = dimDecision({ ...baseCtx.vehicle, height: 0 }, { heightLimit: 4.0, description: '' })
+  assert.equal(unknown.hold, false)
+  assert.equal(unknown.verify, true)
+
+  const classified = classifyCandidate(candidate({
+    heightLimit: 4.0,
+    title: 'A7 Durchfahrtshöhe',
+    description: 'Residual clearance 4.00 m',
+  }), baseCtx)
+  assert.equal(classified?.state, 'danger')
+  assert.match(classified?.title || '', /4(\.0+)? m vs vehicle 4\.5 m/)
+})
+
+test('weight exceeded => HOLD, weight OK => not HOLD', () => {
+  const exceeded = dimDecision(baseCtx.vehicle, { weightLimit: 40, description: '' })
+  assert.equal(exceeded.hold, true)
+  assert.equal(exceeded.verify, false)
+  assert.equal(exceeded.type, 'weight')
+
+  const ok = dimDecision(baseCtx.vehicle, { weightLimit: 80, description: '' })
+  assert.equal(ok.hold, false)
+  assert.equal(ok.verify, false)
+
+  const unknown = dimDecision({ ...baseCtx.vehicle, grossWeight: 0 }, { weightLimit: 40, description: '' })
+  assert.equal(unknown.hold, false)
+  assert.equal(unknown.verify, true)
+
+  const classified = classifyCandidate(candidate({
+    weightLimit: 40,
+    title: 'A7 Bauwerk',
+    description: 'Gewichtsbeschränkung 40 t',
+  }), baseCtx)
+  assert.equal(classified?.state, 'danger')
+  assert.match(classified?.title || '', /40 t vs vehicle 60 t/)
+})
+
 test('generic meter values in descriptions are not hard width limits', () => {
   assert.equal(extractHardWidthLimit('Baustelle 3.25 m neben der Fahrbahn'), null)
   assert.ok(extractHardWidthLimit('Restbreite 3.10 m'))

@@ -864,8 +864,8 @@ export default function RouteIntelligencePolished() {
                   const matched = displayed.verdict === permit.expectedVerdict
                   return (
                     <div className={`outcome-match ${matched ? 'matched' : 'differed'}`}>
-                      Expected {permit.expectedVerdict}
-                      {matched ? ' — actual matched' : ` — actual ${displayed.verdict}${permit.liveMayDiffer ? ' (live data may differ)' : ''}`}
+                      Expected {permit.expectedVerdict} — actual {displayed.verdict}
+                      {!matched && permit.liveMayDiffer ? ' (live data may differ)' : ''}
                     </div>
                   )
                 })()}
