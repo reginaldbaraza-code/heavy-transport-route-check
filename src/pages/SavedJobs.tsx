@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   AlertTriangle, Bell, Briefcase, Clock3, Pencil, Play, Trash2,
@@ -29,13 +29,23 @@ const emptyDraft = {
 export default function SavedJobs() {
   const {
     jobs, prefs, setPrefs, saveJob, deleteJob, requestNotifications, notificationPermission,
-    monitoringActive, monitoredCount, checkingJobId,
+    monitoringActive, monitoredCount, checkingJobId, lastTickAt,
   } = useJobs()
   const navigate = useNavigate()
   const [editing, setEditing] = useState<SavedJob | null>(null)
   const [draft, setDraft] = useState(emptyDraft)
   const [toast, setToast] = useState('')
   const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [now, setNow] = useState(() => new Date())
+
+  useEffect(() => {
+    setNow(new Date())
+  }, [jobs, lastTickAt, checkingJobId])
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 10000)
+    return () => window.clearInterval(id)
+  }, [])
 
   const openEdit = (job: SavedJob) => {
     setEditing(job)
@@ -133,9 +143,9 @@ export default function SavedJobs() {
                     <small>{job.permitNumber || 'No permit number'} · {job.routeFileName}</small>
                   </span>
                   <p>{job.origin} → {job.destination} · {formatVehicleDims(job.vehicle)}</p>
-                  <p>
+                  <p data-testid="job-last-check">
                     Departure {formatBerlinDateTime(job.plannedDeparture) || 'not set'}
-                    {job.lastVerdict ? ` · Last check ${job.lastVerdict} ${relativeFromNow(job.lastCheckedAt)}` : ' · Not checked since save'}
+                    {job.lastVerdict ? ` · Last check ${job.lastVerdict} ${relativeFromNow(job.lastCheckedAt, now)}` : ' · Not checked since save'}
                     {checkingJobId === job.id ? ' · Checking now…' : ''}
                   </p>
                   <span className={`job-monitor-pill ${monitoring ? 'live' : departed ? 'stopped' : 'idle'}`}>

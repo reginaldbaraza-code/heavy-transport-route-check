@@ -30,8 +30,8 @@ export function relativeFromNow(iso?: string | null, now = new Date()): string {
   if (!date) return ''
   const diffMs = now.getTime() - date.getTime()
   const abs = Math.abs(diffMs)
-  const mins = Math.round(abs / 60000)
-  if (mins < 1) return diffMs >= 0 ? 'Just now' : 'Just now'
+  if (abs < 60000) return 'Just now'
+  const mins = Math.floor(abs / 60000)
   if (mins < 60) return diffMs >= 0 ? `${mins} min ago` : `in ${mins} min`
   const hours = Math.round(mins / 60)
   if (hours < 24) return diffMs >= 0 ? `${hours} h ago` : `in ${hours} h`
