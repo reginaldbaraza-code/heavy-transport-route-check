@@ -408,7 +408,7 @@ export function permitVehicleDims(
   return parseVehicleDims(metadata?.vehicle) || parseVehicleDims(permit?.vehicle)
 }
 
-const OVERSIZE_MESSAGE = 'This file is larger than 5 MB. Export a smaller GPX from VEMAGS and try again.'
+const OVERSIZE_MESSAGE = 'This file is larger than 4 MB. Export a smaller GPX from VEMAGS and try again.'
 
 async function errorFromCheckResponse(response: Response): Promise<string> {
   const raw = await response.text()

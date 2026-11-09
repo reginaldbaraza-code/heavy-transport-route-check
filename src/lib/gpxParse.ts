@@ -1,12 +1,12 @@
-export const GPX_MAX_BYTES = 5 * 1024 * 1024
-export const GPX_MAX_POINTS = 5000
+export const GPX_MAX_BYTES = 4 * 1024 * 1024
+export const GPX_MAX_POINTS = 2000
 
 export const GPX_FRIENDLY_INVALID =
   "This file isn't a valid GPX route. Export the route from VEMAGS as GPX and try again."
 export const GPX_FRIENDLY_EMPTY =
   "This GPX doesn't contain a usable route (need at least two points). Export the route from VEMAGS as GPX and try again."
 export const GPX_FRIENDLY_TOO_LARGE =
-  'This file is larger than 5 MB. Export a smaller GPX from VEMAGS and try again.'
+  'This file is larger than 4 MB. Export a smaller GPX from VEMAGS and try again.'
 
 export type GpxPoint = {
   lat: number
@@ -72,27 +72,32 @@ function perpendicularDistance(point: GpxPoint, start: GpxPoint, end: GpxPoint):
 
 function douglasPeucker(points: GpxPoint[], epsilon: number): GpxPoint[] {
   if (points.length <= 2) return points
-  let maxDist = 0
-  let index = 0
-  const end = points.length - 1
-  for (let i = 1; i < end; i++) {
-    const dist = perpendicularDistance(points[i], points[0], points[end])
-    if (dist > maxDist) {
-      index = i
-      maxDist = dist
+  const keep = new Uint8Array(points.length)
+  keep[0] = 1
+  keep[points.length - 1] = 1
+  const stack: Array<[number, number]> = [[0, points.length - 1]]
+  while (stack.length) {
+    const [start, end] = stack.pop() as [number, number]
+    let maxDist = 0
+    let index = start
+    for (let i = start + 1; i < end; i++) {
+      const dist = perpendicularDistance(points[i], points[start], points[end])
+      if (dist > maxDist) {
+        maxDist = dist
+        index = i
+      }
+    }
+    if (maxDist > epsilon) {
+      keep[index] = 1
+      if (index - start > 1) stack.push([start, index])
+      if (end - index > 1) stack.push([index, end])
     }
   }
-  if (maxDist > epsilon) {
-    const left = douglasPeucker(points.slice(0, index + 1), epsilon)
-    const right = douglasPeucker(points.slice(index), epsilon)
-    return left.slice(0, -1).concat(right)
-  }
-  return [points[0], points[end]]
+  return points.filter((_, i) => keep[i])
 }
 
 export function downsampleGpxPoints(points: GpxPoint[], maxPoints = GPX_MAX_POINTS): GpxPoint[] {
   if (points.length <= maxPoints) return points
-  // Uniform first so 80k-point tracks never spend 30s in recursive DP.
   const uniform: GpxPoint[] = []
   const last = maxPoints - 1
   for (let i = 0; i <= last; i++) {
