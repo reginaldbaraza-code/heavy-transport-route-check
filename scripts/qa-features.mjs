@@ -69,6 +69,12 @@ async function main() {
   await page.getByRole('button', { name: 'Check route' }).click()
   await page.locator('.verdict-banner').waitFor({ timeout: 90000 })
   record('Route check finished', true, (await page.locator('.verdict-banner').innerText()).replace(/\s+/g, ' ').slice(0, 120))
+  const hamburgEvidence = await page.locator('.evidence-list').innerText()
+  record(
+    'Hamburg→Hannover shows MIA roadworks source',
+    /Autobahn GmbH MIA via Mobilithek\/MobiData BW/.test(hamburgEvidence),
+    hamburgEvidence.replace(/\s+/g, ' ').slice(0, 280),
+  )
 
   await page.getByRole('button', { name: 'Save as job' }).click()
   await page.locator('[data-testid="save-job-form"]').waitFor()
@@ -112,6 +118,34 @@ async function main() {
   record('History PDF download is non-empty', historyPdf.size > 200, `${historyPdf.suggested} ${historyPdf.size} bytes`)
   const historyCsv = await downloadSize(page, 'CSV')
   record('History CSV download is non-empty', historyCsv.size > 50, `${historyCsv.suggested} ${historyCsv.size} bytes`)
+
+  await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded' })
+  await page.getByRole('button', { name: /show test permits/i }).click()
+  await page.getByRole('button', { name: /München → Stuttgart|Munchen → Stuttgart/ }).click()
+  await page.getByRole('button', { name: 'Check route' }).click()
+  await page.locator('.verdict-banner').waitFor({ timeout: 90000 })
+  const stuttgartEvidence = await page.locator('.evidence-list').innerText()
+  record(
+    'Stuttgart-area route shows MobiData BW BEMaS evidence',
+    /MobiData BW \(BEMaS\)/.test(stuttgartEvidence),
+    stuttgartEvidence.replace(/\s+/g, ' ').slice(0, 280),
+  )
+  record(
+    'Stuttgart-area route shows MIA roadworks source',
+    /Autobahn GmbH MIA via Mobilithek\/MobiData BW/.test(stuttgartEvidence),
+    stuttgartEvidence.replace(/\s+/g, ' ').slice(0, 280),
+  )
+
+  await page.goto(base + '/settings', { waitUntil: 'domcontentloaded' })
+  await page.getByRole('button', { name: /Data sources/i }).click()
+  const sourcesText = await page.locator('.data-source-list').innerText()
+  record(
+    'Settings lists Mobilithek as integrated via MobiData BW',
+    /Integrated via MobiData BW open republication/.test(sourcesText)
+      && /dl-de\/by-2\.0/i.test(sourcesText)
+      && !/No keyless public dataset was found/.test(sourcesText),
+    sourcesText.replace(/\s+/g, ' ').slice(0, 400),
+  )
 
   await browser.close()
   preview.kill('SIGTERM')

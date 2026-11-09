@@ -227,8 +227,9 @@ export default function Settings() {
                   <article key={source.id} className={`data-source-item status-${source.status}`}>
                     <div>
                       <strong>{source.name}</strong>
-                      <small>{source.used ? 'In use' : 'Not integrated'} · {source.status}</small>
+                      <small>{source.used ? 'In use' : 'Not integrated'} · {source.status}{source.license ? ` · ${source.license}` : ''}</small>
                       <p>{source.summary}</p>
+                      {source.attribution && <p>Attribution: {source.attribution}</p>}
                       {source.limitation && <p className="source-limitation">{source.limitation}</p>}
                     </div>
                   </article>
