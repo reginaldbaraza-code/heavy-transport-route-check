@@ -171,6 +171,19 @@ export default function RouteIntelligencePolished() {
         siteAcknowledgements: acks,
       })
       lastHistoryId.current = history.id
+      if (loadedJob.current) {
+        updateJob(loadedJob.current, {
+          lastCheckedAt: runAt,
+          lastVerdict: checkResult.verdict,
+          lastSummary: checkResult.summary,
+          lastRetrievedAt: checkResult.retrievedAt || runAt,
+          lastSource: checkResult.source,
+          origin: checkResult.route.origin,
+          destination: checkResult.route.destination,
+          corridor: checkResult.route.corridor,
+          siteAcknowledgements: acks,
+        })
+      }
       setJobName(defaultJobName(routeFile, checkResult.route.origin, checkResult.route.destination, permit))
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to check route'

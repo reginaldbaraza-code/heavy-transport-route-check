@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { statSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { chromium } from 'playwright'
 
 const port = Number(process.env.QA_PORT || 4173)
@@ -32,14 +32,32 @@ async function waitForPreview(child) {
   })
 }
 
-async function downloadSize(page, buttonName) {
+async function downloadFile(page, buttonName) {
   const [download] = await Promise.all([
     page.waitForEvent('download', { timeout: 15000 }),
     page.getByRole('button', { name: buttonName }).first().click(),
   ])
   const path = await download.path()
   const size = path ? statSync(path).size : 0
-  return { size, suggested: download.suggestedFilename() }
+  const buffer = path ? readFileSync(path) : Buffer.alloc(0)
+  return { size, suggested: download.suggestedFilename(), path, buffer }
+}
+
+function decodePdfStrings(buffer) {
+  const latin1 = Buffer.from(buffer).toString('latin1')
+  const strings = []
+  const re = /\((?:\\.|[^\\)])*\)/g
+  let match
+  while ((match = re.exec(latin1))) {
+    strings.push(
+      match[0]
+        .slice(1, -1)
+        .replace(/\\n/g, '\n')
+        .replace(/\\([0-7]{1,3})/g, (_, oct) => String.fromCharCode(parseInt(oct, 8)))
+        .replace(/\\(.)/g, '$1'),
+    )
+  }
+  return { latin1, text: strings.join('\n'), compact: strings.join('') }
 }
 
 async function main() {
@@ -82,14 +100,67 @@ async function main() {
   await page.getByText(/Job saved in this browser only/i).waitFor({ timeout: 10000 })
   record('Save as job after check', true)
 
-  const pdf = await downloadSize(page, 'Export PDF')
+  const pdf = await downloadFile(page, 'Export PDF')
   record('Result PDF download is non-empty', pdf.size > 200, `${pdf.suggested} ${pdf.size} bytes`)
-  const csv = await downloadSize(page, 'Export CSV')
+  const extracted = decodePdfStrings(pdf.buffer)
+  const hasArrow = /Hamburg\s*->\s*Hannover/.test(extracted.compact) || extracted.compact.includes('->')
+  const hasBangArrow = /Hamburg\s*!\s*Hannover/.test(extracted.text) || /Hamburg\s*!\s*Hannover/.test(extracted.compact)
+  const headerTogether = extracted.compact.includes('Heavy transport route check')
+  const headerSpaced = /H\s+e\s+a\s+v\s+y\s+t\s+r\s+a\s+n\s+s\s+p\s+o\s+r\s+t/.test(extracted.text)
+  record('PDF text uses -> not bang-arrow', hasArrow && !hasBangArrow, extracted.compact.replace(/\s+/g, ' ').slice(0, 220))
+  record('PDF header is not letter-spaced', headerTogether && !headerSpaced, headerTogether ? 'header intact' : extracted.compact.slice(0, 160))
+
+  const umlautPdf = await page.evaluate(() => {
+    const bytes = window.__HT_TEST__.pdfBytesFromSnapshot({
+      verdict: 'HOLD',
+      title: 'Prüfung Nürnberg',
+      summary: 'München to Nürnberg corridor',
+      impact: '',
+      permitNumber: 'HH-TEST',
+      permitName: 'Hamburg → Hannover (A7)',
+      routeLabel: 'München → Nürnberg',
+      vehicle: null,
+      source: 'Autobahn GmbH',
+      runAt: new Date().toISOString(),
+      retrievedAt: new Date().toISOString(),
+      confidence: 'medium',
+      evidence: [],
+      confirmOnSite: [],
+    })
+    const view = new Uint8Array(bytes)
+    let binary = ''
+    for (let i = 0; i < view.length; i++) binary += String.fromCharCode(view[i])
+    return btoa(binary)
+  })
+  const umlautExtracted = decodePdfStrings(Buffer.from(umlautPdf, 'base64'))
+  const keepsUmlauts = /Nürnberg|München|Prüfung/.test(umlautExtracted.text) || /Nürnberg|München|Prüfung/.test(umlautExtracted.compact)
+  const umlautArrow = umlautExtracted.compact.includes('->') && !/Hamburg\s*!\s*Hannover/.test(umlautExtracted.compact)
+  record('PDF keeps German umlauts and sanitizes arrows', keepsUmlauts && umlautArrow, umlautExtracted.compact.replace(/\s+/g, ' ').slice(0, 220))
+
+  await page.setViewportSize({ width: 400, height: 720 })
+  const zoomVisibleOnMobile = await page.locator('.maplibregl-ctrl-bottom-right .maplibregl-ctrl-group').first().isVisible().catch(() => false)
+  record('Mobile map zoom control is hidden at 400px', zoomVisibleOnMobile === false)
+  await page.setViewportSize({ width: 1440, height: 900 })
+
+  const csv = await downloadFile(page, 'Export CSV')
   record('Result CSV download is non-empty', csv.size > 50, `${csv.suggested} ${csv.size} bytes`)
 
   await page.goto(base + '/jobs', { waitUntil: 'domcontentloaded' })
   const jobVisible = await page.locator('.job-row').count()
   record('Jobs list shows saved job', jobVisible >= 1, `jobs=${jobVisible}`)
+
+  const lastCheckedBefore = await page.evaluate(() => window.__HT_TEST__?.getJobs()?.[0]?.lastCheckedAt || '')
+  await page.getByRole('button', { name: /Re-run check/i }).click()
+  await page.locator('.verdict-banner').waitFor({ timeout: 90000 })
+  await page.goto(base + '/jobs', { waitUntil: 'domcontentloaded' })
+  const lastCheckAfter = await page.evaluate(() => {
+    const job = window.__HT_TEST__?.getJobs()?.[0]
+    return { lastCheckedAt: job?.lastCheckedAt || '', label: document.querySelector('[data-testid="job-last-check"]')?.textContent || '' }
+  })
+  const lastCheckUpdated = Boolean(lastCheckAfter.lastCheckedAt)
+    && lastCheckAfter.lastCheckedAt !== lastCheckedBefore
+    && /Just now/i.test(lastCheckAfter.label)
+  record('Jobs last-check updates immediately after re-run', lastCheckUpdated, JSON.stringify({ lastCheckedBefore, ...lastCheckAfter }))
 
   const hookResult = await page.evaluate(async () => {
     const jobs = window.__HT_TEST__?.getJobs() || []
@@ -114,9 +185,9 @@ async function main() {
   await page.goto(base + '/activity', { waitUntil: 'domcontentloaded' })
   const alertText = await page.locator('.route-alert-log').first().innerText()
   record('Alerts page includes verdict-change HOLD', /HOLD/.test(alertText), alertText.slice(0, 180).replace(/\s+/g, ' '))
-  const historyPdf = await downloadSize(page, 'PDF')
+  const historyPdf = await downloadFile(page, 'PDF')
   record('History PDF download is non-empty', historyPdf.size > 200, `${historyPdf.suggested} ${historyPdf.size} bytes`)
-  const historyCsv = await downloadSize(page, 'CSV')
+  const historyCsv = await downloadFile(page, 'CSV')
   record('History CSV download is non-empty', historyCsv.size > 50, `${historyCsv.suggested} ${historyCsv.size} bytes`)
 
   await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded' })
