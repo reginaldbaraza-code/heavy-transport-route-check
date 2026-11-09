@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ArrowRight, Building2, Check, Database, MapPin, SlidersHorizontal, X } from 'lucide-react'
 import { useMarketplace } from '../context/MarketplaceContext'
-import MdsLogo from './MdsLogo'
+import RouteCheckLogo from './RouteCheckLogo'
 
 const organizationTypes = ['Municipality or authority', 'Fleet or logistics operator', 'Public transport operator', 'Mobility service provider', 'Infrastructure operator', 'Data or analytics company']
 const goals = ['Improve route planning', 'Optimize charging operations', 'Understand travel demand', 'Improve cycling infrastructure', 'Reduce congestion', 'Improve safety']
@@ -22,7 +22,7 @@ export default function OnboardingDialog() {
     <div className="onboarding-backdrop" role="presentation">
       <section className="onboarding-dialog" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
         <header>
-          <div className="onboarding-brand"><MdsLogo size={24} tone="dark" decorative /></div>
+          <div className="onboarding-brand"><RouteCheckLogo size={24} tone="dark" decorative /></div>
           <div><span>Personalize MDS</span><strong>{step + 1} of 3</strong></div>
           <button type="button" onClick={() => completeOnboarding()} aria-label="Skip onboarding"><X size={17} /></button>
         </header>

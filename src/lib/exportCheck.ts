@@ -3,6 +3,7 @@ import type { RouteEvidence, RouteVerdict } from '../data/routeChecks'
 import { formatBerlinDateTime } from './formatTime'
 import { formatVehicleDims, type VehicleDims } from './jobs'
 import type { RouteCheckResult } from './routeCheck'
+import { ROUTE_CHECK_LOGO_PNG } from './routeCheckLogoPng'
 import {
   formatClearanceConfirmationLine,
   formatOnSiteConfirmationLine,
@@ -409,13 +410,14 @@ export function createPdfDocument(snapshot: ExportSnapshot) {
 
   doc.setFillColor(16, 42, 67)
   doc.rect(0, 0, 210, 28, 'F')
+  doc.addImage(ROUTE_CHECK_LOGO_PNG, 'PNG', margin, 8, 12, 12)
   doc.setTextColor(255, 255, 255)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(16)
-  pdfText(doc, 'Heavy transport route check', margin, 12)
+  pdfText(doc, 'Heavy transport route check', margin + 15, 13)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(11)
-  pdfText(doc, wrapLines(doc, `${snapshot.verdict}  ·  ${snapshot.permitName}`, width)[0], margin, 20)
+  pdfText(doc, wrapLines(doc, `${snapshot.verdict}  ·  ${snapshot.permitName}`, width - 15)[0], margin + 15, 21)
 
   y = 38
   doc.setTextColor(16, 24, 40)

@@ -5,7 +5,7 @@ import {
   Bell, Search, ChevronDown, Activity, X, Menu,
   HelpCircle, Briefcase
 } from 'lucide-react'
-import MdsLogo from './MdsLogo'
+import RouteCheckLogo from './RouteCheckLogo'
 import MobileTabBar from './MobileTabBar'
 import { useRouteMonitoring } from '../context/RouteMonitoringContext'
 import { useOrgSettings } from '../context/OrgSettingsContext'
@@ -91,7 +91,7 @@ export default function Layout() {
                 aria-label="Go to home"
                 style={{ flexShrink: 0, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
-                <MdsLogo size={28} tone="dark" decorative />
+                <RouteCheckLogo size={28} tone="dark" decorative />
               </button>
               <button onClick={() => navigate('/')} style={{ flex: 1, textAlign: 'left', paddingTop: 1 }}>
                 <div style={{ fontFamily: 'Inter', fontWeight: 600, fontSize: 14, color: 'rgba(255,255,255,0.92)', lineHeight: 1.2, letterSpacing: '-0.01em' }}>

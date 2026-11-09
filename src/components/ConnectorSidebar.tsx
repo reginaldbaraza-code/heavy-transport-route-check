@@ -3,7 +3,7 @@ import {
   LayoutDashboard, BookOpen, FileCheck, ArrowLeftRight,
   TrendingUp, Shield, Database, FileText, CheckSquare, Activity
 } from 'lucide-react'
-import MdsLogo from './MdsLogo'
+import RouteCheckLogo from './RouteCheckLogo'
 
 const mainNav = [
   { label: 'Delivery Dashboard', icon: LayoutDashboard, path: '/connector/dashboard' },
@@ -27,7 +27,7 @@ export default function ConnectorSidebar() {
     <aside className="connector-sidebar w-64 flex-shrink-0 bg-white border-r border-[var(--border)] flex flex-col overflow-y-auto">
       <div className="connector-sidebar-brand flex items-center gap-3 px-5 py-4 border-b border-[var(--border)]">
         <div className="w-10 h-10 flex-shrink-0">
-          <MdsLogo size={40} tone="light" decorative className="w-full h-full" />
+          <RouteCheckLogo size={40} tone="light" decorative className="w-full h-full" />
         </div>
         <div>
           <div className="font-bold text-sm leading-tight text-[var(--foreground)]">Mobility</div>
