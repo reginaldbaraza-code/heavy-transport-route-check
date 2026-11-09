@@ -57,13 +57,13 @@ export function rejectOversizedBody(req: VercelRequest, res: VercelResponse, ext
   const declared = Number(Array.isArray(header) ? header[0] : header)
   if (Number.isFinite(declared) && declared > GPX_MAX_BYTES) {
     res.status(413).json({
-      error: 'This file is larger than 5 MB. Export a smaller GPX from VEMAGS and try again.',
+      error: 'This file is larger than 4 MB. Export a smaller GPX from VEMAGS and try again.',
     })
     return false
   }
   if (extraBytes > GPX_MAX_BYTES) {
     res.status(413).json({
-      error: 'This file is larger than 5 MB. Export a smaller GPX from VEMAGS and try again.',
+      error: 'This file is larger than 4 MB. Export a smaller GPX from VEMAGS and try again.',
     })
     return false
   }

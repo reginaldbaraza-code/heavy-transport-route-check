@@ -1,6 +1,12 @@
 import type { Feature, LineString } from 'geojson'
 import * as turf from '@turf/turf'
 import { splitConcatenatedPlaces } from './autobahnTimes.js'
+import {
+  buildCorridorIndex,
+  distanceToCorridorKm,
+  inBbox,
+  type CorridorIndex,
+} from './corridor.js'
 
 export type VehicleDimensions = {
   width: number
@@ -65,6 +71,7 @@ export type CandidateInput = {
 
 export type ClassifyContext = {
   routeLine: Feature<LineString>
+  corridor?: CorridorIndex
   permittedRoads: string[]
   vehicle: VehicleDimensions
   windowStartMs: number
@@ -100,9 +107,8 @@ export function inferPermittedRoads(corridor?: string, extra: string[] = []): st
 
 export function distanceToRouteKm(routeLine: Feature<LineString>, lat: number, lng: number): number {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return Number.POSITIVE_INFINITY
-  const snapped = turf.nearestPointOnLine(routeLine, turf.point([lng, lat]), { units: 'kilometers' })
-  const dist = snapped.properties?.dist
-  return typeof dist === 'number' && Number.isFinite(dist) ? dist : Number.POSITIVE_INFINITY
+  const points = routeLine.geometry.coordinates.map(([lng, lat]) => ({ lat, lng }))
+  return distanceToCorridorKm(buildCorridorIndex(points, 50), lat, lng)
 }
 
 export function classifyLocationKind(text: string): LocationKind {
@@ -255,10 +261,14 @@ export function classifyCandidate(input: CandidateInput, ctx: ClassifyContext): 
   }
   if (nightWindowMissesDeparture(text, ctx.windowStartMs, ctx.windowEndMs)) return null
 
-  const distanceKm = input.lat != null && input.lng != null
-    ? distanceToRouteKm(ctx.routeLine, input.lat, input.lng)
-    : null
-  if (distanceKm != null && distanceKm > VERIFY_DISTANCE_KM) return null
+  let distanceKm: number | null = null
+  if (input.lat != null && input.lng != null) {
+    if (ctx.corridor && !inBbox(input.lat, input.lng, ctx.corridor.bbox)) return null
+    distanceKm = ctx.corridor
+      ? distanceToCorridorKm(ctx.corridor, input.lat, input.lng)
+      : distanceToRouteKm(ctx.routeLine, input.lat, input.lng)
+    if (distanceKm > VERIFY_DISTANCE_KM) return null
+  }
 
   const kind = classifyLocationKind(text)
   const direction = parseTravelDirection(text)

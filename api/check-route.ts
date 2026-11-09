@@ -1,5 +1,4 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import * as turf from '@turf/turf';
 import {
   descriptionFromAutobahnItem,
   eventFreshness,
@@ -7,6 +6,7 @@ import {
   isoNow,
   splitConcatenatedPlaces,
 } from './_lib/autobahnTimes.js';
+import { prepareRouteGeometry } from './_lib/corridor.js';
 import { GpxParseError, parseGpxDocument } from './_lib/gpxParse.js';
 import { guardApi, rejectOversizedBody } from './_lib/httpGuard.js';
 import {
@@ -93,11 +93,6 @@ type RouteCheckResult = {
   clearanceConfirmed?: boolean;
 };
 
-function parseGPX(gpxContent: string): GPXPoint[] {
-  const parsed = parseGpxDocument(gpxContent)
-  return parsed.points
-}
-
 function waypointLabel(point?: GPXPoint): string {
   const name = String(point?.name || '').trim()
   if (!point || !name || /^(starts?|end|ende|ziel)$/i.test(name)) {
@@ -107,17 +102,8 @@ function waypointLabel(point?: GPXPoint): string {
   return name
 }
 
-function calculateRouteDistance(points: GPXPoint[]): number {
-  if (points.length < 2) return 0;
-  
-  let totalDistance = 0;
-  for (let i = 0; i < points.length - 1; i++) {
-    const from = turf.point([points[i].lng, points[i].lat]);
-    const to = turf.point([points[i + 1].lng, points[i + 1].lat]);
-    totalDistance += turf.distance(from, to, { units: 'kilometers' });
-  }
-  
-  return Math.round(totalDistance);
+function uniqueRoads(roads: string[]): string[] {
+  return [...new Set(roads.map(road => road.toUpperCase().replace(/\s+/g, '')).filter(Boolean))]
 }
 
 function determineAffectedRoads(points: GPXPoint[]): string[] {
@@ -221,8 +207,9 @@ function isUsableEvent(item: { lat: number; lng: number; expired: boolean }) {
 
 async function fetchAutobahnEventsForRoute(roads: string[], retrievedAt: string): Promise<any> {
   try {
+    const unique = uniqueRoads(roads)
     const allEvents = await Promise.all(
-      roads.map(async (road) => {
+      unique.map(async (road) => {
         const [roadworks, closures, warnings, parking] = await Promise.all([
           fetchRoadEvents(road, 'roadworks'),
           fetchRoadEvents(road, 'closure'),
@@ -401,9 +388,9 @@ export default async function handler(
       });
     }
 
-    let routePoints: GPXPoint[];
+    let parsedPoints: GPXPoint[];
     try {
-      routePoints = parseGPX(gpxContent);
+      parsedPoints = parseGpxDocument(gpxContent, { downsample: false, maxBytes: 5 * 1024 * 1024 }).points;
     } catch (parseError) {
       const technical = parseError instanceof GpxParseError ? parseError.technical : ''
       return res.status(400).json({ 
@@ -412,17 +399,19 @@ export default async function handler(
         technical,
       });
     }
+
+    const geometry = prepareRouteGeometry(parsedPoints)
+    const routePoints = geometry.drawPoints
+    const distance = geometry.distanceKm
+    const origin = waypointLabel(parsedPoints[0] || routePoints[0]);
+    const destination = waypointLabel(parsedPoints[parsedPoints.length - 1] || routePoints[routePoints.length - 1]);
     
-    const distance = calculateRouteDistance(routePoints);
-    const origin = waypointLabel(routePoints[0]);
-    const destination = waypointLabel(routePoints[routePoints.length - 1]);
-    
-    const routeLine = routeLineFromPoints(routePoints);
+    const routeLine = routeLineFromPoints(geometry.matchPoints);
     const permittedRoads = inferPermittedRoads(
       requestedCorridor,
       Array.isArray(requestedRoads) ? requestedRoads : [],
     );
-    const affectedRoads = permittedRoads.length ? permittedRoads : determineAffectedRoads(routePoints);
+    const affectedRoads = permittedRoads.length ? uniqueRoads(permittedRoads) : uniqueRoads(determineAffectedRoads(geometry.matchPoints));
     const window = departureWindow({
       departureStart,
       departureEnd,
@@ -431,6 +420,7 @@ export default async function handler(
     });
     const classifyCtx = {
       routeLine,
+      corridor: geometry.corridor,
       permittedRoads,
       vehicle,
       windowStartMs: window.startMs,
@@ -757,13 +747,14 @@ export default async function handler(
     let fallbackRoute;
     try {
       const fallbackGpx = typeof req.body?.gpxContent === 'string' ? req.body.gpxContent : ''
-      const points = parseGPX(fallbackGpx);
-      const distance = calculateRouteDistance(points);
+      const points = parseGpxDocument(fallbackGpx, { downsample: false, maxBytes: 5 * 1024 * 1024 }).points;
+      const fallbackGeometry = prepareRouteGeometry(points)
+      const distance = fallbackGeometry.distanceKm;
       const origin = waypointLabel(points[0]);
       const destination = waypointLabel(points[points.length - 1]);
       
       fallbackRoute = {
-        coordinates: points.map(p => [p.lat, p.lng]),
+        coordinates: fallbackGeometry.drawPoints.map(p => [p.lat, p.lng]),
         origin,
         destination,
         distance,
