@@ -9,49 +9,27 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 setWorkerUrl(workerUrl);
 import { Link } from 'react-router-dom'
 import {
-  AlertTriangle, ArrowRight, Camera, Car, ChevronDown, CircleParking, Clock3, CloudSnow,
+  AlertTriangle, ArrowRight, Clock3,
   Construction, Layers3, LocateFixed, Map as MapIcon, Maximize2,
-  Radio, RefreshCw, Route, Search, Truck, XCircle
+  Radio, RefreshCw, Route, Search, XCircle
 } from 'lucide-react'
 import {
   cities, germanyOutline, regionalCities, rivers, roadVectors, stateBoundaries,
 } from '../data/germanyMap'
 import {
-  createOperationalEvents, type OperationalEvent, type OperationalEventType,
+  type OperationalEvent, type OperationalEventType,
 } from '../data/mapOperations'
 
 const layerOptions = [
   { id: 'roadworks', label: 'Road condition signals', icon: Construction, color: '#f59e0b' },
   { id: 'warnings', label: 'Safety signals', icon: AlertTriangle, color: '#ef4444' },
   { id: 'closures', label: 'Restrictions', icon: XCircle, color: '#334155' },
-  { id: 'webcams', label: 'Visual evidence', icon: Camera, color: '#0ea5e9' },
-  { id: 'parking', label: 'Freight parking', icon: CircleParking, color: '#6366f1' },
-  { id: 'traffic', label: 'Movement intensity', icon: Car, color: '#0071e3' },
-  { id: 'snow', label: 'Weather exposure', icon: CloudSnow, color: '#7c3aed' },
-  { id: 'heavy', label: 'Heavy transport constraints', icon: Truck, color: '#0f766e' },
 ] as const
-
-const snowCells = [
-  [47.68, 10.10, 86], [47.77, 11.60, 92], [48.12, 12.20, 67], [48.55, 13.05, 54],
-  [50.48, 11.15, 48], [51.66, 10.62, 72], [50.80, 9.55, 43],
-] as const
-
-type SnowCell = { lat: number; lng: number; intensity: number; temperature: number; snowfall: number }
-
-const heavyConstraints = [
-  { lat: 53.09, lng: 9.12, title: 'Bridge weight limit', detail: 'Maximum gross weight 44 t', road: 'A1' },
-  { lat: 52.16, lng: 9.98, title: 'Height restriction', detail: 'Maximum vehicle height 4.20 m', road: 'A7' },
-  { lat: 50.26, lng: 8.67, title: 'Axle-load restriction', detail: 'Maximum axle load 11.5 t', road: 'A5' },
-  { lat: 49.21, lng: 9.02, title: 'Permit corridor', detail: 'Advance notification required', road: 'A6' },
-  { lat: 48.57, lng: 11.38, title: 'Width restriction', detail: 'Maximum width 3.50 m', road: 'A9' },
-]
 
 const eventMeta = {
   roadworks: { label: 'Roadwork', short: 'R', color: '#f59e0b', icon: Construction },
   warnings: { label: 'Warning', short: '!', color: '#ef4444', icon: AlertTriangle },
   closures: { label: 'Closure', short: '×', color: '#334155', icon: XCircle },
-  webcams: { label: 'Webcam', short: 'C', color: '#0ea5e9', icon: Camera },
-  parking: { label: 'Parking', short: 'P', color: '#3156a3', icon: CircleParking },
 }
 
 const formatBerlinTime = (date: Date) => new Intl.DateTimeFormat('de-DE', {
@@ -64,7 +42,7 @@ const formatBerlinTime = (date: Date) => new Intl.DateTimeFormat('de-DE', {
 export default function LiveMap() {
   const mapContainer = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
-  const [events, setEvents] = useState<OperationalEvent[]>(() => createOperationalEvents())
+  const [events, setEvents] = useState<OperationalEvent[]>([])
   const [activeLayers, setActiveLayers] = useState<string[]>(['roadworks', 'warnings', 'closures', 'traffic'])
   const [selectedEvent, setSelectedEvent] = useState<OperationalEvent | null>(null)
   const [query, setQuery] = useState('')
@@ -72,7 +50,6 @@ export default function LiveMap() {
   const [baseMap, setBaseMap] = useState<'road' | 'contrast'>('road')
   const [mapLoaded, setMapLoaded] = useState(false)
   const [liveStatus, setLiveStatus] = useState<'ready' | 'refreshing'>('ready')
-  const [snowRisk, setSnowRisk] = useState<SnowCell[]>(snowCells.map(([lat, lng, intensity]) => ({ lat, lng, intensity, temperature: -1, snowfall: 0.6 })))
   const [lastUpdated, setLastUpdated] = useState(new Date())
   const [layerPanelOpen, setLayerPanelOpen] = useState(() => {
     // Collapse by default on mobile (< 768px)
@@ -90,23 +67,81 @@ export default function LiveMap() {
 
   const listedEvents = useMemo(() => visibleEvents.slice(0, 80), [visibleEvents])
 
-  const refreshEvents = useCallback(() => {
+  const refreshEvents = useCallback(async () => {
     setLiveStatus('refreshing')
-    window.setTimeout(() => {
-      setEvents(current => current.map((event, index) => ({
-        ...event,
-        updated: index % 4 === 0 ? 'just now' : event.updated,
-        lat: event.lat + ((index % 3) - 1) * .002,
-      })))
-      setSnowRisk(current => current.map((cell, index) => ({
-        ...cell,
-        intensity: Math.max(0, Math.min(100, cell.intensity + (index % 2 ? 3 : -2))),
-      })))
+    try {
+      const response = await fetch('/api/autobahn-events')
+      if (!response.ok) {
+        throw new Error('API unavailable')
+      }
+      const data = await response.json()
+      
+      // Convert API format to OperationalEvent format
+      const convertedEvents: OperationalEvent[] = [
+        ...data.roadworks.map((e: any) => ({
+          id: e.id,
+          type: 'roadworks' as const,
+          title: e.title,
+          detail: e.description,
+          road: extractRoad(e.description) || 'Unknown',
+          lat: e.lat,
+          lng: e.lng,
+          updated: e.age,
+          confidence: e.confidence === 'high' ? 90 : 70,
+          source: data.source,
+          dataCategory: 'operational',
+        })),
+        ...data.closures.map((e: any) => ({
+          id: e.id,
+          type: 'closures' as const,
+          title: e.title,
+          detail: e.description,
+          road: extractRoad(e.description) || 'Unknown',
+          lat: e.lat,
+          lng: e.lng,
+          updated: e.age,
+          confidence: 95,
+          source: data.source,
+          dataCategory: 'operational',
+        })),
+        ...data.warnings.map((e: any) => ({
+          id: e.id,
+          type: 'warnings' as const,
+          title: e.title,
+          detail: e.description,
+          road: extractRoad(e.description) || 'Unknown',
+          lat: e.lat,
+          lng: e.lng,
+          updated: e.age,
+          confidence: e.confidence === 'high' ? 85 : 65,
+          source: data.source,
+          dataCategory: 'operational',
+        })),
+      ]
+      
+      setEvents(convertedEvents)
       setLastUpdated(new Date())
       setLiveStatus('ready')
-    }, 700)
+    } catch (error) {
+      console.error('Failed to fetch events:', error)
+      // On error, show empty state - do NOT fall back to fixtures
+      setEvents([])
+      setLiveStatus('ready')
+    }
   }, [])
+  
+  // Helper to extract road name from description
+  const extractRoad = (text: string): string | null => {
+    const match = text.match(/\b(A\d+|B\d+)\b/)
+    return match ? match[1] : null
+  }
 
+  // Initial fetch on mount
+  useEffect(() => {
+    refreshEvents()
+  }, [refreshEvents])
+  
+  // Auto-refresh every 2 minutes
   useEffect(() => {
     const interval = window.setInterval(refreshEvents, 120000)
     return () => window.clearInterval(interval)
@@ -402,9 +437,6 @@ export default function LiveMap() {
   }
 
   const layerCount = (id: string) => {
-    if (id === 'traffic') return scopeEvents.length
-    if (id === 'snow') return snowRisk.length
-    if (id === 'heavy') return heavyConstraints.length
     return scopeEvents.filter(event => event.type === id).length
   }
 
@@ -414,17 +446,16 @@ export default function LiveMap() {
         <div>
           <div className="live-map-title">
             <h1>Corridor monitor</h1>
-            <span className={`feed-status demo`}>
-              <Radio size={11} /> Demo: Simulated Events
+            <span className={`feed-status ${liveStatus}`}>
+              <Radio size={11} /> {liveStatus === 'refreshing' ? 'Fetching live data' : 'Live: Autobahn GmbH'}
             </span>
           </div>
           <p>See current roadworks, warnings, closures, and heavy-transport restrictions across Germany.</p>
-          <p className="corridor-demo-notice">⚠️ Displaying simulated demonstration data. Real-time event monitoring requires API integration.</p>
         </div>
         <div className="live-map-header-actions">
-          <span><Clock3 size={12} /> Sample Data (Not Live)</span>
+          <span><Clock3 size={12} /> Updated {formatBerlinTime(lastUpdated)}</span>
           <button type="button" onClick={refreshEvents} disabled={liveStatus === 'refreshing'}>
-            <RefreshCw size={13} className={liveStatus === 'refreshing' ? 'spin' : ''} /> Refresh demo
+            <RefreshCw size={13} className={liveStatus === 'refreshing' ? 'spin' : ''} /> Refresh data
           </button>
           <button type="button" onClick={() => {
             const map = mapRef.current
