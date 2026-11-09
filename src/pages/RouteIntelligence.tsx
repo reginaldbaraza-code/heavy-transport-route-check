@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, CircleX, 
   FileUp, Loader2, MapPin, ShieldCheck, Truck, Upload,
@@ -7,7 +7,8 @@ import {
 import RouteMapGL, { type RouteMapHandle } from '../components/RouteMapGL'
 import { Toast } from '../components/Feedback'
 import { checkRoute, loadTestPermit, readFileAsText, testPermits, type RouteCheckResult } from '../lib/routeCheck'
-import type { RouteEvidence } from '../data/routeChecks'
+import { useRouteMonitoring } from '../context/RouteMonitoringContext'
+import { formatBerlinDateTime } from '../lib/formatTime'
 
 const routeLayers = [
   { id: 'roadworks', label: 'Roadworks' },
@@ -34,6 +35,9 @@ export default function RouteIntelligencePolished() {
   const [showTestPermits, setShowTestPermits] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const mapRef = useRef<RouteMapHandle>(null)
+  const loadedPermit = useRef<string | null>(null)
+  const [searchParams] = useSearchParams()
+  const { recordCheck } = useRouteMonitoring()
 
   const vehicle = {
     width: parseFloat(vehicleWidth) || 0,
@@ -45,7 +49,14 @@ export default function RouteIntelligencePolished() {
   const vehicleValid = vehicle.width > 0 && vehicle.height > 0 && vehicle.length > 0 && vehicle.grossWeight > 0
 
   const runCheck = async (content: string, metadata?: any) => {
-    if (!vehicleValid || checking) return
+    const dims = metadata?.vehicle ? {
+      width: Number(metadata.vehicle.width),
+      height: Number(metadata.vehicle.height),
+      length: Number(metadata.vehicle.length),
+      grossWeight: Number(metadata.vehicle.grossWeight),
+    } : vehicle
+    const permit = metadata?.permitNumber || permitNumber
+    if (!(dims.width > 0 && dims.height > 0 && dims.length > 0 && dims.grossWeight > 0) || checking) return
 
     setChecking(true)
     setError('')
@@ -60,11 +71,22 @@ export default function RouteIntelligencePolished() {
         setVehicleWeight(metadata.vehicle.grossWeight.toString())
       }
 
-      const checkResult = await checkRoute(content, vehicle, permitNumber)
+      const checkResult = await checkRoute(content, dims, permit)
       setResult(checkResult)
       setActiveLayer('roadworks')
       setStep('result')
       setToast(`Route checked: ${checkResult.verdict}`)
+      recordCheck({
+        permitName: permit || routeFile || `${checkResult.route.origin} → ${checkResult.route.destination}`,
+        routeLabel: `${checkResult.route.origin} → ${checkResult.route.destination}`,
+        runAt: new Date().toISOString(),
+        verdict: checkResult.verdict,
+        evidenceCount: checkResult.evidence.length,
+        retrievedAt: checkResult.retrievedAt || new Date().toISOString(),
+        source: checkResult.source || 'Autobahn GmbH',
+        summary: checkResult.summary,
+        degraded: checkResult.degraded,
+      })
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to check route'
       setError(errorMsg)
@@ -140,6 +162,39 @@ export default function RouteIntelligencePolished() {
       runCheck(gpxContent)
     }
   }
+
+  useEffect(() => {
+    const permitId = searchParams.get('permit')
+    if (!permitId || loadedPermit.current === permitId) return
+    loadedPermit.current = permitId
+    const autoRun = searchParams.get('run') === '1'
+    const permit = testPermits.find(item => item.id === permitId)
+    if (!permit) return
+    void (async () => {
+      try {
+        const { gpxContent: content, metadata } = await loadTestPermit(permit)
+        setRouteFile(permit.name.split('·')[0].trim())
+        setGpxContent(content)
+        setShowTestPermits(false)
+        setError('')
+        if (metadata) {
+          setPermitNumber(metadata.permitNumber || '')
+          setVehicleProfile('custom')
+          setVehicleWidth(metadata.vehicle.width.toString())
+          setVehicleHeight(metadata.vehicle.height.toString())
+          setVehicleLength(metadata.vehicle.length.toString())
+          setVehicleWeight(metadata.vehicle.grossWeight.toString())
+        }
+        if (autoRun) {
+          await runCheck(content, metadata)
+        } else {
+          setStep('vehicle')
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load test permit')
+      }
+    })()
+  }, [searchParams])
 
   const resetFlow = () => {
     setStep('import')
@@ -483,6 +538,8 @@ export default function RouteIntelligencePolished() {
                     <div><span>Destination</span><strong>{result.route.destination}</strong></div>
                     <div><span>Distance</span><strong>{result.route.distance} km</strong></div>
                     <div><span>Evidence found</span><strong>{result.evidence.length}</strong></div>
+                    <div><span>Retrieved</span><strong>{formatBerlinDateTime(result.retrievedAt) || 'Just now'}</strong></div>
+                    <div><span>Source</span><strong>{result.source || 'Autobahn GmbH'}</strong></div>
                   </div>
                 </div>
 
@@ -500,15 +557,24 @@ export default function RouteIntelligencePolished() {
                       >
                         <div className="evidence-header">
                           <strong>{item.title}</strong>
-                          <span className={`confidence-badge confidence-${item.confidence}`}>
-                            {item.confidence === 'high' ? 'High confidence' : 'Medium confidence'}
+                          <span className={`confidence-badge confidence-${String(item.confidence).toLowerCase()}`}>
+                            {String(item.confidence).toLowerCase() === 'high' ? 'High confidence' : 'Medium confidence'}
                           </span>
                         </div>
                         <p>{item.detail}</p>
                         <div className="evidence-meta">
                           <span>{item.source}</span>
                           <span>·</span>
-                          <span>{item.age}</span>
+                          <span>{item.startTimestamp ? `Started ${formatBerlinDateTime(item.startTimestamp)}` : 'Start not published'}</span>
+                          {item.endTimestamp && (
+                            <>
+                              <span>·</span>
+                              <span>Until {formatBerlinDateTime(item.endTimestamp)}</span>
+                            </>
+                          )}
+                          <span>·</span>
+                          <span>Retrieved {formatBerlinDateTime(item.retrievedAt || result.retrievedAt) || 'just now'}</span>
+                          {item.longRunning && <span className="evidence-long-running">Long-running / verify on site</span>}
                           {item.lat != null && item.lng != null && (
                             <span style={{ marginLeft: 'auto', fontSize: '12px', opacity: 0.6 }}>📍 Click to view</span>
                           )}

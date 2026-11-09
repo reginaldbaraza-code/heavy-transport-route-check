@@ -1,6 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import * as turf from '@turf/turf';
 import xml2js from 'xml2js';
+import {
+  descriptionFromAutobahnItem,
+  eventFreshness,
+  evidenceAgeLabel,
+  isoNow,
+} from './_lib/autobahnTimes';
 
 export const config = {
   maxDuration: 30,
@@ -31,6 +37,10 @@ type RouteEvidence = {
   category: 'roadworks' | 'closures' | 'observations';
   lat?: number;
   lng?: number;
+  startTimestamp?: string | null;
+  endTimestamp?: string | null;
+  retrievedAt?: string;
+  longRunning?: boolean;
 };
 
 type RouteCheckResult = {
@@ -49,6 +59,8 @@ type RouteCheckResult = {
     corridor: string;
   };
   degraded: boolean;
+  retrievedAt: string;
+  source: string;
 };
 
 async function parseGPX(gpxContent: string): Promise<GPXPoint[]> {
@@ -234,36 +246,46 @@ async function fetchRoadEvents(road: string, type: 'roadworks' | 'closure' | 'wa
   }
 }
 
-function calculateAge(timestamp?: string | null): string {
-  if (!timestamp) {
-    const now = new Date();
-    return `Reported (fetched ${now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })})`;
-  }
-  
-  try {
-    const eventTime = new Date(timestamp);
-    if (isNaN(eventTime.getTime())) {
-      const now = new Date();
-      return `Reported (fetched ${now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })})`;
-    }
-    
-    const now = new Date();
-    const diffMs = now.getTime() - eventTime.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
+function processAutobahnItem(
+  item: any,
+  fallbackTitle: string,
+  fallbackDescription: string,
+  retrievedAt: string,
+) {
+  const lat = parseFloat(String(item.coordinate?.lat || ''));
+  const lng = parseFloat(String(item.coordinate?.long || ''));
+  const freshness = eventFreshness({
+    startTimestamp: item.startTimestamp,
+    endTimestamp: item.endTimestamp,
+    description: item.description,
+    retrievedAt,
+  });
 
-    if (diffDays > 0) return `${diffDays}d ago`;
-    if (diffHours > 0) return `${diffHours}h ago`;
-    if (diffMins > 0) return `${diffMins}m ago`;
-    return 'Just now';
-  } catch {
-    const now = new Date();
-    return `Reported (fetched ${now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })})`;
-  }
+  return {
+    id: item.identifier || `evt-${Date.now()}-${Math.random()}`,
+    title: item.title || fallbackTitle,
+    description: descriptionFromAutobahnItem(item) || fallbackDescription,
+    lat,
+    lng,
+    extent: String(item.extent || ''),
+    isBlocked: String(item.isBlocked) === 'true',
+    timestamp: freshness.startTimestamp,
+    startTimestamp: freshness.startTimestamp,
+    endTimestamp: freshness.endTimestamp,
+    retrievedAt: freshness.retrievedAt,
+    age: evidenceAgeLabel(freshness),
+    longRunning: freshness.longRunning,
+    expired: freshness.expired,
+    confidence: (freshness.longRunning ? 'medium' : 'high') as 'high' | 'medium',
+    freshness,
+  };
 }
 
-async function fetchAutobahnEventsForRoute(roads: string[]): Promise<any> {
+function isUsableEvent(item: { lat: number; lng: number; expired: boolean }) {
+  return !Number.isNaN(item.lat) && !Number.isNaN(item.lng) && !item.expired;
+}
+
+async function fetchAutobahnEventsForRoute(roads: string[], retrievedAt: string): Promise<any> {
   try {
     const allEvents = await Promise.all(
       roads.map(async (road) => {
@@ -279,78 +301,33 @@ async function fetchAutobahnEventsForRoute(roads: string[]): Promise<any> {
     
     const processedRoadworks = allEvents.flatMap(({ roadworks }) =>
       roadworks.map((item: any) => {
-        // Autobahn API returns coordinate.lat/long as strings, isBlocked as string "true"/"false"
-        const lat = parseFloat(String(item.coordinate?.lat || ''));
-        const lng = parseFloat(String(item.coordinate?.long || ''));
-        const isBlocked = String(item.isBlocked) === 'true';
-        
+        const processed = processAutobahnItem(item, 'Roadworks', 'Roadworks in progress', retrievedAt);
+        const isBlocked = processed.isBlocked;
         return {
-          id: item.identifier || `rw-${Date.now()}-${Math.random()}`,
-          title: item.title || 'Roadworks',
-          description: [
-            ...(Array.isArray(item.subtitle) ? item.subtitle : item.subtitle ? [item.subtitle] : []),
-            ...(Array.isArray(item.description) ? item.description : item.description ? [item.description] : [])
-          ].filter(Boolean).join(' · ') || 'Roadworks in progress',
-          lat,
-          lng,
+          ...processed,
           type: 'roadworks' as const,
           severity: isBlocked ? 'warning' as const : 'info' as const,
-          extent: String(item.extent || ''),
           isBlocked,
-          timestamp: item.startTimestamp || null,
-          age: calculateAge(item.startTimestamp),
-          confidence: 'high' as const,
         };
       })
-    ).filter(item => !isNaN(item.lat) && !isNaN(item.lng));
+    ).filter(isUsableEvent);
 
     const processedClosures = allEvents.flatMap(({ closures }) =>
-      closures.map((item: any) => {
-        const lat = parseFloat(String(item.coordinate?.lat || ''));
-        const lng = parseFloat(String(item.coordinate?.long || ''));
-        
-        return {
-          id: item.identifier || `cl-${Date.now()}-${Math.random()}`,
-          title: item.title || 'Closure',
-          description: [
-            ...(Array.isArray(item.subtitle) ? item.subtitle : item.subtitle ? [item.subtitle] : []),
-            ...(Array.isArray(item.description) ? item.description : item.description ? [item.description] : [])
-          ].filter(Boolean).join(' · ') || 'Road closure in effect',
-          lat,
-          lng,
-          type: 'closures' as const,
-          severity: 'danger' as const,
-          extent: String(item.extent || ''),
-          timestamp: item.startTimestamp || null,
-          age: calculateAge(item.startTimestamp),
-          confidence: 'high' as const,
-        };
-      })
-    ).filter(item => !isNaN(item.lat) && !isNaN(item.lng));
+      closures.map((item: any) => ({
+        ...processAutobahnItem(item, 'Closure', 'Road closure in effect', retrievedAt),
+        type: 'closures' as const,
+        severity: 'danger' as const,
+      }))
+    ).filter(isUsableEvent);
 
     const processedWarnings = allEvents.flatMap(({ warnings }) =>
-      warnings.map((item: any) => {
-        const lat = parseFloat(String(item.coordinate?.lat || ''));
-        const lng = parseFloat(String(item.coordinate?.long || ''));
-        
-        return {
-          id: item.identifier || `wn-${Date.now()}-${Math.random()}`,
-          title: item.title || 'Warning',
-          description: [
-            ...(Array.isArray(item.subtitle) ? item.subtitle : item.subtitle ? [item.subtitle] : []),
-            ...(Array.isArray(item.description) ? item.description : item.description ? [item.description] : [])
-          ].filter(Boolean).join(' · ') || 'Traffic warning',
-          lat,
-          lng,
-          type: 'warnings' as const,
-          severity: 'warning' as const,
-          extent: String(item.extent || ''),
-          timestamp: item.startTimestamp || null,
-          age: calculateAge(item.startTimestamp),
-          confidence: 'medium' as const,
-        };
-      })
-    ).filter(item => !isNaN(item.lat) && !isNaN(item.lng));
+      warnings.map((item: any) => ({
+        ...processAutobahnItem(item, 'Warning', 'Traffic warning', retrievedAt),
+        type: 'warnings' as const,
+        severity: 'warning' as const,
+        confidence: 'medium' as const,
+      }))
+    ).filter(isUsableEvent);
 
     return {
       roadworks: processedRoadworks,
@@ -358,6 +335,7 @@ async function fetchAutobahnEventsForRoute(roads: string[]): Promise<any> {
       warnings: processedWarnings,
       source: 'Autobahn GmbH (verkehr.autobahn.de)',
       roads: roads.join(', '),
+      retrievedAt,
     };
   } catch (error) {
     console.error('Error fetching Autobahn events:', error);
@@ -369,22 +347,41 @@ function determineVerdict(
   evidence: RouteEvidence[],
   degraded: boolean
 ): { verdict: 'READY' | 'HOLD' | 'VERIFY'; confidence: 'high' | 'medium' } {
+  // Unknown bridge/clearance data must never yield READY.
   if (degraded) {
     return { verdict: 'VERIFY', confidence: 'medium' };
   }
 
   const dangerItems = evidence.filter(e => e.state === 'danger');
-  const warningItems = evidence.filter(e => e.state === 'warning');
-
   if (dangerItems.length > 0) {
     return { verdict: 'HOLD', confidence: 'high' };
   }
 
-  if (warningItems.length > 0) {
-    return { verdict: 'VERIFY', confidence: 'medium' };
-  }
+  return { verdict: 'VERIFY', confidence: 'medium' };
+}
 
-  return { verdict: 'READY', confidence: 'high' };
+function timestampFields(event: {
+  startTimestamp?: string | null;
+  endTimestamp?: string | null;
+  retrievedAt?: string;
+  longRunning?: boolean;
+  age?: string;
+  confidence?: 'high' | 'medium';
+}) {
+  return {
+    startTimestamp: event.startTimestamp ?? null,
+    endTimestamp: event.endTimestamp ?? null,
+    retrievedAt: event.retrievedAt,
+    longRunning: Boolean(event.longRunning),
+    age: event.age || evidenceAgeLabel({
+      startTimestamp: event.startTimestamp ?? null,
+      endTimestamp: event.endTimestamp ?? null,
+      retrievedAt: event.retrievedAt || isoNow(),
+      expired: false,
+      longRunning: Boolean(event.longRunning),
+    }),
+    confidence: (event.longRunning ? 'medium' : event.confidence || 'high') as 'high' | 'medium',
+  };
 }
 
 export default async function handler(
@@ -438,9 +435,11 @@ export default async function handler(
     
     const affectedRoads = determineAffectedRoads(routePoints);
     console.log('Checking roads:', affectedRoads.join(', '));
-    
-    const autobahnData = await fetchAutobahnEventsForRoute(affectedRoads);
+
+    const retrievedAt = isoNow();
+    const autobahnData = await fetchAutobahnEventsForRoute(affectedRoads, retrievedAt);
     const degraded = !autobahnData;
+    const source = 'Autobahn GmbH';
     
     const evidence: RouteEvidence[] = [];
     
@@ -448,6 +447,7 @@ export default async function handler(
       for (const event of autobahnData.roadworks || []) {
         if (checkIntersection(corridor, event.lat, event.lng)) {
           const vehicleCheck = checkVehicleAgainstEvent(event, vehicle);
+          const stamps = timestampFields(event);
           
           if (vehicleCheck.exceeds) {
             evidence.push({
@@ -455,23 +455,25 @@ export default async function handler(
               title: vehicleCheck.type === 'width' 
                 ? `Width restriction ${vehicleCheck.restriction}m – vehicle exceeds`
                 : 'Roadworks blocking route',
-              detail: event.description,
-              source: `Live: Autobahn GmbH ${autobahnData.roads}`,
-              age: event.age,
-              confidence: 'high',
+              detail: event.longRunning
+                ? `${event.description} Long-running / verify on site.`
+                : event.description,
+              source: `Autobahn GmbH · ${autobahnData.roads}`,
+              ...stamps,
               state: 'danger',
               category: 'roadworks',
               lat: event.lat,
               lng: event.lng,
             });
-          } else if (event.severity === 'warning') {
+          } else if (event.severity === 'warning' || event.longRunning) {
             evidence.push({
               id: event.id,
-              title: event.title,
-              detail: event.description,
-              source: `Live: Autobahn GmbH ${autobahnData.roads}`,
-              age: event.age,
-              confidence: 'high',
+              title: event.longRunning ? `${event.title} (long-running / verify on site)` : event.title,
+              detail: event.longRunning
+                ? `${event.description} This item started more than 90 days ago and has no published end date.`
+                : event.description,
+              source: `Autobahn GmbH · ${autobahnData.roads}`,
+              ...stamps,
               state: 'warning',
               category: 'roadworks',
               lat: event.lat,
@@ -485,11 +487,10 @@ export default async function handler(
         if (checkIntersection(corridor, event.lat, event.lng)) {
           evidence.push({
             id: event.id,
-            title: 'Full closure on permitted route',
+            title: event.longRunning ? 'Long-running closure – verify on site' : 'Full closure on permitted route',
             detail: event.description,
-            source: `Live: Autobahn GmbH ${autobahnData.roads}`,
-            age: event.age,
-            confidence: 'high',
+            source: `Autobahn GmbH · ${autobahnData.roads}`,
+            ...timestampFields(event),
             state: 'danger',
             category: 'closures',
             lat: event.lat,
@@ -502,11 +503,10 @@ export default async function handler(
         if (checkIntersection(corridor, event.lat, event.lng)) {
           evidence.push({
             id: event.id,
-            title: event.title,
+            title: event.longRunning ? `${event.title} (long-running / verify on site)` : event.title,
             detail: event.description,
-            source: `Live: Autobahn GmbH ${autobahnData.roads}`,
-            age: event.age,
-            confidence: 'medium',
+            source: `Autobahn GmbH · ${autobahnData.roads}`,
+            ...timestampFields({ ...event, confidence: 'medium' }),
             state: 'warning',
             category: 'roadworks',
             lat: event.lat,
@@ -516,18 +516,27 @@ export default async function handler(
       }
     }
 
-    if (evidence.length === 0 && !degraded) {
+    if (!degraded && !evidence.some(item => item.category === 'roadworks' || item.category === 'closures')) {
       evidence.push({
         id: 'route-clear',
-        title: 'No active roadworks or closures',
-        detail: `All checked Autobahn routes (${autobahnData?.roads || 'none'}) show no disruptions on the permitted route corridor.`,
-        source: `Live: Autobahn GmbH checked ${new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`,
-        age: 'Just checked',
-        confidence: 'high',
+        title: 'No active Autobahn roadworks or closures on corridor',
+        detail: `Checked Autobahn routes (${autobahnData?.roads || 'none'}) show no current disruptions on the permitted corridor. Bridge and clearance data are still unavailable.`,
+        source: `Autobahn GmbH · retrieved ${retrievedAt}`,
+        ...timestampFields({ retrievedAt, confidence: 'high' }),
         state: 'clear',
         category: 'roadworks',
       });
     }
+
+    evidence.push({
+      id: 'bridge-clearance-unknown',
+      title: 'Bridge and clearance data not available',
+      detail: 'This check does not include verified bridge heights or local clearance limits. Unknown clearance data cannot yield READY — confirm on site before departure.',
+      source: 'Route check system',
+      ...timestampFields({ retrievedAt, confidence: 'medium' }),
+      state: 'warning',
+      category: 'observations',
+    });
 
     // Deduplicate evidence by ID (same event shouldn't appear twice)
     const uniqueEvidence = Array.from(
@@ -536,24 +545,25 @@ export default async function handler(
     
     const { verdict, confidence } = determineVerdict(uniqueEvidence, degraded);
     const issueCount = uniqueEvidence.filter(e => e.state === 'danger').length;
+    const hasCorridorIssues = uniqueEvidence.some(item => item.state === 'danger' || (item.state === 'warning' && item.id !== 'bridge-clearance-unknown'));
 
     const result: RouteCheckResult = {
       verdict,
-      title: verdict === 'READY' 
-        ? 'Route clear – ready to depart'
-        : verdict === 'HOLD'
-          ? 'Hold departure – blocking issue on route'
-          : degraded
-            ? "Can't confirm route – data source unavailable"
-            : 'Verification required – potential issue detected',
-      summary: verdict === 'READY'
-        ? `No disruptions found on ${distance}km route.`
-        : verdict === 'HOLD'
-          ? `${issueCount} blocking ${issueCount === 1 ? 'issue' : 'issues'} detected on permitted route.`
-          : degraded
-            ? 'The Autobahn data source is temporarily unavailable. Retry or verify manually.'
-            : `${uniqueEvidence.length} item${uniqueEvidence.length === 1 ? '' : 's'} require verification.`,
-      impact: `Selected vehicle: ${vehicle.width.toFixed(2)}m W × ${vehicle.height.toFixed(2)}m H × ${vehicle.length.toFixed(1)}m L · ${vehicle.grossWeight}t${degraded ? '. Data source unavailable – cannot confirm route is clear.' : ''}`,
+      title: verdict === 'HOLD'
+        ? 'Hold departure – blocking issue on route'
+        : degraded
+          ? "Can't confirm route – data source unavailable"
+          : hasCorridorIssues
+            ? 'Verification required – potential issue detected'
+            : 'Verification required – bridge and clearance data unavailable',
+      summary: verdict === 'HOLD'
+        ? `${issueCount} blocking ${issueCount === 1 ? 'issue' : 'issues'} detected on permitted route.`
+        : degraded
+          ? 'The Autobahn data source is temporarily unavailable. Retry or verify manually.'
+          : hasCorridorIssues
+            ? `${uniqueEvidence.length} item${uniqueEvidence.length === 1 ? '' : 's'} require verification.`
+            : `No Autobahn disruptions found on ${distance}km route, but bridge and clearance data are unknown.`,
+      impact: `Selected vehicle: ${vehicle.width.toFixed(2)}m W × ${vehicle.height.toFixed(2)}m H × ${vehicle.length.toFixed(1)}m L · ${vehicle.grossWeight}t${degraded ? '. Data source unavailable – cannot confirm route is clear.' : '. Unknown bridge/clearance data cannot yield READY.'}`,
       confidence,
       issueCount,
       evidence: uniqueEvidence,
@@ -565,6 +575,8 @@ export default async function handler(
         corridor: `±5km corridor (${distance}km route)`,
       },
       degraded,
+      retrievedAt,
+      source,
     };
 
     return res.status(200).json(result);
@@ -574,7 +586,8 @@ export default async function handler(
     // Try to preserve route geometry even if check failed
     let fallbackRoute;
     try {
-      const points = await parseGPX(gpxContent);
+      const fallbackGpx = typeof req.body?.gpxContent === 'string' ? req.body.gpxContent : ''
+      const points = await parseGPX(fallbackGpx);
       const distance = calculateRouteDistance(points);
       const origin = points[0]?.name || `${points[0]?.lat.toFixed(4)}, ${points[0]?.lng.toFixed(4)}`;
       const destination = points[points.length - 1]?.name || `${points[points.length - 1]?.lat.toFixed(4)}, ${points[points.length - 1]?.lng.toFixed(4)}`;
@@ -596,7 +609,7 @@ export default async function handler(
       };
     }
     
-    // Return degraded VERIFY verdict with route geometry if available
+    const retrievedAt = isoNow();
     return res.status(200).json({
       verdict: 'VERIFY',
       title: "Can't confirm route – check failed",
@@ -609,13 +622,16 @@ export default async function handler(
         title: 'Route check system error',
         detail: error instanceof Error ? error.message : 'Unknown error occurred',
         source: 'Route check system',
-        age: 'Just now',
+        age: evidenceAgeLabel({ startTimestamp: null, endTimestamp: null, retrievedAt, expired: false, longRunning: false }),
         confidence: 'medium',
         state: 'warning',
         category: 'observations',
+        retrievedAt,
       }],
       route: fallbackRoute,
       degraded: true,
+      retrievedAt,
+      source: 'Route check system',
     });
   }
 }

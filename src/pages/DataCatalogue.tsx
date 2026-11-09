@@ -30,8 +30,8 @@ const filterSections = [
 ]
 
 const datasets: Dataset[] = [
-  { id: 1, org: 'RheinLift Logistics', status: 'Available', title: 'Pool Dataset', category: 'Air and Space Travel', icon: Cloud, verified: false },
-  { id: 2, org: 'RheinLift Logistics', status: 'Available', title: 'Test Dataset', category: 'General Information', icon: Database, verified: false },
+  { id: 1, org: 'Your organisation', status: 'Available', title: 'Pool Dataset', category: 'Air and Space Travel', icon: Cloud, verified: false },
+  { id: 2, org: 'Your organisation', status: 'Available', title: 'Test Dataset', category: 'General Information', icon: Database, verified: false },
   { id: 3, org: 'BMW AG', status: 'Available', title: 'BMW SRTI feed for DFRS', category: 'Road Events and Conditions', icon: Car, verified: true },
   { id: 4, org: 'BMW AG', status: 'Available', title: 'BMW Accident', category: 'Road Events and Conditions', icon: Car, verified: true },
   { id: 5, org: 'BMW AG', status: 'Available', title: 'BMW Slippery Road', category: 'Road Events and Conditions', icon: Car, verified: true },

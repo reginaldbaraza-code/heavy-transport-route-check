@@ -1,35 +1,73 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import type { RouteEvidence, RouteVerdict } from '../data/routeChecks'
+import { readJson, STORAGE_KEYS, writeJson } from '../lib/browserStore'
 
 export type AlertStatus = 'New' | 'Acknowledged' | 'Resolved'
+
+export type CheckHistoryRecord = {
+  id: string
+  permitName: string
+  routeLabel: string
+  runAt: string
+  verdict: RouteVerdict
+  evidenceCount: number
+  retrievedAt: string
+  source: string
+  summary: string
+  degraded?: boolean
+}
 
 export type MonitoringAlert = {
   id: string
   time: string
+  runAt: string
   routeId: string
+  routeLabel: string
   change: string
   detail: string
   severity: RouteVerdict
   status: AlertStatus
+  source: string
 }
 
 export type OnSiteOutcome = 'Open' | 'Closed' | 'Partly'
 
-const initialAlerts: MonitoringAlert[] = [
-  { id: 'alert-a7-closure', time: '2 min ago', routeId: 'bremen-hannover', change: 'New closure on A7 22:00–05:00', detail: 'Verdict changed VERIFY → HOLD', severity: 'HOLD', status: 'New' },
-  { id: 'alert-width-hold', time: '18 min ago', routeId: 'duisburg-munich', change: 'Verdict changed READY → HOLD', detail: 'Selected vehicle exceeds the A3 lane-width restriction.', severity: 'HOLD', status: 'New' },
-  { id: 'alert-a9-conflict', time: '40 min ago', routeId: 'leipzig-nuremberg', change: 'Conflicting report on A9', detail: 'Official feed reports closed; on-site driver reports open.', severity: 'VERIFY', status: 'New' },
-  { id: 'alert-source-outage', time: '1 h ago', routeId: 'duisburg-munich', change: 'Source unavailable', detail: 'Roadworks feed did not respond during a scheduled refresh.', severity: 'VERIFY', status: 'Acknowledged' },
-  { id: 'alert-onsite-confirmed', time: 'Yesterday', routeId: 'hamburg-kassel', change: 'Verification confirmed by on-site driver', detail: 'A7 corridor reported open and passable.', severity: 'READY', status: 'Resolved' },
-]
+type AlertState = {
+  readIds: string[]
+  resolvedIds: string[]
+}
+
+const emptyAlertState: AlertState = { readIds: [], resolvedIds: [] }
+
+function alertsFromHistory(history: CheckHistoryRecord[], alertState: AlertState): MonitoringAlert[] {
+  return history
+    .filter(record => record.verdict === 'HOLD' || record.verdict === 'VERIFY')
+    .map(record => {
+      const resolved = alertState.resolvedIds.includes(record.id)
+      const read = resolved || alertState.readIds.includes(record.id)
+      return {
+        id: record.id,
+        time: record.runAt,
+        runAt: record.runAt,
+        routeId: record.id,
+        routeLabel: record.routeLabel || record.permitName,
+        change: `Route check: ${record.verdict}`,
+        detail: `${record.summary} · ${record.evidenceCount} evidence item${record.evidenceCount === 1 ? '' : 's'}.`,
+        severity: record.verdict,
+        status: resolved ? 'Resolved' : read ? 'Acknowledged' : 'New',
+        source: record.source || 'Autobahn GmbH',
+      }
+    })
+}
 
 type RouteMonitoringValue = {
+  history: CheckHistoryRecord[]
   alerts: MonitoringAlert[]
   unreadCount: number
   disruptions: Record<string, boolean>
   onSiteReports: Record<string, RouteEvidence[]>
   onSiteOutcomes: Record<string, OnSiteOutcome | undefined>
-  addAlert: (alert: Omit<MonitoringAlert, 'id' | 'time'>) => void
+  recordCheck: (record: Omit<CheckHistoryRecord, 'id'>) => CheckHistoryRecord
   acknowledgeAlert: (id: string) => void
   resolveAlert: (id: string) => void
   simulateNewDisruption: (routeId: string) => void
@@ -40,37 +78,52 @@ type RouteMonitoringValue = {
 const RouteMonitoringContext = createContext<RouteMonitoringValue | null>(null)
 
 export function RouteMonitoringProvider({ children }: { children: ReactNode }) {
-  const [alerts, setAlerts] = useState(initialAlerts)
+  const [history, setHistory] = useState<CheckHistoryRecord[]>(() => (
+    typeof window === 'undefined' ? [] : readJson<CheckHistoryRecord[]>(STORAGE_KEYS.checkHistory, [])
+  ))
+  const [alertState, setAlertState] = useState<AlertState>(() => (
+    typeof window === 'undefined' ? emptyAlertState : readJson<AlertState>(STORAGE_KEYS.alertState, emptyAlertState)
+  ))
   const [disruptions, setDisruptions] = useState<Record<string, boolean>>({})
   const [onSiteReports, setOnSiteReports] = useState<Record<string, RouteEvidence[]>>({})
   const [onSiteOutcomes, setOnSiteOutcomes] = useState<Record<string, OnSiteOutcome | undefined>>({})
 
-  const addAlert: RouteMonitoringValue['addAlert'] = alert => {
-    setAlerts(current => [{
-      ...alert,
-      id: `alert-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      time: 'Just now',
-    }, ...current])
-  }
+  const recordCheck = useCallback<RouteMonitoringValue['recordCheck']>(record => {
+    const saved: CheckHistoryRecord = {
+      ...record,
+      id: `check-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    }
+    setHistory(current => {
+      const next = [saved, ...current].slice(0, 100)
+      writeJson(STORAGE_KEYS.checkHistory, next)
+      return next
+    })
+    return saved
+  }, [])
 
-  const acknowledgeAlert = (id: string) => {
-    setAlerts(current => current.map(alert => alert.id === id && alert.status === 'New' ? { ...alert, status: 'Acknowledged' } : alert))
-  }
+  const acknowledgeAlert = useCallback((id: string) => {
+    setAlertState(current => {
+      if (current.readIds.includes(id) || current.resolvedIds.includes(id)) return current
+      const next = { ...current, readIds: [...current.readIds, id] }
+      writeJson(STORAGE_KEYS.alertState, next)
+      return next
+    })
+  }, [])
 
-  const resolveAlert = (id: string) => {
-    setAlerts(current => current.map(alert => alert.id === id ? { ...alert, status: 'Resolved' } : alert))
-  }
+  const resolveAlert = useCallback((id: string) => {
+    setAlertState(current => {
+      const next = {
+        readIds: current.readIds.includes(id) ? current.readIds : [...current.readIds, id],
+        resolvedIds: current.resolvedIds.includes(id) ? current.resolvedIds : [...current.resolvedIds, id],
+      }
+      writeJson(STORAGE_KEYS.alertState, next)
+      return next
+    })
+  }, [])
 
   const simulateNewDisruption = (routeId: string) => {
     if (disruptions[routeId]) return
     setDisruptions(current => ({ ...current, [routeId]: true }))
-    addAlert({
-      routeId,
-      change: 'Verdict changed READY → HOLD',
-      detail: 'New closure on A7 22:00–05:00',
-      severity: 'HOLD',
-      status: 'New',
-    })
   }
 
   const clearDisruption = (routeId: string) => {
@@ -78,6 +131,7 @@ export function RouteMonitoringProvider({ children }: { children: ReactNode }) {
   }
 
   const addOnSiteReport = (routeId: string, outcome: OnSiteOutcome, note: string, photoName?: string) => {
+    const now = new Date().toISOString()
     const state = outcome === 'Open' ? 'clear' : outcome === 'Closed' ? 'danger' : 'warning'
     const report: RouteEvidence = {
       id: `onsite-${Date.now()}`,
@@ -85,34 +139,31 @@ export function RouteMonitoringProvider({ children }: { children: ReactNode }) {
       detail: [note || `Driver or escort reported the lane/road as ${outcome.toLowerCase()}.`, photoName ? `Photo: ${photoName}` : ''].filter(Boolean).join(' '),
       source: 'On-site driver or escort',
       age: 'Just now',
-      confidence: 'High',
+      confidence: 'high',
       state,
       category: 'observations',
+      retrievedAt: now,
     }
     setOnSiteReports(current => ({ ...current, [routeId]: [report, ...(current[routeId] ?? [])] }))
     setOnSiteOutcomes(current => ({ ...current, [routeId]: outcome }))
-    addAlert({
-      routeId,
-      change: 'Verification confirmed by on-site driver',
-      detail: `Lane/road reported ${outcome.toLowerCase()}${note ? ` · ${note}` : ''}`,
-      severity: outcome === 'Open' ? 'READY' : outcome === 'Closed' ? 'HOLD' : 'VERIFY',
-      status: 'New',
-    })
   }
 
+  const alerts = useMemo(() => alertsFromHistory(history, alertState), [alertState, history])
+
   const value = useMemo<RouteMonitoringValue>(() => ({
+    history,
     alerts,
     unreadCount: alerts.filter(alert => alert.status === 'New').length,
     disruptions,
     onSiteReports,
     onSiteOutcomes,
-    addAlert,
+    recordCheck,
     acknowledgeAlert,
     resolveAlert,
     simulateNewDisruption,
     clearDisruption,
     addOnSiteReport,
-  }), [alerts, disruptions, onSiteOutcomes, onSiteReports])
+  }), [acknowledgeAlert, alerts, disruptions, history, onSiteOutcomes, onSiteReports, recordCheck, resolveAlert])
 
   return <RouteMonitoringContext.Provider value={value}>{children}</RouteMonitoringContext.Provider>
 }

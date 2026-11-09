@@ -30,12 +30,14 @@ import { MarketplaceProvider } from './context/MarketplaceContext'
 import CompareOffers from './pages/CompareOffers'
 import AppErrorBoundary from './components/AppErrorBoundary'
 import { RouteMonitoringProvider } from './context/RouteMonitoringContext'
+import { OrgSettingsProvider } from './context/OrgSettingsContext'
 import DataPartners from './pages/DataPartners'
 
 export default function App() {
   return (
     <AppErrorBoundary>
       <MarketplaceProvider>
+        <OrgSettingsProvider>
         <RouteMonitoringProvider>
           <BrowserRouter>
           <Routes>
@@ -82,6 +84,7 @@ export default function App() {
           </Routes>
           </BrowserRouter>
         </RouteMonitoringProvider>
+        </OrgSettingsProvider>
       </MarketplaceProvider>
     </AppErrorBoundary>
   )

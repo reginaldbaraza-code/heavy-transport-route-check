@@ -1,4 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import {
+  eventFreshness,
+  evidenceAgeLabel,
+  isoNow,
+} from './_lib/autobahnTimes';
 
 export const config = {
   maxDuration: 30,
@@ -12,9 +17,13 @@ type AutobahnEvent = {
   lng: number;
   type: 'roadworks' | 'closures' | 'warnings';
   severity: 'danger' | 'warning' | 'info';
-  timestamp?: string;
+  timestamp?: string | null;
+  startTimestamp?: string | null;
+  endTimestamp?: string | null;
+  retrievedAt: string;
   age: string;
   confidence: 'high' | 'medium';
+  longRunning?: boolean;
 };
 
 type AutobahnEventsResponse = {
@@ -22,6 +31,7 @@ type AutobahnEventsResponse = {
   closures: AutobahnEvent[];
   warnings: AutobahnEvent[];
   cachedAt: string;
+  retrievedAt: string;
   source: string;
   roads?: string[];
 };
@@ -57,31 +67,39 @@ function normalizeDescription(parts: any[]): string {
   return text || 'Event in progress';
 }
 
-function calculateAge(timestamp?: string, fetchTime?: Date): string {
-  const now = fetchTime || new Date();
-  
-  if (!timestamp) {
-    return `Updated ${now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`;
-  }
-  
-  try {
-    const eventTime = new Date(timestamp);
-    if (isNaN(eventTime.getTime())) {
-      return `Updated ${now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`;
-    }
-    
-    const diffMs = now.getTime() - eventTime.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffDays > 0) return `${diffDays}d ago`;
-    if (diffHours > 0) return `${diffHours}h ago`;
-    if (diffMins > 0) return `${diffMins}m ago`;
-    return 'Just now';
-  } catch {
-    return `Updated ${now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`;
-  }
+function mapAutobahnEvent(
+  item: any,
+  fallbackTitle: string,
+  fallbackDescription: string,
+  retrievedAt: string,
+  confidence: 'high' | 'medium',
+): AutobahnEvent & { expired: boolean } {
+  const freshness = eventFreshness({
+    startTimestamp: item.startTimestamp,
+    endTimestamp: item.endTimestamp,
+    description: item.description,
+    retrievedAt,
+  });
+  return {
+    id: item.identifier || `evt-${Date.now()}-${Math.random()}`,
+    title: freshness.longRunning ? `${item.title || fallbackTitle} (long-running / verify on site)` : (item.title || fallbackTitle),
+    description: normalizeDescription([
+      ...(Array.isArray(item.subtitle) ? item.subtitle : item.subtitle ? [item.subtitle] : []),
+      ...(Array.isArray(item.description) ? item.description : item.description ? [item.description] : []),
+    ]) || fallbackDescription,
+    lat: parseFloat(item.coordinate?.lat),
+    lng: parseFloat(item.coordinate?.long),
+    type: 'roadworks',
+    severity: 'info',
+    timestamp: freshness.startTimestamp,
+    startTimestamp: freshness.startTimestamp,
+    endTimestamp: freshness.endTimestamp,
+    retrievedAt: freshness.retrievedAt,
+    age: evidenceAgeLabel(freshness),
+    confidence: freshness.longRunning ? 'medium' : confidence,
+    longRunning: freshness.longRunning,
+    expired: freshness.expired,
+  };
 }
 
 async function fetchRoadEvents(road: string, type: 'roadworks' | 'closure' | 'warning'): Promise<any[]> {
@@ -105,9 +123,13 @@ async function fetchRoadEvents(road: string, type: 'roadworks' | 'closure' | 'wa
   }
 }
 
+function isUsableEvent(item: AutobahnEvent & { expired?: boolean }) {
+  return !Number.isNaN(item.lat) && !Number.isNaN(item.lng) && !item.expired;
+}
+
 async function fetchAutobahnEvents(roads?: string[]): Promise<AutobahnEventsResponse> {
   const now = Date.now();
-  const fetchTime = new Date();
+  const retrievedAt = isoNow();
   
   // Return cached data if still valid and no specific roads requested
   if (!roads && cachedResponse && (now - cachedResponse.timestamp < CACHE_DURATION_MS)) {
@@ -129,66 +151,40 @@ async function fetchAutobahnEvents(roads?: string[]): Promise<AutobahnEventsResp
         return { road, roadworks, closures, warnings };
       })
     );
-    
+
     const processedRoadworks: AutobahnEvent[] = allEvents.flatMap(({ roadworks }) =>
-      roadworks.map((item: any) => ({
-        id: item.identifier || `rw-${Date.now()}-${Math.random()}`,
-        title: item.title || 'Roadworks',
-        description: normalizeDescription([
-          ...(Array.isArray(item.subtitle) ? item.subtitle : item.subtitle ? [item.subtitle] : []),
-          ...(Array.isArray(item.description) ? item.description : item.description ? [item.description] : [])
-        ]),
-        lat: parseFloat(item.coordinate?.lat),
-        lng: parseFloat(item.coordinate?.long),
-        type: 'roadworks' as const,
-        severity: item.isBlocked?.length ? 'warning' as const : 'info' as const,
-        timestamp: item.startTimestamp,
-        age: calculateAge(item.startTimestamp, fetchTime),
-        confidence: 'high' as const,
-      }))
-    ).filter(item => !isNaN(item.lat) && !isNaN(item.lng));
+      roadworks.map((item: any) => {
+        const mapped = mapAutobahnEvent(item, 'Roadworks', 'Roadworks in progress', retrievedAt, 'high');
+        mapped.type = 'roadworks';
+        mapped.severity = item.isBlocked?.length ? 'warning' : 'info';
+        return mapped;
+      })
+    ).filter(isUsableEvent);
 
     const processedClosures: AutobahnEvent[] = allEvents.flatMap(({ closures }) =>
-      closures.map((item: any) => ({
-        id: item.identifier || `cl-${Date.now()}-${Math.random()}`,
-        title: item.title || 'Closure',
-        description: normalizeDescription([
-          ...(Array.isArray(item.subtitle) ? item.subtitle : item.subtitle ? [item.subtitle] : []),
-          ...(Array.isArray(item.description) ? item.description : item.description ? [item.description] : [])
-        ]),
-        lat: parseFloat(item.coordinate?.lat),
-        lng: parseFloat(item.coordinate?.long),
-        type: 'closures' as const,
-        severity: 'danger' as const,
-        timestamp: item.startTimestamp,
-        age: calculateAge(item.startTimestamp, fetchTime),
-        confidence: 'high' as const,
-      }))
-    ).filter(item => !isNaN(item.lat) && !isNaN(item.lng));
+      closures.map((item: any) => {
+        const mapped = mapAutobahnEvent(item, 'Closure', 'Road closure in effect', retrievedAt, 'high');
+        mapped.type = 'closures';
+        mapped.severity = 'danger';
+        return mapped;
+      })
+    ).filter(isUsableEvent);
 
     const processedWarnings: AutobahnEvent[] = allEvents.flatMap(({ warnings }) =>
-      warnings.map((item: any) => ({
-        id: item.identifier || `wn-${Date.now()}-${Math.random()}`,
-        title: item.title || 'Warning',
-        description: normalizeDescription([
-          ...(Array.isArray(item.subtitle) ? item.subtitle : item.subtitle ? [item.subtitle] : []),
-          ...(Array.isArray(item.description) ? item.description : item.description ? [item.description] : [])
-        ]),
-        lat: parseFloat(item.coordinate?.lat),
-        lng: parseFloat(item.coordinate?.long),
-        type: 'warnings' as const,
-        severity: 'warning' as const,
-        timestamp: item.startTimestamp,
-        age: calculateAge(item.startTimestamp, fetchTime),
-        confidence: 'medium' as const,
-      }))
-    ).filter(item => !isNaN(item.lat) && !isNaN(item.lng));
+      warnings.map((item: any) => {
+        const mapped = mapAutobahnEvent(item, 'Warning', 'Traffic warning', retrievedAt, 'medium');
+        mapped.type = 'warnings';
+        mapped.severity = 'warning';
+        return mapped;
+      })
+    ).filter(isUsableEvent);
 
     const response: AutobahnEventsResponse = {
       roadworks: processedRoadworks,
       closures: processedClosures,
       warnings: processedWarnings,
-      cachedAt: new Date().toISOString(),
+      cachedAt: retrievedAt,
+      retrievedAt,
       source: 'Autobahn GmbH (verkehr.autobahn.de)',
       roads: roadsToFetch,
     };
@@ -213,7 +209,8 @@ async function fetchAutobahnEvents(roads?: string[]): Promise<AutobahnEventsResp
       roadworks: [],
       closures: [],
       warnings: [],
-      cachedAt: new Date().toISOString(),
+      cachedAt: isoNow(),
+      retrievedAt: isoNow(),
       source: 'Autobahn GmbH (verkehr.autobahn.de) - Service unavailable',
     };
   }
@@ -252,7 +249,8 @@ export default async function handler(
       roadworks: [],
       closures: [],
       warnings: [],
-      cachedAt: new Date().toISOString(),
+      cachedAt: isoNow(),
+      retrievedAt: isoNow(),
       source: 'Error',
     });
   }

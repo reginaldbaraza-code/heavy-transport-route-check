@@ -2,11 +2,11 @@ import { useState } from 'react'
 import { Search, X, ArrowRight, FileText, Calendar, Users } from 'lucide-react'
 
 const contracts = [
-  { id: 'CTR-2024-001', dataset: 'BMW Slippery Road', provider: 'BMW AG', consumer: 'RheinLift Logistics', status: 'active', startDate: '2024-01-15', endDate: '2026-12-31', lastActivity: '2 hours ago', purpose: 'Research', permissions: ['Read', 'Analyze'], license: 'Custom MDS License' },
-  { id: 'CTR-2024-002', dataset: 'Real-Time Traffic Flow — Munich', provider: 'City of Munich', consumer: 'RheinLift Logistics', status: 'pending', startDate: '2024-03-01', endDate: '2025-03-01', lastActivity: '1 day ago', purpose: 'Product development', permissions: ['Read'], license: 'Public Open Data License' },
-  { id: 'CTR-2024-003', dataset: 'Public Transport Disruptions NRW', provider: 'VRR GmbH', consumer: 'RheinLift Logistics', status: 'action-required', startDate: '2024-02-10', endDate: '2025-02-10', lastActivity: '3 days ago', purpose: 'Research', permissions: ['Read', 'Redistribute'], license: 'Creative Commons 4.0' },
-  { id: 'CTR-2023-011', dataset: 'BMW Heavy Rain', provider: 'BMW AG', consumer: 'RheinLift Logistics', status: 'expired', startDate: '2023-01-01', endDate: '2024-01-01', lastActivity: '1 year ago', purpose: 'Internal analysis', permissions: ['Read'], license: 'Custom MDS License' },
-  { id: 'CTR-2024-004', dataset: 'EV Charging Points Germany', provider: 'Bundesnetzagentur', consumer: 'RheinLift Logistics', status: 'active', startDate: '2024-04-01', endDate: '2027-04-01', lastActivity: '5 hours ago', purpose: 'Urban planning', permissions: ['Read', 'Analyze', 'Aggregate'], license: 'GovData Open License' },
+  { id: 'CTR-2024-001', dataset: 'BMW Slippery Road', provider: 'BMW AG', consumer: 'Your organisation', status: 'active', startDate: '2024-01-15', endDate: '2026-12-31', lastActivity: '2 hours ago', purpose: 'Research', permissions: ['Read', 'Analyze'], license: 'Custom MDS License' },
+  { id: 'CTR-2024-002', dataset: 'Real-Time Traffic Flow — Munich', provider: 'City of Munich', consumer: 'Your organisation', status: 'pending', startDate: '2024-03-01', endDate: '2025-03-01', lastActivity: '1 day ago', purpose: 'Product development', permissions: ['Read'], license: 'Public Open Data License' },
+  { id: 'CTR-2024-003', dataset: 'Public Transport Disruptions NRW', provider: 'VRR GmbH', consumer: 'Your organisation', status: 'action-required', startDate: '2024-02-10', endDate: '2025-02-10', lastActivity: '3 days ago', purpose: 'Research', permissions: ['Read', 'Redistribute'], license: 'Creative Commons 4.0' },
+  { id: 'CTR-2023-011', dataset: 'BMW Heavy Rain', provider: 'BMW AG', consumer: 'Your organisation', status: 'expired', startDate: '2023-01-01', endDate: '2024-01-01', lastActivity: '1 year ago', purpose: 'Internal analysis', permissions: ['Read'], license: 'Custom MDS License' },
+  { id: 'CTR-2024-004', dataset: 'EV Charging Points Germany', provider: 'Bundesnetzagentur', consumer: 'Your organisation', status: 'active', startDate: '2024-04-01', endDate: '2027-04-01', lastActivity: '5 hours ago', purpose: 'Urban planning', permissions: ['Read', 'Analyze', 'Aggregate'], license: 'GovData Open License' },
 ]
 
 type Contract = typeof contracts[number]
