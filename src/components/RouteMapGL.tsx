@@ -57,7 +57,6 @@ const RouteMapGL = forwardRef<RouteMapHandle, Props>(({
   const map = useRef<maplibregl.Map | null>(null);
   const markers = useRef<maplibregl.Marker[]>([]);
   const [mapLoaded, setMapLoaded] = useState(false);
-  const [styleLoadCount, setStyleLoadCount] = useState(0);
   const [legendExpanded, setLegendExpanded] = useState(false);
 
   // Expose methods to parent via ref
@@ -105,12 +104,9 @@ const RouteMapGL = forwardRef<RouteMapHandle, Props>(({
 
     mapInstance.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
 
-    // Use styledata event to ensure layers are re-added after any style change
-    mapInstance.on('styledata', () => {
-      if (mapInstance.isStyleLoaded()) {
-        setMapLoaded(true);
-        setStyleLoadCount(prev => prev + 1);
-      }
+    // Set map loaded when style is ready
+    mapInstance.on('load', () => {
+      setMapLoaded(true);
     });
 
     map.current = mapInstance;
@@ -229,7 +225,7 @@ const RouteMapGL = forwardRef<RouteMapHandle, Props>(({
     } catch (e) {
       console.error('Failed to fit bounds:', e);
     }
-  }, [coordinates, corridor, verdict, mapLoaded, styleLoadCount]);
+  }, [coordinates, corridor, verdict, mapLoaded]);
 
   // Update markers
   useEffect(() => {

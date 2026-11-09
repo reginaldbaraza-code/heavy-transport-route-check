@@ -483,15 +483,10 @@ export default function RouteIntelligencePolished() {
 
                 <div className="evidence-section">
                   <h3>
-                    Evidence ({result.evidence.filter(e => e.category === activeLayer).length})
-                    {result.evidence.filter(e => e.category === activeLayer).length !== result.evidence.length && (
-                      <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', fontSize: '14px' }}>
-                        {' '}· {result.evidence.length} total
-                      </span>
-                    )}
+                    Evidence ({result.evidence.length})
                   </h3>
                   <div className="evidence-list">
-                    {result.evidence.filter(e => e.category === activeLayer).map(item => (
+                    {result.evidence.map(item => (
                       <div 
                         key={item.id} 
                         className={`evidence-card evidence-${item.state}`}
