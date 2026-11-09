@@ -1,7 +1,7 @@
 {
   "functions": {
     "api/check-route.ts": {
-      "includeFiles": "public/data/mia-roadworks.json"
+      "includeFiles": "{public/data/mia-roadworks.json,api/_lib/mia-datex.mjs}"
     }
   },
   "rewrites": [

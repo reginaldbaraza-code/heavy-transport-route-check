@@ -16,7 +16,7 @@ This is a free-tier MVP. It is not a permit, not MDS, and not a substitute for d
 | Source | Use |
 | --- | --- |
 | Autobahn GmbH API (`verkehr.autobahn.de`) | Roadworks, closures, warnings, lorry parking |
-| MIA DATEX via Mobilithek / MobiData BW | Bundled snapshot of federal roadworks (`public/data/mia-roadworks.json`) |
+| MIA DATEX via Mobilithek / MobiData BW | Bundled snapshot (`public/data/mia-roadworks.json`); live DATEX fallback if that file is older than 8 hours |
 | Baden-Württemberg BEMaS | State roadworks (informational; cannot HOLD a federal corridor) |
 
 Bridge and clearance are **not** in those feeds. READY needs an explicit dispatcher tick.
@@ -56,7 +56,7 @@ pnpm test:qa      # Playwright against a local preview of dist/
 - **MDS / marketplace** is out of scope. Data partners is a later-release page only.
 - **Bridge and clearance** are a manual dispatcher verify.
 - **Monitoring** runs only while this tab is open. Keep it open until departure.
-- **MIA snapshot** refreshes on a GitHub schedule (about every 6 hours), not live DATEX.
+- **MIA snapshot** is refreshed by GitHub Actions (`refresh-mia-roadworks.yml`, about every 6 hours; `workflow_dispatch` is also enabled). GitHub cron on a quiet repo can skip ticks. If the served snapshot is older than **8 hours**, `POST /api/check-route` fetches the MobiData BW DATEX feeds live (8s timeout, ~10 min in-memory cache). If that live refresh fails, the MIA layer is marked stale in the result instead of going silent.
 - **Free tier** — in-memory rate limits, no email/SMS, jobs stored in this browser only.
 
 ## License

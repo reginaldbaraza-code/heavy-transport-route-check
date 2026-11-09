@@ -12,11 +12,11 @@ import {
   BW_SOURCE,
   MIA_SOURCE,
   fetchBwRoadworks,
-  loadMiaSnapshot,
   miaSnapshotAgeMs,
-  miaSnapshotIsStale,
+  resolveMiaSnapshot,
   type BwRoadwork,
 } from './_lib/openRoadworks.js';
+import { MIA_STALE_HOURS } from './_lib/mobidata.js';
 import { isScenarioId, SCENARIOS } from './_lib/scenarios.js';
 import {
   classifyCandidate,
@@ -466,7 +466,7 @@ export default async function handler(
     }
 
     const retrievedAt = isoNow();
-    const [autobahnData, bwResult] = await Promise.all([
+    const [autobahnData, bwResult, miaResult] = await Promise.all([
       fetchAutobahnEventsForRoute(affectedRoads, retrievedAt),
       fetchBwRoadworks(retrievedAt)
         .then(items => ({ items, error: null as string | null }))
@@ -474,6 +474,7 @@ export default async function handler(
           items: [] as BwRoadwork[],
           error: error instanceof Error ? error.message : 'BEMaS unavailable',
         })),
+      resolveMiaSnapshot(),
     ]);
     const degraded = !autobahnData;
     const source = 'Autobahn GmbH + MobiData BW';
@@ -584,12 +585,14 @@ export default async function handler(
       });
     }
 
-    const mia = loadMiaSnapshot();
+    const mia = miaResult.snapshot;
     if (!mia) {
       classified.push({
         id: 'mia-snapshot-missing',
         title: 'MIA roadworks snapshot not loaded',
-        detail: 'The compact Autobahn MIA snapshot is missing. Route checks still use the live Autobahn GmbH API.',
+        detail: miaResult.error
+          ? `The compact Autobahn MIA snapshot is missing and live DATEX refresh failed (${miaResult.error}). Route checks still use the live Autobahn GmbH API.`
+          : 'The compact Autobahn MIA snapshot is missing. Route checks still use the live Autobahn GmbH API.',
         source: MIA_SOURCE,
         confidence: 'medium',
         state: 'warning',
@@ -602,27 +605,28 @@ export default async function handler(
       });
     } else {
       const ageHours = Math.max(0, Math.round(miaSnapshotAgeMs(mia) / 3600000));
-      if (miaSnapshotIsStale(mia)) {
+      if (miaResult.stale) {
         classified.push({
           id: 'mia-snapshot-stale',
-          title: 'MIA roadworks snapshot is older than 12 hours',
-          detail: `Snapshot ${mia.snapshotAt} (${ageHours}h old). Live Autobahn API events are still used.`,
+          title: `MIA roadworks snapshot is older than ${MIA_STALE_HOURS} hours`,
+          detail: `Snapshot ${mia.snapshotAt} (${ageHours}h old).${miaResult.error ? ` Live DATEX refresh failed (${miaResult.error}).` : ''} Live Autobahn API events are still used.`,
           source: MIA_SOURCE,
           confidence: 'medium',
           state: 'warning',
           category: 'observations',
           distanceKm: null,
-          reason: 'Snapshot older than 12h.',
+          reason: `Snapshot older than ${MIA_STALE_HOURS}h.`,
           locationKind: 'unknown',
           blocker: false,
           retrievedAt: mia.snapshotAt,
         });
       }
+      const freshness = miaResult.live ? 'Live DATEX' : 'Snapshot';
       for (const item of mia.items) {
         pushClassified(classified, {
           id: `mia-${item.id}`,
           title: item.description || `${item.road || 'Autobahn'} MIA roadworks`,
-          description: `${item.description} ${item.term === 'long' ? 'Long-term MIA record' : 'Short-term MIA record'} · Snapshot ${mia.snapshotAt}`,
+          description: `${item.description} ${item.term === 'long' ? 'Long-term MIA record' : 'Short-term MIA record'} · ${freshness} ${mia.snapshotAt}`,
           source: MIA_SOURCE,
           lat: item.lat,
           lng: item.lng,
