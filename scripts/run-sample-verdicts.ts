@@ -24,6 +24,8 @@ const samples: Sample[] = [
   { id: 'scenario-verify', group: 'scenario', expected: 'VERIFY', gpx: 'hamburg-hannover-a7.gpx', json: 'hamburg-hannover-a7.json', scenario: 'verify-nearby' },
   { id: 'scenario-hold-closure', group: 'scenario', expected: 'HOLD', gpx: 'hamburg-hannover-a7.gpx', json: 'hamburg-hannover-a7.json', scenario: 'hold-closure' },
   { id: 'scenario-hold-width', group: 'scenario', expected: 'HOLD', gpx: 'duisburg-koln-a3.gpx', json: 'duisburg-koln-a3.json', scenario: 'hold-width' },
+  { id: 'scenario-hold-height', group: 'scenario', expected: 'HOLD', gpx: 'munchen-stuttgart-a8.gpx', json: 'munchen-stuttgart-a8.json', scenario: 'hold-height' },
+  { id: 'scenario-hold-weight', group: 'scenario', expected: 'HOLD', gpx: 'bremen-dortmund-a1.gpx', json: 'bremen-dortmund-a1.json', scenario: 'hold-weight' },
 ]
 
 function mockRes() {

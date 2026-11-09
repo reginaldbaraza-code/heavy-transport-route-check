@@ -1,6 +1,6 @@
 import type { ClassifiedEvidence } from './verdict.js'
 
-export type ScenarioId = 'ready-clear' | 'verify-nearby' | 'hold-closure' | 'hold-width'
+export type ScenarioId = 'ready-clear' | 'verify-nearby' | 'hold-closure' | 'hold-width' | 'hold-height' | 'hold-weight'
 
 export type ScenarioFixture = {
   id: ScenarioId
@@ -152,6 +152,68 @@ export const SCENARIOS: Record<ScenarioId, ScenarioFixture> = {
         reason: 'Hard width limit 3 on the mainline carriageway is below the vehicle.',
         locationKind: 'mainline',
         road: 'A3',
+        blocker: true,
+        retrievedAt,
+      },
+    ],
+  },
+  'hold-height': {
+    id: 'hold-height',
+    label: 'Simulated HOLD — A8 height 4.00 m vs 4.30 m',
+    expectedVerdict: 'HOLD',
+    origin: 'München Wind Farm',
+    destination: 'Stuttgart Industrial Complex',
+    distanceKm: 230,
+    corridor: 'A8',
+    vehicle: { width: 3.3, height: 4.3, length: 30, grossWeight: 65 },
+    clearanceConfirmed: true,
+    clearanceConfirmedBy: 'Scenario dispatcher',
+    evidence: [
+      {
+        id: 'a8-height',
+        title: 'Height restriction 4.00 m vs vehicle 4.30 m',
+        detail: 'Simulated A8 mainline structure residual clearance 4.00 m vs 4.30 m vehicle.',
+        source: 'Simulated — not live data',
+        confidence: 'high',
+        state: 'danger',
+        category: 'roadworks',
+        lat: 48.4,
+        lng: 10.25,
+        distanceKm: 0.03,
+        reason: 'Hard height limit 4.00 m vs vehicle 4.30 m on the mainline carriageway.',
+        locationKind: 'mainline',
+        road: 'A8',
+        blocker: true,
+        retrievedAt,
+      },
+    ],
+  },
+  'hold-weight': {
+    id: 'hold-weight',
+    label: 'Simulated HOLD — A1 weight 40 t vs 72 t',
+    expectedVerdict: 'HOLD',
+    origin: 'Bremen Heavy Cargo Terminal',
+    destination: 'Dortmund Industrial Park',
+    distanceKm: 220,
+    corridor: 'A1',
+    vehicle: { width: 3.5, height: 4.2, length: 32, grossWeight: 72 },
+    clearanceConfirmed: true,
+    clearanceConfirmedBy: 'Scenario dispatcher',
+    evidence: [
+      {
+        id: 'a1-weight',
+        title: 'Weight restriction 40 t vs vehicle 72 t',
+        detail: 'Simulated A1 mainline structure weight limit 40 t vs 72 t vehicle.',
+        source: 'Simulated — not live data',
+        confidence: 'high',
+        state: 'danger',
+        category: 'roadworks',
+        lat: 52.2,
+        lng: 8.25,
+        distanceKm: 0.04,
+        reason: 'Hard weight limit 40 t vs vehicle 72 t on the mainline carriageway.',
+        locationKind: 'mainline',
+        road: 'A1',
         blocker: true,
         retrievedAt,
       },

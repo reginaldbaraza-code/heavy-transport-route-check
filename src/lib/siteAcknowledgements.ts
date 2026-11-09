@@ -44,6 +44,15 @@ export function formatClearanceConfirmationLine(by?: string, at?: string) {
   return `Clearance confirmed by ${name} at ${time}`
 }
 
+export function withClearanceConfirmation(impact: string, confirmed: boolean, by?: string, at?: string) {
+  const base = stripUnresolvedVerifyCopy(impact || '')
+    .replace(/\s*Clearance confirmed by .+?(?=(?:\s+Clearance confirmed by |\s*$))/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!confirmed) return base
+  return [base, formatClearanceConfirmationLine(by, at)].filter(Boolean).join(' ')
+}
+
 export function formatOnSiteConfirmationLine(
   acks: Array<{ acknowledgedBy?: string; acknowledgedAt?: string }>,
 ) {
@@ -118,8 +127,7 @@ export function applySiteAcknowledgements(
   const acknowledgedCount = acknowledgeable.filter(item => ackById.has(item.id)).length
   const by = meta.by?.trim() || 'Dispatcher'
   const at = meta.at
-  const clearanceLine = clearanceConfirmed ? formatClearanceConfirmationLine(by, at) : ''
-  const impact = stripUnresolvedVerifyCopy(result.impact || '')
+  const impact = withClearanceConfirmation(result.impact || '', clearanceConfirmed, by, at)
 
   if (result.degraded) return { ...result, evidence }
 
@@ -144,7 +152,7 @@ export function applySiteAcknowledgements(
       summary: remaining.length
         ? `${remaining.length} unresolved VERIFY item${remaining.length === 1 ? '' : 's'}.`
         : 'Bridge and clearance are not dispatcher-confirmed.',
-      impact: clearanceConfirmed ? [impact, clearanceLine].filter(Boolean).join(' ') : result.impact,
+      impact: clearanceConfirmed ? impact : result.impact,
       clearanceConfirmed,
       clearanceConfirmedBy: clearanceConfirmed ? by : result.clearanceConfirmedBy,
       confirmedAt: clearanceConfirmed ? at : result.confirmedAt,
@@ -159,7 +167,7 @@ export function applySiteAcknowledgements(
       verdict: 'READY',
       title: `READY – dispatcher confirmed ${acknowledgedCount} item${acknowledgedCount === 1 ? '' : 's'}`,
       summary: formatOnSiteConfirmationLine(acks),
-      impact: [impact, clearanceLine].filter(Boolean).join(' '),
+      impact,
       clearanceConfirmed: true,
       clearanceConfirmedBy: by,
       confirmedAt: at,
@@ -172,7 +180,7 @@ export function applySiteAcknowledgements(
     verdict: 'READY',
     title: result.title,
     summary: result.summary,
-    impact: [impact, clearanceLine].filter(Boolean).join(' '),
+    impact,
     clearanceConfirmed: true,
     clearanceConfirmedBy: by,
     confirmedAt: at,

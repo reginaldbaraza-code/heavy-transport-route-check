@@ -170,6 +170,10 @@ export function extractHardWidthLimit(text: string): number | null {
   return Number.isFinite(value) && value > 0 && value < 10 ? value : null
 }
 
+function unknownDim(value?: number) {
+  return !Number.isFinite(value) || !value || value <= 0
+}
+
 export function dimDecision(
   vehicle: VehicleDimensions,
   input: Pick<CandidateInput, 'residualWidth' | 'minLaneWidth' | 'heightLimit' | 'weightLimit' | 'description'>,
@@ -181,11 +185,21 @@ export function dimDecision(
   if (hardWidth && vehicle.width > hardWidth) {
     return { hold: true, verify: false, type: 'width', restriction: hardWidth }
   }
-  if (input.heightLimit && vehicle.height > input.heightLimit) {
-    return { hold: true, verify: false, type: 'height', restriction: input.heightLimit }
+  if (input.heightLimit) {
+    if (unknownDim(vehicle.height)) {
+      return { hold: false, verify: true, type: 'height', restriction: input.heightLimit }
+    }
+    if (vehicle.height > input.heightLimit) {
+      return { hold: true, verify: false, type: 'height', restriction: input.heightLimit }
+    }
   }
-  if (input.weightLimit && vehicle.grossWeight > input.weightLimit) {
-    return { hold: true, verify: false, type: 'weight', restriction: input.weightLimit }
+  if (input.weightLimit) {
+    if (unknownDim(vehicle.grossWeight)) {
+      return { hold: false, verify: true, type: 'weight', restriction: input.weightLimit }
+    }
+    if (vehicle.grossWeight > input.weightLimit) {
+      return { hold: true, verify: false, type: 'weight', restriction: input.weightLimit }
+    }
   }
   if (input.minLaneWidth && vehicle.width > input.minLaneWidth) {
     return { hold: false, verify: true, type: 'minLaneWidth', restriction: input.minLaneWidth }
@@ -313,12 +327,24 @@ export function classifyCandidate(input: CandidateInput, ctx: ClassifyContext): 
     state = 'warning'
     reason = `minLaneWidth ${dims.restriction} m is ambiguous remaining lane width, not a confirmed vehicle limit.`
     title = `Lane width ${dims.restriction} m — verify`
+  } else if (dims.verify) {
+    state = 'warning'
+    reason = `${dims.type} limit ${dims.restriction} is published but the vehicle ${dims.type} is not recorded — VERIFY.`
+    title = `${dims.type} limit ${dims.restriction} — verify`
   } else if (dims.hold && holdEligible) {
     state = 'danger'
-    reason = `Hard ${dims.type} limit ${dims.restriction} on the mainline carriageway is below the vehicle.`
+    const vehicleValue = dims.type === 'height'
+      ? ctx.vehicle.height
+      : dims.type === 'weight'
+        ? ctx.vehicle.grossWeight
+        : ctx.vehicle.width
+    const unit = dims.type === 'weight' ? 't' : 'm'
+    reason = `Hard ${dims.type} limit ${dims.restriction} ${unit} vs vehicle ${vehicleValue} ${unit} on the mainline carriageway.`
     title = dims.type === 'width'
-      ? `Width restriction ${dims.restriction} m – vehicle exceeds`
-      : `${dims.type} restriction ${dims.restriction} – vehicle exceeds`
+      ? `Width restriction ${dims.restriction} m vs vehicle ${ctx.vehicle.width} m`
+      : dims.type === 'height'
+        ? `Height restriction ${dims.restriction} m vs vehicle ${ctx.vehicle.height} m`
+        : `Weight restriction ${dims.restriction} t vs vehicle ${ctx.vehicle.grossWeight} t`
     category = 'roadworks'
   } else if (dims.hold) {
     state = 'warning'

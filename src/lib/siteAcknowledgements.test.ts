@@ -79,6 +79,7 @@ test('result-screen clearance rewrites the bridge card and stale impact copy', (
   assert.doesNotMatch(ready.impact, /not dispatcher-confirmed/)
   assert.doesNotMatch(ready.impact, /unresolved VERIFY/)
   assert.match(ready.impact, /Clearance confirmed by QA Test at/)
+  assert.equal((ready.impact.match(/Clearance confirmed by QA Test at/g) || []).length, 1)
   assert.match(ready.summary, /1 VERIFY item confirmed on site by QA Test at/)
   assert.doesNotMatch(ready.summary, /11\.09\.2026/)
   assert.match(ready.summary, /09\.11\.2026/)
