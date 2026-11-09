@@ -6,7 +6,7 @@ import {
   eventFreshness,
   evidenceAgeLabel,
   isoNow,
-} from './_lib/autobahnTimes';
+} from './_lib/autobahnTimes.js';
 
 export const config = {
   maxDuration: 30,
