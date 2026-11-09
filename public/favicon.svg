@@ -1,15 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" shape-rendering="geometricPrecision">
   <defs>
-    <linearGradient id="rc-tile" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop stop-color="#13294B"/>
       <stop offset="1" stop-color="#0A1A33"/>
     </linearGradient>
-    <linearGradient id="rc-route" x1="14" y1="48" x2="52" y2="13" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#F5C518"/>
-      <stop offset="1" stop-color="#F0A500"/>
-    </linearGradient>
   </defs>
-  <rect width="64" height="64" rx="14" fill="url(#rc-tile)"/>
-  <path d="M14 48 C24 48 32 44 36 38 C40 32 44 28 40 24 C36 20 38 17 42 17 L47 24 L52 13" stroke="url(#rc-route)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M14 48 C24 48 32 44 36 38 C40 32 44 28 40 24" stroke="#FFFFFF" stroke-opacity="0.88" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="2.5 3"/>
+  <rect width="64" height="64" rx="14.5" fill="url(#bg)"/>
+  <rect x="0.5" y="0.5" width="63" height="63" rx="14" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+  <path d="M8 52 C22 52 36 48 36 40 C36 34 27.5 31 27.5 24.5 C27.5 19.5 33.5 15.5 39 12 L47 20.5 L56 11.5" stroke="#F5C518" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
