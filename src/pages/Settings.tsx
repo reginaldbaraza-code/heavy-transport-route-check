@@ -1,11 +1,17 @@
 import { useState } from 'react'
-import { Bell, Building2, Save, User } from 'lucide-react'
+import { Bell, Building2, Database, Save, Timer, User } from 'lucide-react'
 import { Toast } from '../components/Feedback'
 import { useOrgSettings } from '../context/OrgSettingsContext'
+import { useJobs } from '../context/JobsContext'
+import { dataSources } from '../data/dataSources'
+import { MONITOR_INTERVAL_OPTIONS } from '../lib/jobs'
+import { DEPARTURE_ESCALATION_MINUTES } from '../lib/monitoring'
 
 const tabs = [
   { id: 'profile', label: 'Organisation profile', icon: User },
   { id: 'notifications', label: 'Notifications', icon: Bell },
+  { id: 'monitoring', label: 'Monitoring', icon: Timer },
+  { id: 'sources', label: 'Data sources', icon: Database },
 ] as const
 
 const deliveryChannels = [
@@ -25,6 +31,7 @@ export default function Settings() {
   const {
     profile, dirty, complete, setProfile, saveProfile, notifications, setNotifications,
   } = useOrgSettings()
+  const { prefs, setPrefs, requestNotifications, notificationPermission, monitoringActive, monitoredCount } = useJobs()
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
 
@@ -50,8 +57,13 @@ export default function Settings() {
     <div className="app-page settings-page">
       <header className="settings-heading">
         <span>Settings</span>
-        <h1>{activeTab === 'profile' ? 'Organisation profile' : 'Route alert notifications'}</h1>
-        <p>Manage the operator identity shown in this browser and choose how dispatchers see in-app monitoring alerts. Settings are saved in this browser only.</p>
+        <h1>
+          {activeTab === 'profile' ? 'Organisation profile'
+            : activeTab === 'notifications' ? 'Route alert notifications'
+              : activeTab === 'monitoring' ? 'Tab monitoring'
+                : 'Data sources and limits'}
+        </h1>
+        <p>Manage the operator identity shown in this browser, in-tab monitoring, and which free data sources this check uses. Settings are saved in this browser only.</p>
       </header>
 
       <div className="settings-workspace">
@@ -156,7 +168,72 @@ export default function Settings() {
                   </label>
                 ))}
               </div>
-              <p className="storage-note settings-storage-note">Notification preferences are saved in this browser only. This app does not send email, SMS, or push messages.</p>
+              <p className="storage-note settings-storage-note">Notification preferences are saved in this browser only. This app does not send email, SMS, or push messages. Browser notifications only appear after you click Allow.</p>
+            </section>
+          )}
+
+          {activeTab === 'monitoring' && (
+            <section className="settings-card notification-settings-card">
+              <header className="settings-card-header">
+                <div>
+                  <span className="settings-card-icon"><Timer size={18} /></span>
+                  <div>
+                    <h2>Monitor until departure</h2>
+                    <p>Saved jobs with a future departure are re-checked while this tab stays open. Closing the tab stops monitoring.</p>
+                  </div>
+                </div>
+              </header>
+              <p className="storage-note settings-storage-note">
+                {monitoringActive
+                  ? `${monitoredCount} job${monitoredCount === 1 ? '' : 's'} currently monitored in this tab.`
+                  : 'No jobs are in the monitoring window.'}
+                {' '}Vercel Hobby cron is once per day, so background monitoring is not added. Email and SMS stay disabled.
+              </p>
+              <div className="settings-preference-section">
+                <h3>Re-check and escalation</h3>
+                <label className="settings-field">
+                  <span>Default interval</span>
+                  <select value={prefs.intervalMinutes} onChange={event => setPrefs({ intervalMinutes: Number(event.target.value) })}>
+                    {MONITOR_INTERVAL_OPTIONS.map(minutes => <option key={minutes} value={minutes}>{minutes} minutes</option>)}
+                  </select>
+                </label>
+                <label className="settings-field">
+                  <span>Escalate unacknowledged HOLD/VERIFY after</span>
+                  <select value={prefs.escalateAfterMinutes} onChange={event => setPrefs({ escalateAfterMinutes: Number(event.target.value) })}>
+                    {MONITOR_INTERVAL_OPTIONS.map(minutes => <option key={minutes} value={minutes}>{minutes} minutes</option>)}
+                  </select>
+                </label>
+                <p className="storage-note">Alerts also escalate when departure is under {DEPARTURE_ESCALATION_MINUTES / 60} hours away. Monitoring stops after departure.</p>
+                <button type="button" className="market-button secondary" onClick={() => void requestNotifications()}>
+                  {notificationPermission === 'granted' ? 'Browser notifications allowed' : 'Allow browser notifications'}
+                </button>
+              </div>
+            </section>
+          )}
+
+          {activeTab === 'sources' && (
+            <section className="settings-card notification-settings-card">
+              <header className="settings-card-header">
+                <div>
+                  <span className="settings-card-icon"><Database size={18} /></span>
+                  <div>
+                    <h2>Free data sources</h2>
+                    <p>Only keyless, unpaid feeds are used. Anything that needs a contract, key, or paid Vercel feature is listed as a limitation.</p>
+                  </div>
+                </div>
+              </header>
+              <div className="data-source-list">
+                {dataSources.map(source => (
+                  <article key={source.id} className={`data-source-item status-${source.status}`}>
+                    <div>
+                      <strong>{source.name}</strong>
+                      <small>{source.used ? 'In use' : 'Not integrated'} · {source.status}</small>
+                      <p>{source.summary}</p>
+                      {source.limitation && <p className="source-limitation">{source.limitation}</p>}
+                    </div>
+                  </article>
+                ))}
+              </div>
             </section>
           )}
         </main>

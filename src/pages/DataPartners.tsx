@@ -10,7 +10,7 @@ export default function DataPartners() {
         <div>
           <small><Hourglass size={16} /> Coming later</small>
           <h1>Data partners</h1>
-          <p>Live partner data (Mobility Data Space) is planned for a later release. This MVP uses public roadworks data and test scenarios.</p>
+          <p>Live partner data (Mobility Data Space) is planned for a later release. This MVP uses the keyless Autobahn GmbH API (roadworks, closures, warnings, lorry parking). Mobilithek roadworks need registration and are not integrated. Bridge and clearance stay a manual verify item.</p>
         </div>
       </section>
     </div>

@@ -3,6 +3,9 @@ export const STORAGE_KEYS = {
   checkHistory: 'mds-route-check-history',
   alertState: 'mds-alert-read-state',
   overviewSampleMode: 'mds-overview-sample-mode',
+  savedJobs: 'mds-saved-jobs',
+  extraAlerts: 'mds-monitor-alerts',
+  monitorPrefs: 'mds-monitor-prefs',
 } as const
 
 export function readJson<T>(key: string, fallback: T): T {

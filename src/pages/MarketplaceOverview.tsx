@@ -10,9 +10,11 @@ import {
   defaultVehicleProfile, getPermittedRoute, getRouteCheckResult, permittedRoutes,
 } from '../data/routeChecks'
 import { useRouteMonitoring } from '../context/RouteMonitoringContext'
+import { useJobs } from '../context/JobsContext'
 import { formatBerlinDateTime } from '../lib/formatTime'
 import { sampleTestPermits } from '../lib/routeCheck'
 import { readJson, STORAGE_KEYS, writeJson } from '../lib/browserStore'
+import { formatVehicleDims, shouldMonitorJob } from '../lib/jobs'
 
 const verdictMeta = {
   READY: { label: 'Ready', icon: CheckCircle2, iconClass: 'green', badgeClass: 'ready' },
@@ -24,6 +26,7 @@ type SampleMode = 'example' | 'permits'
 
 export default function MarketplaceOverview() {
   const { history } = useRouteMonitoring()
+  const { jobs } = useJobs()
   const [sampleMode, setSampleMode] = useState<SampleMode>(() => {
     const stored = typeof window === 'undefined' ? 'example' : readJson<SampleMode>(STORAGE_KEYS.overviewSampleMode, 'example')
     return stored === 'permits' ? 'permits' : 'example'
@@ -57,6 +60,34 @@ export default function MarketplaceOverview() {
           </>
         }
       />
+
+      {jobs.length > 0 && (
+        <section className="saved-checks-section" aria-label="Saved jobs">
+          <div className="market-section-header compact">
+            <div>
+              <span className="market-eyebrow">This browser</span>
+              <h2>Saved jobs</h2>
+            </div>
+            <Link to="/jobs">Open jobs <ArrowRight size={16} /></Link>
+          </div>
+          <div className="transport-route-list saved-checks-list">
+            {jobs.slice(0, 4).map(job => (
+              <Link to={`/route-checks?job=${job.id}&run=1`} key={job.id}>
+                <span className={`transport-list-icon ${job.lastVerdict === 'HOLD' ? 'red' : job.lastVerdict === 'READY' ? 'green' : 'amber'}`}><Route size={16} /></span>
+                <div>
+                  <strong>{job.name}</strong>
+                  <span>{job.permitNumber || job.routeFileName} · {formatVehicleDims(job.vehicle)} · {formatBerlinDateTime(job.plannedDeparture) || 'no departure'}</span>
+                </div>
+                <b className={shouldMonitorJob(job) ? 'verify' : job.lastVerdict === 'HOLD' ? 'hold' : job.lastVerdict === 'READY' ? 'ready' : 'verify'}>
+                  {shouldMonitorJob(job) ? 'Monitoring' : job.lastVerdict || 'Saved'}
+                </b>
+                <ArrowRight size={16} />
+              </Link>
+            ))}
+          </div>
+          <p className="storage-note">Jobs are stored in this browser only. Monitoring runs only while the tab is open.</p>
+        </section>
+      )}
 
       {history.length > 0 ? (
         <section className="saved-checks-section" aria-label="Saved route checks">
@@ -282,7 +313,7 @@ export default function MarketplaceOverview() {
                 <div className="transport-source-list">
                   <div>
                     <span>AG</span>
-                    <div><strong>Autobahn GmbH</strong><small>Live roadworks, closures, and warnings · Sample until you run a check</small></div>
+                    <div><strong>Autobahn GmbH</strong><small>Live roadworks, closures, warnings, and lorry parking · Sample until you run a check</small></div>
                     <b>Sample</b>
                   </div>
                   <div>
@@ -292,7 +323,7 @@ export default function MarketplaceOverview() {
                   </div>
                   <div>
                     <span>BC</span>
-                    <div><strong>Bridge and clearance</strong><small>Not included in this check — unknown clearance cannot yield READY</small></div>
+                    <div><strong>Bridge, clearance, Mobilithek</strong><small>Bridge/clearance stays manual. Mobilithek roadworks need registration, so they are not integrated.</small></div>
                     <b>Sample</b>
                   </div>
                 </div>

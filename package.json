@@ -9,13 +9,15 @@
     "typecheck": "tsc --noEmit && tsc --noEmit --project tsconfig.api.json",
     "typecheck:api": "tsc --noEmit --project tsconfig.api.json",
     "preview": "vite preview",
-    "format": "oxfmt"
+    "format": "oxfmt",
+    "test:qa": "node scripts/qa-features.mjs"
   },
   "dependencies": {
     "@turf/boolean-intersects": "^7.4.0",
     "@turf/buffer": "^7.4.0",
     "@turf/turf": "^7.4.0",
     "@types/geojson": "^7946.0.16",
+    "jspdf": "^4.2.1",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.47.0",
     "maplibre-gl": "^6.17.0",
@@ -30,6 +32,7 @@
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/xml2js": "^0.4.14",
     "@vercel/node": "^30.0.0",
     "@vitejs/plugin-react": "^6.0.0",
     "oxfmt": "^0.2.0",
