@@ -1,30 +1,10 @@
 import { Link } from 'react-router-dom'
 import {
-  AlertTriangle, ArrowRight, CheckCircle2, CircleX, FileJson, Map,
-  Route, ShieldCheck, Truck, Upload,
+  FileJson, Map, Route, ShieldCheck, Upload, ArrowRight,
 } from 'lucide-react'
-import MobilityHeatmap from '../components/MobilityHeatmap'
 import { MarketplacePageHeader } from '../components/MarketplaceUI'
-import {
-  defaultVehicleProfile, getPermittedRoute, getRouteCheckResult, permittedRoutes,
-} from '../data/routeChecks'
-
-const verdictMeta = {
-  READY: { label: 'Ready', icon: CheckCircle2, iconClass: 'green', badgeClass: 'ready' },
-  HOLD: { label: 'Hold departure', icon: CircleX, iconClass: 'red', badgeClass: 'hold' },
-  VERIFY: { label: 'Verify evidence', icon: AlertTriangle, iconClass: 'amber', badgeClass: 'verify' },
-}
 
 export default function MarketplaceOverview() {
-  const heroRoute = getPermittedRoute('duisburg-munich')
-  const heroResult = getRouteCheckResult(heroRoute, defaultVehicleProfile)
-  const HeroVerdictIcon = verdictMeta[heroResult.verdict].icon
-  const monitoredRoutes = permittedRoutes.map(route => ({
-    id: route.id,
-    coordinates: route.coordinates,
-    verdict: getRouteCheckResult(route, defaultVehicleProfile).verdict,
-  }))
-
   return (
     <div className="market-page transport-overview">
       <MarketplacePageHeader
@@ -34,42 +14,19 @@ export default function MarketplaceOverview() {
         actions={
           <>
             <Link to="/map-explorer" className="market-button secondary"><Map size={16} /> Open route monitor</Link>
-            <Link to={`/route-checks?route=${heroRoute.id}`} className="market-button primary"><Upload size={16} /> Import permitted route</Link>
+            <Link to="/route-checks" className="market-button primary"><Upload size={16} /> Import permitted route</Link>
           </>
         }
       />
 
-      <section className="transport-readiness">
-        <div className="transport-readiness-copy">
-          <div className="transport-route-heading">
-            <span className="transport-icon"><Truck size={20} /></span>
-            <div>
-              <span className="market-eyebrow">Next transport · Permit {heroRoute.permitId}</span>
-              <h2>{heroRoute.origin} <ArrowRight size={18} /> {heroRoute.destination}</h2>
-            </div>
-          </div>
-          <div className={`transport-status ${heroResult.verdict.toLowerCase()}`}><HeroVerdictIcon size={18} /><div><strong>{heroResult.title}</strong><span>{heroResult.summary}</span></div></div>
-          <div className="transport-facts">
-            <div><span>Departure</span><strong>{heroRoute.departure}</strong></div>
-            <div><span>Load</span><strong>{defaultVehicleProfile.grossWeight} t · {defaultVehicleProfile.width.toFixed(2)} m wide</strong></div>
-            <div><span>Route area</span><strong>{heroRoute.corridor} · {heroRoute.distance}</strong></div>
-          </div>
-          <div className={`transport-warning verdict-${heroResult.verdict.toLowerCase()}`}>
-            <HeroVerdictIcon size={16} />
-            <div><strong>{heroResult.title}</strong><span>{heroResult.impact}</span></div>
-          </div>
-          <Link to={`/route-checks?route=${heroRoute.id}`} className="transport-review-link">Review approved route <ArrowRight size={16} /></Link>
-        </div>
-        <div className="transport-readiness-map">
-          <MobilityHeatmap
-            mode="transport"
-            compact
-            showRoute
-            routePermitId="4 monitored routes"
-            routeCorridor="Live verdicts across Germany"
-            routeMarkers={[]}
-            routeOverlays={monitoredRoutes}
-          />
+      <section className="transport-empty-state">
+        <div className="empty-state-card">
+          <Upload size={48} />
+          <h2>No saved routes yet</h2>
+          <p>Import your first permitted route to check against current road conditions.</p>
+          <Link to="/route-checks" className="market-button primary">
+            <Upload size={16} /> Check your first route
+          </Link>
         </div>
       </section>
 
@@ -84,39 +41,49 @@ export default function MarketplaceOverview() {
       <div className="market-two-column">
         <section className="market-section">
           <div className="market-section-header compact">
-            <div><span className="market-eyebrow">Dispatch queue</span><h2>Upcoming permitted routes</h2></div>
-            <Link to={`/route-checks?route=${heroRoute.id}`}>New route check <ArrowRight size={16} /></Link>
+            <div><span className="market-eyebrow">How it works</span><h2>Route check process</h2></div>
           </div>
-          <div className="transport-route-list">
-            {permittedRoutes.map(route => {
-              const result = getRouteCheckResult(route, defaultVehicleProfile)
-              const meta = verdictMeta[result.verdict]
-              const VerdictIcon = meta.icon
-              return (
-                <Link to={`/route-checks?route=${route.id}`} key={route.id}>
-                  <span className={`transport-list-icon ${meta.iconClass}`}><Route size={16} /></span>
-                  <div><strong>{route.originShort} → {route.destinationShort}</strong><span>{route.permitId} · {route.queueDeparture}</span></div>
-                  <b className={meta.badgeClass}><VerdictIcon size={14} /> {meta.label}</b>
-                  <ArrowRight size={16} />
-                </Link>
-              )
-            })}
+          <div className="feature-list">
+            <div className="feature-item">
+              <strong>Import GPX or VEMAGS format</strong>
+              <p>Upload your permitted route file. Sample test permits available for demonstration.</p>
+            </div>
+            <div className="feature-item">
+              <strong>Real-time validation</strong>
+              <p>Route checked against current road conditions, restrictions, and operational evidence.</p>
+            </div>
+            <div className="feature-item">
+              <strong>Clear verdict system</strong>
+              <p><strong className="verdict-ready">READY</strong> to depart, <strong className="verdict-verify">VERIFY</strong> evidence, or <strong className="verdict-hold">HOLD</strong> departure.</p>
+            </div>
+            <div className="feature-item">
+              <strong>Export and share</strong>
+              <p>Generate timestamped snapshots of route checks for dispatch records.</p>
+            </div>
           </div>
         </section>
 
         <section className="market-section">
           <div className="market-section-header compact">
-            <div><span className="market-eyebrow">Source status</span><h2>Information covering your next route</h2></div>
-            <Link to="/discover">Manage data <ArrowRight size={16} /></Link>
+            <div><span className="market-eyebrow">Important</span><h2>Usage disclaimers</h2></div>
           </div>
-          <div className="transport-source-list">
-            {heroRoute.evidence.map((item, index) => (
-              <div key={item.id}>
-                <span>{['AG', 'RO', 'VB'][index]}</span>
-                <div><strong>{item.source}</strong><small>{item.title} · {item.age}</small></div>
-                <b>{item.confidence === 'High' ? 'Confirmed' : 'Unconfirmed'}</b>
-              </div>
-            ))}
+          <div className="disclaimer-list">
+            <div className="disclaimer-item">
+              <strong>⚠️ Informational only</strong>
+              <p>Route checks are informational snapshots. They do not grant permission to depart or replace official permit validity.</p>
+            </div>
+            <div className="disclaimer-item">
+              <strong>🔍 Manual verification required</strong>
+              <p>Bridge clearances, local road conditions, and some restrictions require manual verification with authorities.</p>
+            </div>
+            <div className="disclaimer-item">
+              <strong>📊 Coverage limitations</strong>
+              <p>Current coverage: German Autobahns. Local roads and bridge clearance data require additional integration.</p>
+            </div>
+            <div className="disclaimer-item">
+              <strong>🕐 Data freshness</strong>
+              <p>Source publication times and retrieval timestamps are shown. Always confirm current conditions before departure.</p>
+            </div>
           </div>
         </section>
       </div>

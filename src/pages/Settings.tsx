@@ -8,17 +8,17 @@ const tabs = [
 ] as const
 
 const initialProfile = {
-  orgName: 'RheinLift Logistics',
-  website: 'https://rheinlift.example',
-  description: 'Heavy-haul logistics operator coordinating permitted oversized and overweight transports across Germany.',
+  orgName: '',
+  website: 'https://',
+  description: '',
   orgType: 'Heavy-haul logistics operator',
   country: 'Germany',
 }
 
 const deliveryChannels = [
   { id: 'inApp', label: 'In-app', description: 'Show route alerts in the application and the alert history.' },
-  { id: 'email', label: 'E-mail', description: 'Send route-status changes to the dispatch inbox.' },
-  { id: 'sms', label: 'SMS', description: 'Send urgent HOLD and VERIFY alerts to the duty dispatcher.' },
+  { id: 'email', label: 'E-mail', description: 'Send route-status changes to the dispatch inbox. (Configuration required)' },
+  { id: 'sms', label: 'SMS', description: 'Send urgent HOLD and VERIFY alerts to the duty dispatcher. (Configuration required)' },
 ]
 
 const alertTypes = [
@@ -65,7 +65,7 @@ export default function Settings() {
         <aside className="settings-sidebar">
           <div className="settings-org-mark">
             <span><Building2 size={18} /></span>
-            <div><strong>RheinLift Logistics</strong><small>Verified operator</small></div>
+            <div><strong>{profile.orgName || 'Your Organization'}</strong><small>Profile setup</small></div>
           </div>
           <nav aria-label="Settings">
             {tabs.map(({ id, label, icon: Icon }) => (
@@ -84,7 +84,7 @@ export default function Settings() {
                   <span className="settings-card-icon"><Building2 size={18} /></span>
                   <div><h2>Organisation profile</h2><p>This identity appears in route-check exports and operator settings.</p></div>
                 </div>
-                <span className="verified-pill"><CheckCircle2 size={16} /> Verified</span>
+                <span className="setup-pill">Setup Required</span>
               </header>
               <div className="settings-form">
                 <label className="settings-field">
@@ -146,7 +146,7 @@ export default function Settings() {
           )}
         </main>
       </div>
-      {saved && <Toast message="RheinLift Logistics profile saved for this session." onClose={() => setSaved(false)} />}
+      {saved && <Toast message="Profile saved to browser storage. Server persistence not yet configured." onClose={() => setSaved(false)} />}
     </div>
   )
 }

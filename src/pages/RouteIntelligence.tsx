@@ -453,6 +453,11 @@ export default function RouteIntelligencePolished() {
               </button>
             </div>
 
+            {/* Critical Disclaimer */}
+            <div className="verdict-disclaimer">
+              <strong>⚠️ Important:</strong> This route check is an informational snapshot only. It does not grant permission to depart or replace official permit validity. Bridge clearances and local road conditions may require manual verification. Always confirm with authorities before departure.
+            </div>
+
             {/* Map and Evidence */}
             <div className="results-layout">
               <div className="results-main">

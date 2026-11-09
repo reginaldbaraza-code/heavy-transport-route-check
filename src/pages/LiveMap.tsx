@@ -414,16 +414,17 @@ export default function LiveMap() {
         <div>
           <div className="live-map-title">
             <h1>Corridor monitor</h1>
-            <span className={`feed-status ${liveStatus}`}>
-              <Radio size={11} /> {liveStatus === 'refreshing' ? 'Fetching live data' : 'Live: Autobahn GmbH'}
+            <span className={`feed-status demo`}>
+              <Radio size={11} /> Demo: Simulated Events
             </span>
           </div>
           <p>See current roadworks, warnings, closures, and heavy-transport restrictions across Germany.</p>
+          <p className="corridor-demo-notice">⚠️ Displaying simulated demonstration data. Real-time event monitoring requires API integration.</p>
         </div>
         <div className="live-map-header-actions">
-          <span><Clock3 size={12} /> Updated {formatBerlinTime(lastUpdated)}</span>
+          <span><Clock3 size={12} /> Sample Data (Not Live)</span>
           <button type="button" onClick={refreshEvents} disabled={liveStatus === 'refreshing'}>
-            <RefreshCw size={13} className={liveStatus === 'refreshing' ? 'spin' : ''} /> Refresh data
+            <RefreshCw size={13} className={liveStatus === 'refreshing' ? 'spin' : ''} /> Refresh demo
           </button>
           <button type="button" onClick={() => {
             const map = mapRef.current
