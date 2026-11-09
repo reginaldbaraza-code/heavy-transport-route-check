@@ -9,7 +9,7 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 setWorkerUrl(workerUrl);
 import { AlertTriangle, CheckCircle2, CircleX, Layers3, Minus, Plus } from 'lucide-react';
 import type { RouteEvidence } from '../data/routeChecks';
-import { boundsFromEvidence, routeBounds, type RouteBounds } from '../lib/mapBounds';
+import { boundsFromEvidence, routeBounds, ROUTE_FIT_MAX_ZOOM, ROUTE_FIT_PADDING_PX, type RouteBounds } from '../lib/mapBounds';
 
 function fitMapToRoute(
   mapInstance: maplibregl.Map,
@@ -20,15 +20,20 @@ function fitMapToRoute(
   const box: RouteBounds | null = routeBounds(coordinates) ?? boundsFromEvidence(evidence);
   if (!box) return;
   mapInstance.resize();
+  const el = mapInstance.getContainer();
+  const w = el?.clientWidth ?? 0;
+  const h = el?.clientHeight ?? 0;
+  if (w < 8 || h < 8) return;
+  const pad = Math.min(ROUTE_FIT_PADDING_PX, Math.max(8, Math.floor(Math.min(w, h) / 8)));
   mapInstance.fitBounds(
     [
       [box.west, box.south],
       [box.east, box.north],
     ],
     {
-      padding: { top: 64, bottom: 88, left: 56, right: 56 },
+      padding: pad,
       duration,
-      maxZoom: 11,
+      maxZoom: ROUTE_FIT_MAX_ZOOM,
     },
   );
 }
@@ -131,7 +136,10 @@ const RouteMapGL = forwardRef<RouteMapHandle, Props>(({
 
     mapInstance.on('load', () => {
       mapInstance.resize();
-      setMapLoaded(true);
+      requestAnimationFrame(() => {
+        mapInstance.resize();
+        setMapLoaded(true);
+      });
     });
 
     map.current = mapInstance;
@@ -249,25 +257,31 @@ const RouteMapGL = forwardRef<RouteMapHandle, Props>(({
     let frame = 0;
     let lastW = 0;
     let lastH = 0;
+    let debounce = 0;
     const observer = new ResizeObserver((entries) => {
       const cr = entries[0]?.contentRect;
       if (!cr || cr.width < 8 || cr.height < 8) return;
-      if (Math.abs(cr.width - lastW) < 2 && Math.abs(cr.height - lastH) < 2) return;
+      if (Math.abs(cr.width - lastW) < 32 && Math.abs(cr.height - lastH) < 32) return;
       lastW = cr.width;
       lastH = cr.height;
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        if (!map.current) return;
-        try {
-          fitMapToRoute(mapInstance, coordinates, evidence, 0);
-        } catch (e) {
-          console.error('Failed to refit bounds after resize:', e);
-        }
-      });
+      clearTimeout(debounce);
+      debounce = window.setTimeout(() => {
+        frame = requestAnimationFrame(() => {
+          if (!map.current) return;
+          try {
+            mapInstance.resize();
+            fitMapToRoute(mapInstance, coordinates, evidence, 0);
+          } catch (e) {
+            console.error('Failed to refit bounds after resize:', e);
+          }
+        });
+      }, 250);
     });
     observer.observe(el);
     return () => {
       cancelAnimationFrame(frame);
+      clearTimeout(debounce);
       observer.disconnect();
     };
   }, [mapLoaded, coordinates, evidence]);

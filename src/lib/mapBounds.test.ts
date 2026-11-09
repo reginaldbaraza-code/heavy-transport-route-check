@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { boundsFromEvidence, routeBounds } from './mapBounds.ts'
+import { boundsFromEvidence, routeBounds, ROUTE_FIT_MAX_ZOOM, ROUTE_FIT_PADDING_PX } from './mapBounds.ts'
 
 test('München→Stuttgart A8 bounds stay in southern Germany, not Hannover', () => {
   const coords: [number, number][] = [
@@ -21,6 +21,11 @@ test('routeBounds needs two valid points', () => {
   assert.equal(routeBounds([]), null)
   assert.equal(routeBounds([[48.1, 11.5]]), null)
   assert.ok(routeBounds([[48.1, 11.5], [48.8, 9.2]]))
+})
+
+test('route camera uses tight padding and a modest max zoom', () => {
+  assert.equal(ROUTE_FIT_PADDING_PX, 40)
+  assert.equal(ROUTE_FIT_MAX_ZOOM, 11)
 })
 
 test('evidence fallback builds a box from lat/lng', () => {

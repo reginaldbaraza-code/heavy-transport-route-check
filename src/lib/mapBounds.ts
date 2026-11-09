@@ -1,3 +1,6 @@
+export const ROUTE_FIT_PADDING_PX = 40
+export const ROUTE_FIT_MAX_ZOOM = 11
+
 export type LatLng = [number, number]
 
 export type RouteBounds = {

@@ -2304,14 +2304,23 @@ h4 { font-size: 18px !important; line-height: 1.35 !important; }
 }
 
 .results-main {
-  min-height: 600px;
+  min-height: 360px;
+  max-width: 100%;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
 }
 
 .results-map {
   height: 100%;
+  min-height: 0;
   border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 10px 40px rgba(0, 0, 0, 0.02);
+}
+.results-main .route-map-gl,
+.results-main .route-map-gl-container {
+  min-height: 0;
+  height: 100%;
 }
 
 .results-sidebar {

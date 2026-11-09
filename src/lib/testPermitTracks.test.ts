@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { SCENARIOS } from '../../api/_lib/scenarios.ts'
 
 const DIR = 'public/test-permits'
 const VALID = [
@@ -34,6 +35,20 @@ function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: num
     Math.sin(dLat / 2) ** 2 +
     Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * Math.sin(dLon / 2) ** 2
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)))
+}
+
+function bearingDeg(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
+  const lat1 = (a.lat * Math.PI) / 180
+  const lat2 = (b.lat * Math.PI) / 180
+  const dLon = ((b.lng - a.lng) * Math.PI) / 180
+  const y = Math.sin(dLon) * Math.cos(lat2)
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon)
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360
+}
+
+function angDiff(a: number, b: number) {
+  const d = Math.abs(a - b) % 360
+  return d <= 180 ? d : 360 - d
 }
 
 function nearestKm(p: { lat: number; lng: number }, points: { lat: number; lng: number }[]) {
@@ -78,10 +93,38 @@ test('scenario fixture points stay within intended distance of the snapped line'
   const duisburg = parseTrkpts(readFileSync(join(DIR, 'duisburg-koln-a3.gpx'), 'utf8'))
   const munchen = parseTrkpts(readFileSync(join(DIR, 'munchen-stuttgart-a8.gpx'), 'utf8'))
   const bremen = parseTrkpts(readFileSync(join(DIR, 'bremen-dortmund-a1.gpx'), 'utf8'))
-  assert.ok(nearestKm({ lat: 52.85, lng: 9.75 }, hamburg) <= 0.5)
-  const nearby = nearestKm({ lat: 52.85, lng: 9.76 }, hamburg)
-  assert.ok(nearby > 0.5 && nearby <= 1.5, `A7 VERIFY offset is ${nearby.toFixed(3)} km`)
-  assert.ok(nearestKm({ lat: 51.05, lng: 6.95 }, duisburg) <= 0.5)
-  assert.ok(nearestKm({ lat: 48.4, lng: 10.25 }, munchen) <= 0.5)
-  assert.ok(nearestKm({ lat: 52.20185, lng: 7.81021 }, bremen) <= 0.5)
+  const hold = SCENARIOS['hold-closure'].evidence[0]
+  const ramp = SCENARIOS['verify-nearby'].evidence[0]
+  const width = SCENARIOS['hold-width'].evidence[0]
+  const height = SCENARIOS['hold-height'].evidence[0]
+  const weight = SCENARIOS['hold-weight'].evidence[0]
+  const holdKm = nearestKm({ lat: hold.lat!, lng: hold.lng! }, hamburg)
+  const rampKm = nearestKm({ lat: ramp.lat!, lng: ramp.lng! }, hamburg)
+  assert.ok(holdKm >= 0.03 && holdKm <= 0.05, `A7 HOLD is ${holdKm.toFixed(3)} km from the line`)
+  assert.ok(rampKm >= 0.8 && rampKm <= 1.0, `A7 VERIFY ramp is ${rampKm.toFixed(3)} km from the line`)
+  const widthKm = nearestKm({ lat: width.lat!, lng: width.lng! }, duisburg)
+  const heightKm = nearestKm({ lat: height.lat!, lng: height.lng! }, munchen)
+  const weightKm = nearestKm({ lat: weight.lat!, lng: weight.lng! }, bremen)
+  assert.ok(widthKm >= 0.03 && widthKm <= 0.05, `A3 width is ${widthKm.toFixed(3)} km`)
+  assert.ok(heightKm >= 0.03 && heightKm <= 0.05, `A8 height is ${heightKm.toFixed(3)} km`)
+  assert.ok(weightKm >= 0.03 && weightKm <= 0.05, `A1 weight is ${weightKm.toFixed(3)} km`)
+})
+
+test('snapped tracks have no heading change over 120° except within 2 km of the ends', () => {
+  for (const file of VALID) {
+    const points = parseTrkpts(readFileSync(join(DIR, file), 'utf8'))
+    let total = 0
+    for (let i = 1; i < points.length; i++) total += haversineKm(points[i - 1], points[i])
+    let along = 0
+    for (let i = 2; i < points.length; i++) {
+      along += haversineKm(points[i - 2], points[i - 1])
+      const delta = angDiff(bearingDeg(points[i - 2], points[i - 1]), bearingDeg(points[i - 1], points[i]))
+      const fromEnd = total - along
+      if (along <= 2 || fromEnd <= 2) continue
+      assert.ok(
+        delta <= 120,
+        `${file} pt ${i} turns ${delta.toFixed(1)}° at ${points[i].lat.toFixed(5)},${points[i].lng.toFixed(5)} (${along.toFixed(1)} km from start)`,
+      )
+    }
+  }
 })

@@ -39,16 +39,23 @@ const shots = [
   {
     name: 'hamburg-hannover-curve',
     button: /Hamburg → Hannover \(A7\)/,
-    lng: 9.75,
-    lat: 52.85,
+    lng: 9.73317,
+    lat: 52.86568,
     zoom: 12,
   },
   {
     name: 'munchen-stuttgart-curve',
     button: /München → Stuttgart \(A8\)/,
-    lng: 10.25,
-    lat: 48.4,
-    zoom: 12,
+    lng: 10.24917,
+    lat: 48.42904,
+    zoom: 13,
+  },
+  {
+    name: 'munchen-stuttgart-framed',
+    button: /München → Stuttgart \(A8\)/,
+    lng: null,
+    lat: null,
+    zoom: null,
   },
 ]
 
@@ -72,20 +79,27 @@ async function main() {
     await page.getByRole('button', { name: shot.button }).first().click()
     await page.getByRole('button', { name: 'Check route' }).click()
     await page.locator('.verdict-banner').waitFor({ timeout: 90000 })
-    await page.locator('.route-map-gl-container canvas').first().waitFor({ timeout: 20000 })
-    await page.waitForTimeout(1800)
-    await page.evaluate(
-      ({ lng, lat, zoom }) => {
-        const map = window.__TEST_MAP_INSTANCE__
-        if (!map) throw new Error('map instance missing')
-        map.resize()
-        map.jumpTo({ center: [lng, lat], zoom })
-      },
-      { lng: shot.lng, lat: shot.lat, zoom: shot.zoom },
-    )
+    const mapEl = page.locator('.route-map-gl-container canvas').first()
+    await mapEl.waitFor({ timeout: 20000 })
+    await page.locator('.route-map-gl').first().scrollIntoViewIfNeeded()
     await page.waitForTimeout(1200)
+    if (shot.lng != null && shot.lat != null && shot.zoom != null) {
+      await page.evaluate(
+        async ({ lng, lat, zoom }) => {
+          const map = window.__TEST_MAP_INSTANCE__
+          if (!map) throw new Error('map instance missing')
+          map.stop()
+          map.jumpTo({ center: [lng, lat], zoom })
+          await new Promise(resolve => map.once('idle', resolve))
+        },
+        { lng: shot.lng, lat: shot.lat, zoom: shot.zoom },
+      )
+    } else {
+      await page.waitForTimeout(600)
+    }
+    await page.waitForTimeout(1800)
     const path = `${outDir}/${prefix}-${shot.name}.png`
-    await page.screenshot({ path, fullPage: false })
+    await page.locator('.route-map-gl').first().screenshot({ path })
     console.log(`wrote ${path}`)
   }
 
