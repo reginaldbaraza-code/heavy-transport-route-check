@@ -4,10 +4,11 @@ import { readJson, STORAGE_KEYS, writeJson } from '../lib/browserStore'
 export type OrgProfile = {
   orgName: string
   dispatcherName: string
-  website: string
-  description: string
-  orgType: string
-  country: string
+  website?: string
+  description?: string
+  orgType?: string
+  country?: string
+  verified?: boolean
 }
 
 export const defaultOrgProfile: OrgProfile = {
@@ -15,8 +16,9 @@ export const defaultOrgProfile: OrgProfile = {
   dispatcherName: '',
   website: '',
   description: '',
-  orgType: 'Heavy-haul logistics operator',
-  country: 'Germany',
+  orgType: 'freight',
+  country: 'DE',
+  verified: false,
 }
 
 export type NotificationPrefs = {
@@ -94,7 +96,7 @@ export function OrgSettingsProvider({ children }: { children: ReactNode }) {
   const complete = isOrgProfileComplete(savedProfile)
   const displayName = savedProfile.orgName.trim() || 'Dispatcher'
   const orgTypeLabel = complete
-    ? (savedProfile.dispatcherName.trim() || savedProfile.orgType.trim() || 'Operator')
+    ? (savedProfile.dispatcherName.trim() || savedProfile.orgType?.trim() || 'Operator')
     : 'Set up profile'
 
   const value = useMemo<OrgSettingsValue>(() => ({

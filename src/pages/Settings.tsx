@@ -105,6 +105,46 @@ export default function Settings() {
                   <small>Used as the default name on on-site confirmations.</small>
                   <input value={profile.dispatcherName} onChange={event => { setProfile(current => ({ ...current, dispatcherName: event.target.value })); setSaved(false) }} placeholder="e.g. Ada Dispatcher" />
                 </label>
+                <label className="settings-field">
+                  <span>Website</span>
+                  <small>Optional organisation website URL.</small>
+                  <input value={profile.website || ''} onChange={event => { setProfile(current => ({ ...current, website: event.target.value })); setSaved(false) }} placeholder="https://example.com" />
+                </label>
+                <label className="settings-field">
+                  <span>Description</span>
+                  <small>Optional description of your organisation's operations.</small>
+                  <textarea rows={3} value={profile.description || ''} onChange={event => { setProfile(current => ({ ...current, description: event.target.value })); setSaved(false) }} placeholder="Heavy transport operator serving industrial clients across Germany..." />
+                </label>
+                <label className="settings-field">
+                  <span>Organisation type</span>
+                  <small>Type of heavy transport operation.</small>
+                  <select value={profile.orgType || 'freight'} onChange={event => { setProfile(current => ({ ...current, orgType: event.target.value })); setSaved(false) }}>
+                    <option value="freight">Freight operator</option>
+                    <option value="construction">Construction logistics</option>
+                    <option value="industrial">Industrial transport</option>
+                    <option value="specialized">Specialized heavy haulage</option>
+                  </select>
+                </label>
+                <label className="settings-field">
+                  <span>Country</span>
+                  <small>Primary operating country. Currently supports Germany (DE), Austria (AT), Switzerland (CH).</small>
+                  <select value={profile.country || 'DE'} onChange={event => { setProfile(current => ({ ...current, country: event.target.value })); setSaved(false) }}>
+                    <option value="DE">Germany (DE)</option>
+                    <option value="AT">Austria (AT)</option>
+                    <option value="CH">Switzerland (CH)</option>
+                  </select>
+                </label>
+                <label className="settings-toggle-row">
+                  <span>
+                    <strong>Verified operator</strong>
+                    <small>Mark as a verified heavy transport operator (stored locally only).</small>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={profile.verified || false}
+                    onChange={event => { setProfile(current => ({ ...current, verified: event.target.checked })); setSaved(false) }}
+                  />
+                </label>
                 {error && <p role="alert" className="settings-error">{error}</p>}
               </div>
               <footer className="settings-card-footer">
