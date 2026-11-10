@@ -216,10 +216,10 @@ export default function LiveMap() {
       minZoom: 5,
       maxZoom: 13,
       cooperativeGestures: true,
+      attributionControl: { compact: false },
     })
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
-    map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-right')
 
     // Helper to add cluster layers
     const addClusterLayers = () => {
@@ -628,10 +628,11 @@ export default function LiveMap() {
             )}
           </section>
 
-          <div className="live-map-legend">
-            <span>Corridor pressure</span><i className="legend-low" /><small>Flowing</small><i className="legend-mid" /><small>Pressure</small><i className="legend-high" /><small>Restricted</small>
+          <div className="live-map-chrome">
+            <div className="live-map-legend">
+              <span>Corridor pressure</span><i className="legend-low" /><small>Flowing</small><i className="legend-mid" /><small>Pressure</small><i className="legend-high" /><small>Restricted</small>
+            </div>
           </div>
-
           <div className="live-map-kpis">
             <div><Route size={14} /><span>Operational signals</span><strong>{events.length}</strong></div>
             <div><AlertTriangle size={14} /><span>Warnings</span><strong>{events.filter(event => event.type === 'warnings').length}</strong></div>

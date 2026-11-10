@@ -371,6 +371,64 @@ async function main() {
       Boolean(searchInner.ok),
       JSON.stringify(searchInner),
     )
+    await page.locator('.live-map-stage .maplibregl-ctrl-attrib').waitFor({ timeout: 12000 }).catch(() => {})
+    const overlayLayout = await page.evaluate(() => {
+      const box = el => {
+        if (!el) return null
+        const style = getComputedStyle(el)
+        if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return null
+        const r = el.getBoundingClientRect()
+        if (r.width < 2 || r.height < 2) return null
+        return {
+          left: Math.round(r.left),
+          right: Math.round(r.right),
+          top: Math.round(r.top),
+          bottom: Math.round(r.bottom),
+          width: Math.round(r.width),
+          height: Math.round(r.height),
+          text: (el.textContent || '').replace(/\s+/g, ' ').trim(),
+        }
+      }
+      const overlaps = (a, b) => Boolean(
+        a && b && !(a.right <= b.left + 1 || b.right <= a.left + 1 || a.bottom <= b.top + 1 || b.bottom <= a.top + 1),
+      )
+      const legendEl = document.querySelector('.live-map-legend')
+      const legend = box(legendEl)
+      const kpis = box(document.querySelector('.live-map-kpis'))
+      const attrib = box(document.querySelector('.live-map-stage .maplibregl-ctrl-attrib'))
+      const zoom = box(document.querySelector('.live-map-stage .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group'))
+      const legendOverflow = Boolean(legendEl && legendEl.scrollWidth > legendEl.clientWidth + 1)
+      return {
+        legend,
+        kpis,
+        attrib,
+        zoom,
+        legendOverflow,
+        kpiLegend: overlaps(kpis, legend),
+        kpiAttrib: overlaps(kpis, attrib),
+        kpiZoom: overlaps(kpis, zoom),
+        legendAttrib: overlaps(legend, attrib),
+        legendZoom: overlaps(legend, zoom),
+        attribZoom: overlaps(attrib, zoom),
+      }
+    })
+    record(
+      `Corridor overlays at ${width}×${height} stay clear of each other`,
+      Boolean(
+        overlayLayout.legend
+        && overlayLayout.attrib
+        && overlayLayout.legend.text.includes('Flowing')
+        && !overlayLayout.legendOverflow
+        && !/Flo…/.test(overlayLayout.legend.text)
+        && !overlayLayout.kpiLegend
+        && !overlayLayout.kpiAttrib
+        && !overlayLayout.kpiZoom
+        && !overlayLayout.legendAttrib
+        && !overlayLayout.legendZoom
+        && !overlayLayout.attribZoom,
+      ),
+      JSON.stringify(overlayLayout),
+    )
   }
 
   const corridorHeaderViewports = [
