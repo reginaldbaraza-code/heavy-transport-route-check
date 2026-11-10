@@ -491,7 +491,7 @@ export default function LiveMap() {
               <Radio size={11} /> {liveStatus === 'refreshing' ? 'Fetching live data' : 'Live: Autobahn GmbH'}
             </span>
           </div>
-          <p>See current roadworks, warnings, closures, and heavy-transport restrictions across Germany.</p>
+          <p>See current roadworks, warnings, closures, and heavy‑transport restrictions across Germany.</p>
         </div>
         <div className="live-map-header-actions">
           <span><Clock3 size={12} /> Updated {formatBerlinTime(lastUpdated)}</span>
