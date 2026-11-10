@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf'
 import type { RouteEvidence, RouteVerdict } from '../data/routeChecks'
 import { displayEvidenceTitle, splitConcatenatedPlaces } from './evidenceSummary'
-import { formatBerlinDateTime } from './formatTime'
+import { formatBerlinDateTime, formatStartLabel, START_NOT_PUBLISHED } from './formatTime'
 import { formatVehicleDims, type VehicleDims } from './jobs'
 import type { RouteCheckResult } from './routeCheck'
 import { drawRouteCheckLogo } from './drawRouteCheckLogo'
@@ -12,6 +12,8 @@ import {
   isConfirmOnSite,
   withClearanceConfirmation,
 } from './siteAcknowledgements'
+
+export { formatStartLabel, START_NOT_PUBLISHED }
 
 export type HistoryExportRecord = {
   verdict: RouteVerdict | string
@@ -70,16 +72,6 @@ export type ExportSnapshot = {
   clearanceConfirmed?: boolean
   clearanceConfirmedBy?: string
   clearanceConfirmedAt?: string
-}
-
-export const START_NOT_PUBLISHED = 'Start: not published'
-
-export function formatStartLabel(value?: string | null): string {
-  const raw = String(value || '').trim()
-  if (!raw) return START_NOT_PUBLISHED
-  const stripped = raw.replace(/^starts?\s*:?\s*/i, '').trim()
-  if (!stripped || /not published/i.test(stripped)) return START_NOT_PUBLISHED
-  return `Start: ${stripped}`
 }
 
 function exportTitle(item: RouteEvidence): string {

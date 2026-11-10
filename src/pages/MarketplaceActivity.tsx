@@ -1,9 +1,11 @@
 import { useState } from 'react'
+import '../styles/pages.css'
 import { useNavigate } from 'react-router-dom'
 import {
   AlertTriangle, BellRing, CheckCircle2, ChevronRight, CircleX, Download, History, Route,
 } from 'lucide-react'
 import PageHeader from '../components/PageHeader'
+import { Button } from '../components/ui/button'
 import { useRouteMonitoring } from '../context/RouteMonitoringContext'
 import { formatBerlinDateTime } from '../lib/formatTime'
 import { downloadSnapshot, snapshotFromHistory } from '../lib/exportCheck'

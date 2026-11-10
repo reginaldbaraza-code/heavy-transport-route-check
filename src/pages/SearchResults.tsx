@@ -1,7 +1,9 @@
 import { useMemo } from 'react'
+import '../styles/pages.css'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import PageHeader from '../components/PageHeader'
+import { Button } from '../components/ui/button'
 import { useJobs } from '../context/JobsContext'
 import { useRouteMonitoring } from '../context/RouteMonitoringContext'
 import { SEARCH_EMPTY_HELP, searchAppData } from '../lib/appSearch'
@@ -39,7 +41,7 @@ export default function SearchResults() {
           <Search size={30} />
           <h2>Nothing matched “{query}”</h2>
           <p>{SEARCH_EMPTY_HELP}</p>
-          <Link to="/route-checks" className="market-button primary">Open route checks</Link>
+          <Button asChild><Link to="/route-checks">Open route checks</Link></Button>
         </div>
       )}
       {hits.length > 0 && (

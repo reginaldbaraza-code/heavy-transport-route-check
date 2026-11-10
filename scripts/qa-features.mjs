@@ -371,6 +371,128 @@ async function main() {
       Boolean(searchInner.ok),
       JSON.stringify(searchInner),
     )
+    await page.locator('.live-map-stage .maplibregl-ctrl-attrib').waitFor({ timeout: 12000 }).catch(() => {})
+    const overlayLayout = await page.evaluate(() => {
+      const box = el => {
+        if (!el) return null
+        const style = getComputedStyle(el)
+        if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return null
+        const r = el.getBoundingClientRect()
+        if (r.width < 2 || r.height < 2) return null
+        return {
+          left: Math.round(r.left),
+          right: Math.round(r.right),
+          top: Math.round(r.top),
+          bottom: Math.round(r.bottom),
+          width: Math.round(r.width),
+          height: Math.round(r.height),
+          text: (el.textContent || '').replace(/\s+/g, ' ').trim(),
+        }
+      }
+      const overlaps = (a, b) => Boolean(
+        a && b && !(a.right <= b.left + 1 || b.right <= a.left + 1 || a.bottom <= b.top + 1 || b.bottom <= a.top + 1),
+      )
+      const legendEl = document.querySelector('.live-map-legend')
+      const legend = box(legendEl)
+      const kpis = box(document.querySelector('.live-map-kpis'))
+      const attrib = box(document.querySelector('.live-map-stage .maplibregl-ctrl-attrib'))
+      const zoom = box(document.querySelector('.live-map-stage .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group'))
+      const legendOverflow = Boolean(legendEl && legendEl.scrollWidth > legendEl.clientWidth + 1)
+      return {
+        legend,
+        kpis,
+        attrib,
+        zoom,
+        legendOverflow,
+        kpiLegend: overlaps(kpis, legend),
+        kpiAttrib: overlaps(kpis, attrib),
+        kpiZoom: overlaps(kpis, zoom),
+        legendAttrib: overlaps(legend, attrib),
+        legendZoom: overlaps(legend, zoom),
+        attribZoom: overlaps(attrib, zoom),
+      }
+    })
+    record(
+      `Corridor overlays at ${width}×${height} stay clear of each other`,
+      Boolean(
+        overlayLayout.legend
+        && overlayLayout.attrib
+        && overlayLayout.legend.text.includes('Flowing')
+        && !overlayLayout.legendOverflow
+        && !/Flo…/.test(overlayLayout.legend.text)
+        && !overlayLayout.kpiLegend
+        && !overlayLayout.kpiAttrib
+        && !overlayLayout.kpiZoom
+        && !overlayLayout.legendAttrib
+        && !overlayLayout.legendZoom
+        && !overlayLayout.attribZoom,
+      ),
+      JSON.stringify(overlayLayout),
+    )
+  }
+
+  const corridorHeaderViewports = [
+    [900, 768],
+    [913, 768],
+    [1024, 768],
+    [1280, 800],
+  ]
+  for (const [width, height] of corridorHeaderViewports) {
+    await page.setViewportSize({ width, height })
+    await page.goto(base + '/map-explorer', { waitUntil: 'domcontentloaded', timeout: 60000 })
+    await skipIfNeeded()
+    await page.getByRole('heading', { name: 'Corridor monitor' }).waitFor({ timeout: 20000 })
+    await page.locator('.live-map-tabs').waitFor({ timeout: 20000 })
+    const headerLayout = await page.evaluate(() => {
+      const header = document.querySelector('.live-map-header')
+      const tabs = document.querySelector('.live-map-tabs')
+      const subtitle = header?.querySelector('p')
+      const fit = [...(header?.querySelectorAll('button') || [])].find(button => /Fit Germany/i.test(button.textContent || ''))
+      const map = document.querySelector('[data-testid="corridor-map"]') || document.querySelector('.live-map-stage')
+      if (!header || !tabs || !subtitle || !fit || !map) {
+        return { ok: false, missing: true }
+      }
+      const headerBox = header.getBoundingClientRect()
+      const tabsBox = tabs.getBoundingClientRect()
+      const subtitleBox = subtitle.getBoundingClientRect()
+      const fitBox = fit.getBoundingClientRect()
+      const mapBox = map.getBoundingClientRect()
+      const fitStyle = getComputedStyle(fit)
+      const overlap = Math.min(headerBox.bottom, tabsBox.bottom) - Math.max(headerBox.top, tabsBox.top)
+      const subtitleVisible = subtitleBox.height > 8
+        && subtitleBox.bottom <= headerBox.bottom + 1
+        && subtitleBox.top >= headerBox.top - 1
+        && subtitle.scrollHeight <= subtitle.clientHeight + 1
+      const fitVisible = fitStyle.display !== 'none'
+        && fitStyle.visibility !== 'hidden'
+        && fitBox.width > 8
+        && fitBox.height > 8
+        && fitBox.bottom <= headerBox.bottom + 1
+        && fitBox.top >= headerBox.top - 1
+        && fitBox.bottom <= tabsBox.top + 1
+      return {
+        ok: overlap <= 1
+          && headerBox.bottom <= tabsBox.top + 1
+          && subtitleVisible
+          && fitVisible
+          && /heavy[-‑]transport restrictions across Germany/i.test(subtitle.textContent || '')
+          && mapBox.height > 300,
+        headerH: Math.round(headerBox.height),
+        tabsTop: Math.round(tabsBox.top),
+        headerBottom: Math.round(headerBox.bottom),
+        overlap: Math.round(overlap),
+        subtitle: (subtitle.textContent || '').trim(),
+        subtitleH: Math.round(subtitleBox.height),
+        fitH: Math.round(fitBox.height),
+        fitDisplay: fitStyle.display,
+        mapH: Math.round(mapBox.height),
+      }
+    })
+    record(
+      `Corridor header at ${width}×${height} keeps its natural height without overlapping the toolbar`,
+      Boolean(headerLayout.ok),
+      JSON.stringify(headerLayout),
+    )
   }
 
   await page.setViewportSize({ width: 1440, height: 900 })

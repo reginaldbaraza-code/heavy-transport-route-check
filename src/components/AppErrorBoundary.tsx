@@ -28,12 +28,19 @@ export default class AppErrorBoundary extends Component<{ children: ReactNode },
     if (!this.state.error) return this.props.children
     return (
       <main className="app-error-screen">
-        <div>
-          <span><AlertTriangle size={21} /></span>
-          <h1>HTR could not display this view</h1>
-          <p>The prototype encountered a browser runtime error. Reload the workspace to restore the current session.</p>
-          <button type="button" onClick={() => window.location.reload()}><RefreshCw size={15} /> Reload HTR</button>
-          <details><summary>Technical details</summary><code>{this.state.error.message}</code></details>
+        <div className="card max-w-md p-5" role="alert">
+          <AlertTriangle />
+          <h1 className="mt-2 text-base font-medium">HTR could not display this view</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            The prototype encountered a browser runtime error. Reload the workspace to restore the current session.
+          </p>
+          <button type="button" className="btn-primary mt-4" onClick={() => window.location.reload()}>
+            <RefreshCw size={15} /> Reload HTR
+          </button>
+          <details>
+            <summary>Technical details</summary>
+            <code>{this.state.error.message}</code>
+          </details>
         </div>
       </main>
     )

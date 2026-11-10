@@ -1,6 +1,8 @@
 import { createReadStream, existsSync, statSync } from 'node:fs'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { extname, join, normalize, resolve } from 'node:path'
+import { createGzip } from 'node:zlib'
+import { pipeline } from 'node:stream'
 import checkRouteHandler from '../api/check-route.ts'
 import autobahnEventsHandler from '../api/autobahn-events.ts'
 import bwRoadworksHandler from '../api/bw-roadworks.ts'
@@ -25,9 +27,22 @@ const mime: Record<string, string> = {
   '.map': 'application/json',
 }
 
-function sendFile(res: ServerResponse, filePath: string) {
+function sendFile(req: IncomingMessage, res: ServerResponse, filePath: string) {
   const type = mime[extname(filePath)] || 'application/octet-stream'
-  res.writeHead(200, { 'Content-Type': type })
+  const accept = String(req.headers['accept-encoding'] || '')
+  const compressible = /javascript|json|css|svg|xml|text\/|manifest|gpx/.test(type)
+  const headers: Record<string, string> = {
+    'Content-Type': type,
+    'Cache-Control': extname(filePath) === '.html' ? 'no-cache' : 'public, max-age=60',
+  }
+  if (compressible && accept.includes('gzip')) {
+    headers['Content-Encoding'] = 'gzip'
+    headers.Vary = 'Accept-Encoding'
+    res.writeHead(200, headers)
+    pipeline(createReadStream(filePath), createGzip({ level: 6 }), res, () => {})
+    return
+  }
+  res.writeHead(200, headers)
   createReadStream(filePath).pipe(res)
 }
 
@@ -91,10 +106,10 @@ const server = createServer(async (req, res) => {
       return
     }
     if (existsSync(candidate) && statSync(candidate).isFile()) {
-      sendFile(res, candidate)
+      sendFile(req, res, candidate)
       return
     }
-    sendFile(res, join(dist, 'index.html'))
+    sendFile(req, res, join(dist, 'index.html'))
   } catch (error) {
     console.error(error)
     if (!res.headersSent) {

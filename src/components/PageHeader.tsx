@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react'
+
 export default function PageHeader({
   eyebrow,
   title,
@@ -7,7 +9,7 @@ export default function PageHeader({
   eyebrow?: string
   title: string
   description: string
-  actions?: React.ReactNode
+  actions?: ReactNode
 }) {
   return (
     <header className="market-page-header">

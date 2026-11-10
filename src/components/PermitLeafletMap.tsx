@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import L, { type LayerGroup, type Map as LeafletMap } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import '../styles/maps.css'
 import { Route } from 'lucide-react'
 import { ROUTE_FIT_MAX_ZOOM } from '../lib/mapBounds'
 import { downsampleTrack, escapeHtml, loadGpxTrack, type LatLng } from '../lib/gpxTrack'
@@ -10,7 +11,7 @@ import {
   overviewVerdictForPermit,
   type OverviewVerdict,
 } from '../lib/overviewTracks'
-import type { TestPermit } from '../lib/routeCheck'
+import type { TestPermit } from '../lib/testPermitCatalog'
 
 export type PermitLeafletMapProps = {
   permits: TestPermit[]

@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import '../styles/pages.css'
 import { Link } from 'react-router-dom'
 import {
   AlertTriangle, ArrowRight, CheckCircle2, CircleX, FileJson, FileText, Map,
@@ -6,13 +7,15 @@ import {
 } from 'lucide-react'
 import LazyPermitMap from '../components/LazyPermitMap'
 import PageHeader from '../components/PageHeader'
+import { Badge } from '../components/ui/badge'
+import { Button } from '../components/ui/button'
 import {
   defaultVehicleProfile, getRouteCheckResult, permittedRoutes,
 } from '../data/routeChecks'
 import { useRouteMonitoring } from '../context/RouteMonitoringContext'
 import { useJobs } from '../context/JobsContext'
 import { formatBerlinDateTime } from '../lib/formatTime'
-import { sampleTestPermits } from '../lib/routeCheck'
+import { sampleTestPermits } from '../lib/testPermitCatalog'
 import {
   OVERVIEW_FEATURED_COPY,
   OVERVIEW_FEATURED_PERMIT_ID,
@@ -144,8 +147,8 @@ export default function MarketplaceOverview() {
         description="Check the exact approved route against current roadworks, closures, and trusted on-site reports before the transport departs."
         actions={
           <>
-            <Link to="/map-explorer" className="market-button secondary"><Map size={16} /> Open route monitor</Link>
-            <Link to="/route-checks" className="market-button primary"><Upload size={16} /> Import permitted route</Link>
+            <Button asChild variant="outline" size="lg"><Link to="/map-explorer"><Map size={16} /> Open route monitor</Link></Button>
+            <Button asChild size="lg"><Link to="/route-checks"><Upload size={16} /> Import permitted route</Link></Button>
           </>
         }
       />
@@ -212,9 +215,11 @@ export default function MarketplaceOverview() {
             <Upload size={48} />
             <h2>No saved routes yet</h2>
             <p>Import a permitted route to check live Autobahn conditions. Completed checks are stored only in this browser.</p>
-            <Link to="/route-checks" className="market-button primary">
-              <Upload size={16} /> Check your first route
-            </Link>
+            <Button asChild>
+              <Link to="/route-checks">
+                <Upload size={16} /> Check your first route
+              </Link>
+            </Button>
           </div>
         </section>
       )}
@@ -225,10 +230,13 @@ export default function MarketplaceOverview() {
       >
         <div className="overview-mode-banner">
           <div className="overview-mode-banner-copy" role="status">
-            <span className="overview-mode-badge">
+            <Badge
+              variant={sampleMode === 'permits' ? 'default' : 'secondary'}
+              className="overview-mode-badge"
+            >
               {sampleMode === 'permits' ? <FileText size={13} aria-hidden /> : <Play size={13} aria-hidden />}
               {sampleMode === 'permits' ? 'SAMPLE PERMIT' : 'DEMO'}
-            </span>
+            </Badge>
             <p>
               {sampleMode === 'permits'
                 ? 'Real sample permit files. Open one to run a live Autobahn check on its route; that check is saved to your history.'

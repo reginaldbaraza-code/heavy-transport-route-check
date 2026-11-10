@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 're
 import * as maplibregl from 'maplibre-gl';
 import { setWorkerUrl } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import '../styles/maps.css';
 // Import worker as URL for Vite to bundle it
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 

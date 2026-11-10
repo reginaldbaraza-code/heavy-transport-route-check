@@ -1,6 +1,7 @@
 import { defineConfig, type HtmlTagDescriptor, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { visualizer } from 'rollup-plugin-visualizer'
 import path from 'node:path'
 
 // Vite config — https://vitejs.dev/config/
@@ -8,6 +9,42 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    visualizer({
+      filename: 'dist/stats.html',
+      gzipSize: true,
+      brotliSize: true,
+      template: 'treemap',
+    }),
+    {
+      name: 'preload-active-route',
+      transformIndexHtml: {
+        order: 'post',
+        handler(_html, ctx) {
+          const bundle = ctx.bundle
+          if (!bundle) return []
+          const chunks = { overview: [] as string[], jobs: [] as string[], settings: [] as string[], checks: [] as string[] }
+          for (const file of Object.keys(bundle)) {
+            if (!/\.(js|css)$/.test(file)) continue
+            const href = `/${file}`
+            if (/MarketplaceOverview|PageHeader|button-|badge-|lcpHeading|LazyPermitMap|deferIdle/.test(file)) chunks.overview.push(href)
+            if (/SavedJobs|PageHeader|button-|lcpHeading/.test(file)) chunks.jobs.push(href)
+            if (/Settings-|lcpHeading/.test(file)) chunks.settings.push(href)
+            if (/RouteIntelligence|lcpHeading/.test(file)) chunks.checks.push(href)
+            if (/pages-.*\.css$/.test(file)) {
+              chunks.overview.push(href)
+              chunks.jobs.push(href)
+              chunks.settings.push(href)
+              chunks.checks.push(href)
+            }
+          }
+          return [{
+            tag: 'script',
+            children: `window.__HT_CHUNKS__=${JSON.stringify(chunks)};(function(){var p=location.pathname;var k=p.indexOf('/route-checks')===0?'checks':p.indexOf('/jobs')===0?'jobs':p.indexOf('/settings')===0?'settings':'overview';var files=(window.__HT_CHUNKS__||{})[k]||[];for(var i=0;i<files.length;i++){var l=document.createElement('link');l.href=files[i];l.crossOrigin='';l.rel=/\\.css$/.test(files[i])?'stylesheet':'modulepreload';document.head.appendChild(l)}})();`,
+            injectTo: 'head',
+          }]
+        },
+      },
+    },
   ],
   resolve: {
     alias: {
@@ -18,7 +55,7 @@ export default defineConfig({
     modulePreload: {
       resolveDependencies(filename, deps) {
         if (filename.includes('index')) {
-          return deps.filter(dep => !/jspdf|html2canvas|purify|canvg|dompurify/i.test(dep))
+          return deps.filter(dep => !/jspdf|html2canvas|purify|canvg|dompurify|leaflet|maplibre/i.test(dep))
         }
         return deps
       },
@@ -29,6 +66,7 @@ export default defineConfig({
           groups: [
             { name: 'maplibre', test: /node_modules[\\/]maplibre-gl/ },
             { name: 'leaflet', test: /node_modules[\\/]leaflet/ },
+            { name: 'react-vendor', test: /node_modules[\\/](?:react-dom|react-router|scheduler)\b/ },
           ],
         },
       },

@@ -12,8 +12,8 @@ import {
   type SavedJob,
 } from '../lib/jobs'
 import { notificationBody, shouldEscalateAlert, verdictChangeCopy } from '../lib/monitoring'
-import { checkRoute, type RouteCheckResult } from '../lib/routeCheck'
-import { confirmOnSiteTitles } from '../lib/siteAcknowledgements'
+import type { RouteCheckResult } from '../lib/routeCheck'
+import { confirmOnSiteTitles } from '../lib/confirmOnSite'
 import { useRouteMonitoring } from './RouteMonitoringContext'
 
 export type JobDraft = Omit<SavedJob, 'id' | 'createdAt' | 'updatedAt'>
@@ -179,6 +179,7 @@ export function JobsProvider({ children }: { children: ReactNode }) {
     checkingRef.current.add(id)
     setCheckingJobId(id)
     try {
+      const { checkRoute } = await import('../lib/routeCheck')
       const result = await checkRoute(job.gpxContent, job.vehicle, {
         permitNumber: job.permitNumber,
         corridor: job.corridor,
