@@ -257,6 +257,10 @@ html.lcp-scrolled .route-polished-header-content {
 @media (min-width: 641px) {
   #boot-lcp { display: none !important; }
 }
+/* Corridor chrome is visible on mobile; the boot overlay would paint on top of it. */
+body:has(.live-map-page) #boot-lcp {
+  display: none !important;
+}
 @media (max-width: 640px) {
   .market-page-header > div:first-child,
   .settings-heading > span,
@@ -456,9 +460,9 @@ textarea {
 }
 .app-page-host input::placeholder,
 .app-page-host textarea::placeholder { color: var(--text-quaternary); }
-.app-page-host input:focus,
-.app-page-host select:focus,
-.app-page-host textarea:focus {
+.app-page-host input:focus-visible,
+.app-page-host select:focus-visible,
+.app-page-host textarea:focus-visible {
   border-color: #84adff !important;
   box-shadow: 0 0 0 3px rgba(23,92,211,.1) !important;
 }
@@ -552,10 +556,18 @@ a { font-size: 14px; line-height: 1.4; }
 @media (max-width: 760px) {
 .notification-popover { width: min(400px, calc(100vw - 24px)) !important; }
 }
-a,
-input,
-select,
-textarea {
+a:focus:not(:focus-visible),
+button:focus:not(:focus-visible),
+input:focus:not(:focus-visible),
+select:focus:not(:focus-visible),
+textarea:focus:not(:focus-visible) {
+  outline: none;
+}
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
   outline: 3px solid #84adff;
   outline-offset: 2px;
 }

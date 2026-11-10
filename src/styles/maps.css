@@ -44,6 +44,16 @@
 .leaflet-container { font-family: 'Geist Variable', ui-sans-serif, sans-serif; }
 .leaflet-control-attribution { font-size: 14px !important; }
 .leaflet-control-zoom a { color: var(--navy) !important; }
+.leaflet-control-zoom a:focus:not(:focus-visible),
+.maplibregl-ctrl-group button:focus:not(:focus-visible) {
+  outline: none;
+  box-shadow: none;
+}
+.leaflet-control-zoom a:focus-visible,
+.maplibregl-ctrl-group button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .leaflet-control-scale-line { border-color: var(--navy) !important; color: var(--navy); font-size: 14px; }
 .maplibregl-ctrl-attrib { font-size: 14px !important; }
 .maplibregl-ctrl-group button { color: var(--navy) !important; }

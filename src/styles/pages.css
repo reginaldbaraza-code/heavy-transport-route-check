@@ -387,7 +387,8 @@
 }
 .live-event-search { flex: none; height: 48px; min-height: 48px; margin: 10px 10px 8px; padding: 0 10px; display: flex; align-items: center; gap: 7px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-base); color: var(--text-tertiary); }
 .app-page-host .live-event-search input:not([type='checkbox']):not([type='radio']),
-.app-page-host .live-event-search input:not([type='checkbox']):not([type='radio']):focus {
+.app-page-host .live-event-search input:not([type='checkbox']):not([type='radio']):focus,
+.app-page-host .live-event-search input:not([type='checkbox']):not([type='radio']):focus-visible {
   min-width: 0 !important;
   flex: 1 1 auto;
   min-height: 0 !important;
@@ -588,9 +589,9 @@
 .settings-field input:hover,
 .settings-field select:hover,
 .settings-field textarea:hover { border-color: var(--text-quaternary); }
-.settings-field input:focus,
-.settings-field select:focus,
-.settings-field textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
+.settings-field input:focus-visible,
+.settings-field select:focus-visible,
+.settings-field textarea:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
 .settings-field [aria-invalid="true"] { border-color: var(--red); }
 .settings-field > i { position: absolute; right: 10px; bottom: 8px; color: var(--text-quaternary); font-size: 14px; font-style: normal; }
 .settings-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
@@ -1566,8 +1567,13 @@ h1 { font-size: 28px !important; }
   background: white;
   transition: all 0.15s ease;
 }
-.form-group select:focus,
-.form-group input:focus {
+.form-group select:focus:not(:focus-visible),
+.form-group input:focus:not(:focus-visible) {
+  outline: none;
+  box-shadow: none;
+}
+.form-group select:focus-visible,
+.form-group input:focus-visible {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(23, 92, 211, 0.1);

@@ -23,6 +23,18 @@ const COPY: Array<{
     description: 'Check your permitted route against live Autobahn conditions',
   },
   {
+    test: path => path.startsWith('/map-explorer') || path.startsWith('/live-map'),
+    eyebrow: '',
+    title: 'Corridor monitor',
+    description: 'See current roadworks, warnings, closures, and heavy-transport restrictions across Germany.',
+  },
+  {
+    test: path => path.startsWith('/activity'),
+    eyebrow: 'Live route monitoring',
+    title: 'Alerts & history',
+    description: 'Alerts and history come only from route checks you actually ran in this browser, plus their Autobahn GmbH results.',
+  },
+  {
     test: () => true,
     eyebrow: 'Heavy transport operations',
     title: 'Know whether the permitted route is usable',

@@ -1,14 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import * as maplibregl from 'maplibre-gl'
-import { setWorkerUrl } from 'maplibre-gl'
-import 'maplibre-gl/dist/maplibre-gl.css'
+import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl'
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
 import '../styles/maps.css'
 import '../styles/pages.css'
-// Import worker as URL for Vite to bundle it
-import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
-
-// Configure worker URL globally before any Map is created
-setWorkerUrl(workerUrl);
+import { afterFirstPaintIdle } from '../lib/deferIdle'
 import {
   AlertTriangle, ChevronDown, CircleParking, Clock3,
   Construction, Layers3, LocateFixed, Map as MapIcon, Maximize2,
@@ -44,9 +39,23 @@ const formatBerlinTime = (date: Date) => new Intl.DateTimeFormat('de-DE', {
   hour12: false,
 }).format(date)
 
+function germanyLngLatBounds(): [[number, number], [number, number]] {
+  let west = 180
+  let south = 90
+  let east = -180
+  let north = -90
+  for (const [lat, lng] of germanyOutline) {
+    if (lng < west) west = lng
+    if (lng > east) east = lng
+    if (lat < south) south = lat
+    if (lat > north) north = lat
+  }
+  return [[west, south], [east, north]]
+}
+
 export default function LiveMap() {
   const mapContainer = useRef<HTMLDivElement>(null)
-  const mapRef = useRef<maplibregl.Map | null>(null)
+  const mapRef = useRef<MapLibreMap | null>(null)
   const [events, setEvents] = useState<OperationalEvent[]>([])
   const [activeLayers, setActiveLayers] = useState<string[]>(['roadworks', 'warnings', 'closures', 'traffic'])
   const [selectedEvent, setSelectedEvent] = useState<OperationalEvent | null>(null)
@@ -169,9 +178,18 @@ export default function LiveMap() {
     return () => window.clearInterval(interval)
   }, [refreshEvents])
 
-  // Initialize map
+  // Initialize MapLibre after first paint so corridor chrome can LCP without parsing the engine.
   useEffect(() => {
-    if (!mapContainer.current || mapRef.current) return
+    let cancelled = false
+    let observer: ResizeObserver | null = null
+    let stopClusters: (() => void) | undefined
+
+    const stopIdle = afterFirstPaintIdle(async () => {
+      if (cancelled || !mapContainer.current || mapRef.current) return
+      const maplibregl = await import('maplibre-gl')
+      await import('maplibre-gl/dist/maplibre-gl.css')
+      maplibregl.setWorkerUrl(workerUrl)
+      if (cancelled || !mapContainer.current || mapRef.current) return
 
     const map = new maplibregl.Map({
       container: mapContainer.current,
@@ -319,8 +337,8 @@ export default function LiveMap() {
         const features = map.queryRenderedFeatures(e.point, { layers: ['clusters'] })
         const clusterId = features[0]?.properties?.cluster_id
         if (clusterId) {
-          const source = map.getSource('events') as maplibregl.GeoJSONSource
-          void source.getClusterExpansionZoom(clusterId).then(zoom => {
+          const source = map.getSource('events') as GeoJSONSource
+          void source.getClusterExpansionZoom(clusterId).then((zoom: number) => {
             if (!features[0].geometry || features[0].geometry.type !== 'Point') return
             map.easeTo({
               center: features[0].geometry.coordinates as [number, number],
@@ -388,15 +406,18 @@ export default function LiveMap() {
       }
     }
 
-    // Add cluster layers once on load
     map.on('load', () => {
-      addClusterLayers()
       resizeMap()
       requestAnimationFrame(resizeMap)
-      setMapLoaded(true)
+      stopClusters = afterFirstPaintIdle(() => {
+        if (cancelled || !mapRef.current) return
+        addClusterLayers()
+        resizeMap()
+        setMapLoaded(true)
+      }, 800)
     })
 
-    const observer = new ResizeObserver(() => {
+    observer = new ResizeObserver(() => {
       requestAnimationFrame(resizeMap)
     })
     observer.observe(mapContainer.current)
@@ -404,16 +425,21 @@ export default function LiveMap() {
     if (stage) observer.observe(stage)
 
     mapRef.current = map
-    
-    // Expose map instance for testing (non-production only)
+
     if (typeof window !== 'undefined' && import.meta.env.DEV === false) {
-      (window as any).__TEST_CORRIDOR_MAP__ = map;
+      (window as any).__TEST_CORRIDOR_MAP__ = map
     }
+    })
 
     return () => {
-      observer.disconnect()
-      map.remove()
-      mapRef.current = null
+      cancelled = true
+      stopIdle()
+      stopClusters?.()
+      observer?.disconnect()
+      if (mapRef.current) {
+        mapRef.current.remove()
+        mapRef.current = null
+      }
     }
   }, [])
 
@@ -422,7 +448,7 @@ export default function LiveMap() {
     const map = mapRef.current
     if (!map || !mapLoaded) return
 
-    const source = map.getSource('events') as maplibregl.GeoJSONSource
+    const source = map.getSource('events') as GeoJSONSource
     if (!source) return
 
     const geojson: GeoJSON.FeatureCollection = {
@@ -461,10 +487,7 @@ export default function LiveMap() {
     if (scope === 'munich') {
       map.flyTo({ center: [11.58, 48.14], zoom: 10, duration: 800 })
     } else {
-      const bounds = germanyOutline.reduce((bounds, coord) => {
-        return bounds.extend([coord[1], coord[0]] as [number, number])
-      }, new maplibregl.LngLatBounds())
-      map.fitBounds(bounds, { padding: 32, duration: 800 })
+      map.fitBounds(germanyLngLatBounds(), { padding: 32, duration: 800 })
     }
   }, [scope, mapLoaded])
 
@@ -499,12 +522,7 @@ export default function LiveMap() {
             <RefreshCw size={13} className={liveStatus === 'refreshing' ? 'spin' : ''} /> Refresh data
           </button>
           <button type="button" onClick={() => {
-            const map = mapRef.current
-            if (!map) return
-            const bounds = germanyOutline.reduce((bounds, coord) => {
-              return bounds.extend([coord[1], coord[0]] as [number, number])
-            }, new maplibregl.LngLatBounds())
-            map.fitBounds(bounds, { padding: 32 })
+            mapRef.current?.fitBounds(germanyLngLatBounds(), { padding: 32 })
           }}>
             <Maximize2 size={13} /> Fit Germany
           </button>
