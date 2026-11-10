@@ -4693,6 +4693,39 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   box-shadow: var(--shadow-sm);
 }
 
+/* Demo History Prompt */
+.demo-history-prompt {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-light);
+  border-radius: var(--r-lg);
+  margin-bottom: 20px;
+}
+.demo-history-prompt svg {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+.demo-history-prompt > div {
+  flex: 1;
+}
+.demo-history-prompt strong {
+  display: block;
+  font-size: 14px;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.demo-history-prompt p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+.demo-history-prompt button {
+  flex-shrink: 0;
+}
+
 @media (max-width: 640px) {
   .status-timeline-card {
     padding: 16px;

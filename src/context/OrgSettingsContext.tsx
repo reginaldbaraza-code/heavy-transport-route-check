@@ -4,10 +4,11 @@ import { readJson, STORAGE_KEYS, writeJson } from '../lib/browserStore'
 export type OrgProfile = {
   orgName: string
   dispatcherName: string
-  website: string
-  description: string
-  orgType: string
-  country: string
+  website?: string
+  description?: string
+  orgType?: string
+  country?: string
+  verified?: boolean
 }
 
 export const defaultOrgProfile: OrgProfile = {
@@ -15,8 +16,9 @@ export const defaultOrgProfile: OrgProfile = {
   dispatcherName: '',
   website: '',
   description: '',
-  orgType: 'Heavy-haul logistics operator',
-  country: 'Germany',
+  orgType: 'freight',
+  country: 'DE',
+  verified: false,
 }
 
 export type NotificationPrefs = {
