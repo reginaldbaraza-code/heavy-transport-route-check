@@ -258,8 +258,12 @@ html.lcp-scrolled .route-polished-header-content {
   #boot-lcp { display: none !important; }
 }
 /* Corridor chrome is visible on mobile; the boot overlay would paint on top of it. */
-body:has(.live-map-page) #boot-lcp {
+body:has(.live-map-page) #boot-lcp,
+body:has(.verdict-banner) #boot-lcp {
   display: none !important;
+}
+body:has(.verdict-banner) .route-polished-header-content {
+  visibility: visible;
 }
 @media (max-width: 640px) {
   .market-page-header > div:first-child,

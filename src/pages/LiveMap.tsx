@@ -398,7 +398,10 @@ export default function LiveMap() {
     }
 
     const resizeMap = () => {
-      if (!mapContainer.current || mapContainer.current.clientHeight < 8) return
+      const el = mapContainer.current
+      const stage = el?.parentElement
+      const height = Math.max(el?.clientHeight ?? 0, stage?.clientHeight ?? 0)
+      if (!el || height < 8) return
       try {
         map.resize()
       } catch {
@@ -409,6 +412,8 @@ export default function LiveMap() {
     map.on('load', () => {
       resizeMap()
       requestAnimationFrame(resizeMap)
+      window.setTimeout(resizeMap, 120)
+      window.setTimeout(resizeMap, 400)
       stopClusters = afterFirstPaintIdle(() => {
         if (cancelled || !mapRef.current) return
         addClusterLayers()
@@ -518,27 +523,36 @@ export default function LiveMap() {
         </div>
         <div className="live-map-header-actions">
           <span><Clock3 size={12} /> Updated {formatBerlinTime(lastUpdated)}</span>
-          <button type="button" onClick={refreshEvents} disabled={liveStatus === 'refreshing'}>
-            <RefreshCw size={13} className={liveStatus === 'refreshing' ? 'spin' : ''} /> Refresh data
+          <button type="button" className="live-map-refresh" onClick={refreshEvents} disabled={liveStatus === 'refreshing'} aria-label="Refresh data">
+            <RefreshCw size={13} className={liveStatus === 'refreshing' ? 'spin' : ''} /> <span className="live-map-action-label">Refresh data</span>
           </button>
-          <button type="button" onClick={() => {
-            mapRef.current?.fitBounds(germanyLngLatBounds(), { padding: 32 })
-          }}>
+          <button
+            type="button"
+            className="live-map-fit"
+            onClick={() => {
+              mapRef.current?.fitBounds(germanyLngLatBounds(), { padding: 32 })
+            }}
+          >
             <Maximize2 size={13} /> Fit Germany
           </button>
         </div>
       </header>
 
-      <div className="live-map-tabs" role="tablist" aria-label="Map scope">
-        <button type="button" className={scope === 'national' ? 'active' : ''} onClick={() => setScope('national')}>
-          <MapIcon size={13} /> Germany
-        </button>
-        <button type="button" className={scope === 'munich' ? 'active' : ''} onClick={() => setScope('munich')}>
-          <LocateFixed size={13} /> Bavaria focus
-        </button>
-        <span />
-        <button type="button" className={baseMap === 'road' ? 'active' : ''} onClick={() => setBaseMap('road')}>Road</button>
-        <button type="button" className={baseMap === 'contrast' ? 'active' : ''} onClick={() => setBaseMap('contrast')}>High contrast</button>
+      <div className="live-map-tabs">
+        <div className="live-map-seg" role="tablist" aria-label="Map scope">
+          <button type="button" className={scope === 'national' ? 'active' : ''} onClick={() => setScope('national')}>
+            <MapIcon size={13} /> Germany
+          </button>
+          <button type="button" className={scope === 'munich' ? 'active' : ''} onClick={() => setScope('munich')}>
+            <LocateFixed size={13} /> <span className="tab-label-full">Bavaria focus</span><span className="tab-label-short">Bavaria</span>
+          </button>
+        </div>
+        <div className="live-map-seg" role="group" aria-label="Base map">
+          <button type="button" className={baseMap === 'road' ? 'active' : ''} onClick={() => setBaseMap('road')}>Road</button>
+          <button type="button" className={baseMap === 'contrast' ? 'active' : ''} onClick={() => setBaseMap('contrast')}>
+            <span className="tab-label-full">High contrast</span><span className="tab-label-short">Contrast</span>
+          </button>
+        </div>
       </div>
 
       <div className="live-map-workspace">
