@@ -4467,6 +4467,232 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   margin: 0;
 }
 
+/* Overview Map with Tallies */
+.overview-map-tallies {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 24px;
+  box-shadow: var(--shadow-sm);
+}
+.overview-map-container {
+  display: grid;
+  place-items: center;
+  position: relative;
+}
+.overview-map-germany {
+  position: relative;
+  width: 100%;
+  max-width: 240px;
+  aspect-ratio: 200 / 280;
+}
+.germany-map-svg {
+  width: 100%;
+  height: 100%;
+}
+.city-marker {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.city-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid white;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.city-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-primary);
+  background: white;
+  padding: 2px 6px;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.city-marker:hover .city-label,
+.city-marker:focus .city-label {
+  opacity: 1;
+}
+.overview-tallies {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  justify-content: center;
+}
+.overview-tally-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.overview-tally-header strong {
+  font-size: 18px;
+  color: var(--text-primary);
+}
+.overview-tally-header span {
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+.overview-tally-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.tally-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  position: relative;
+  overflow: hidden;
+}
+.tally-bar::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--tally-width, 0);
+  opacity: 0.15;
+  transition: width 0.3s ease;
+}
+.tally-bar.ready {
+  background: var(--green-bg);
+  color: var(--green-text);
+}
+.tally-bar.ready::before {
+  background: var(--green);
+}
+.tally-bar.verify {
+  background: var(--amber-bg);
+  color: var(--amber-text);
+}
+.tally-bar.verify::before {
+  background: var(--amber);
+}
+.tally-bar.hold {
+  background: var(--red-bg);
+  color: var(--red-text);
+}
+.tally-bar.hold::before {
+  background: var(--red);
+}
+.tally-bar span {
+  font-size: 13px;
+  font-weight: 500;
+  flex: 1;
+  z-index: 1;
+}
+.tally-bar strong {
+  font-size: 16px;
+  font-weight: 600;
+  z-index: 1;
+}
+.tally-bar svg {
+  flex-shrink: 0;
+  z-index: 1;
+}
+
+/* Source Status List */
+.source-status-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.source-status-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  background: var(--bg-grouped);
+  border-radius: var(--r-md);
+}
+.source-abbrev {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.source-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.source-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.source-name strong {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+.source-live-icon {
+  color: var(--green);
+}
+.source-description {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.source-age-icon {
+  flex-shrink: 0;
+}
+.source-status-badge {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  flex-shrink: 0;
+}
+.source-status-badge.live {
+  background: var(--green-bg);
+  color: var(--green-text);
+}
+.source-status-badge.confirmed {
+  background: var(--blue-bg);
+  color: var(--blue-text);
+}
+.source-status-badge.example {
+  background: var(--bg-card);
+  color: var(--text-tertiary);
+  border: 1px solid var(--border);
+}
+.transport-source-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
 @media (max-width: 640px) {
   .status-timeline-card {
     padding: 16px;

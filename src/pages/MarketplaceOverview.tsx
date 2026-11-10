@@ -6,6 +6,8 @@ import {
 } from 'lucide-react'
 import LazyPermitMap from '../components/LazyPermitMap'
 import PageHeader from '../components/PageHeader'
+import { OverviewMapWithTallies } from '../components/OverviewMapWithTallies'
+import { SourceStatusList } from '../components/SourceStatusList'
 import {
   defaultVehicleProfile, getRouteCheckResult, permittedRoutes,
 } from '../data/routeChecks'
@@ -136,6 +138,51 @@ export default function MarketplaceOverview() {
   const heroPermit = sampleTestPermits.find(permit => permit.id === selectedPermitId) ?? sampleTestPermits[0]
   const selectedPermits = useMemo(() => [heroPermit], [heroPermit])
 
+  const routeTally = useMemo(() => {
+    const monitoredJobs = jobs.filter(job => job.lastVerdict)
+    return {
+      ready: monitoredJobs.filter(j => j.lastVerdict === 'READY').length,
+      verify: monitoredJobs.filter(j => j.lastVerdict === 'VERIFY').length,
+      hold: monitoredJobs.filter(j => j.lastVerdict === 'HOLD').length,
+    }
+  }, [jobs])
+
+  const germanyCities = [
+    { name: 'Hamburg', position: [30, 15] },
+    { name: 'Bremen', position: [22, 23] },
+    { name: 'Leipzig', position: [60, 35] },
+    { name: 'Kassel', position: [40, 35] },
+    { name: 'Nuremberg', position: [55, 60] },
+    { name: 'Munich', position: [60, 75] },
+  ]
+
+  const dataSources = [
+    {
+      id: 'autobahn',
+      abbrev: 'AG',
+      name: 'Autobahn GmbH roadworks feed',
+      description: 'Lane-width restrictions and closures',
+      age: 'Updated 2 min ago',
+      status: 'confirmed' as const,
+    },
+    {
+      id: 'road-operator',
+      abbrev: 'RO',
+      name: 'Road operator status feed',
+      description: 'Work zone confirmations',
+      age: 'Updated 8 min ago',
+      status: 'confirmed' as const,
+    },
+    {
+      id: 'vemags',
+      abbrev: 'VB',
+      name: 'VEMAGS profile + route check',
+      description: 'Vehicle clearance verification',
+      age: 'Calculated now',
+      status: 'confirmed' as const,
+    },
+  ]
+
   return (
     <div className="market-page transport-overview">
       <PageHeader
@@ -218,6 +265,33 @@ export default function MarketplaceOverview() {
           </div>
         </section>
       )}
+
+      {/* Germany Coverage Map with Route Tallies */}
+      {jobs.length > 0 && (
+        <section aria-label="Monitored routes across Germany">
+          <div className="market-section-header compact">
+            <div>
+              <span className="market-eyebrow">Coverage</span>
+              <h2>Monitored routes</h2>
+            </div>
+          </div>
+          <OverviewMapWithTallies tally={routeTally} cities={germanyCities} />
+        </section>
+      )}
+
+      {/* Data Sources Status */}
+      <section aria-label="Data source status">
+        <div className="market-section-header compact">
+          <div>
+            <span className="market-eyebrow">Source status</span>
+            <h2>Information covering your routes</h2>
+          </div>
+          <Link to="/settings">Data sources <ArrowRight size={16} /></Link>
+        </div>
+        <div className="transport-source-section">
+          <SourceStatusList sources={dataSources} />
+        </div>
+      </section>
 
       <div
         className={`overview-mode-panel ${sampleMode === 'permits' ? 'is-sample' : 'is-demo'}`}
