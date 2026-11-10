@@ -96,7 +96,7 @@ export function OrgSettingsProvider({ children }: { children: ReactNode }) {
   const complete = isOrgProfileComplete(savedProfile)
   const displayName = savedProfile.orgName.trim() || 'Dispatcher'
   const orgTypeLabel = complete
-    ? (savedProfile.dispatcherName.trim() || savedProfile.orgType.trim() || 'Operator')
+    ? (savedProfile.dispatcherName.trim() || savedProfile.orgType?.trim() || 'Operator')
     : 'Set up profile'
 
   const value = useMemo<OrgSettingsValue>(() => ({

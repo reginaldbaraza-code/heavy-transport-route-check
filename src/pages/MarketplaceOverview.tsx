@@ -147,7 +147,7 @@ export default function MarketplaceOverview() {
     }
   }, [jobs])
 
-  const germanyCities = [
+  const germanyCities: Array<{ name: string; position: [number, number] }> = [
     { name: 'Hamburg', position: [30, 15] },
     { name: 'Bremen', position: [22, 23] },
     { name: 'Leipzig', position: [60, 35] },

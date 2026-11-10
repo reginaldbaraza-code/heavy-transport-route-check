@@ -1,6 +1,6 @@
 import { CheckCircle2, AlertTriangle, CircleX } from 'lucide-react'
 
-type RouteT ally = {
+type RouteTally = {
   ready: number
   verify: number
   hold: number

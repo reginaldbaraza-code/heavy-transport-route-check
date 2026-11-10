@@ -547,7 +547,6 @@ export default function RouteIntelligencePolished() {
         lastSummary: (result?.summary || '') + ' · Escalated to transport manager.',
       })
     }
-    const { addAlert } = recordCheck
     setToast('Escalation recorded. This is a client-side app, so no real notification was sent.')
   }
 
