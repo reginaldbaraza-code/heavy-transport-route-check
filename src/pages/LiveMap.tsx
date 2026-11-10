@@ -377,11 +377,29 @@ export default function LiveMap() {
       })
     }
 
+    const resizeMap = () => {
+      if (!mapContainer.current || mapContainer.current.clientHeight < 8) return
+      try {
+        map.resize()
+      } catch {
+        // Map may already have been removed.
+      }
+    }
+
     // Add cluster layers once on load
     map.on('load', () => {
       addClusterLayers()
+      resizeMap()
+      requestAnimationFrame(resizeMap)
       setMapLoaded(true)
     })
+
+    const observer = new ResizeObserver(() => {
+      requestAnimationFrame(resizeMap)
+    })
+    observer.observe(mapContainer.current)
+    const stage = mapContainer.current.parentElement
+    if (stage) observer.observe(stage)
 
     mapRef.current = map
     
@@ -391,6 +409,7 @@ export default function LiveMap() {
     }
 
     return () => {
+      observer.disconnect()
       map.remove()
       mapRef.current = null
     }
@@ -510,9 +529,9 @@ export default function LiveMap() {
             {query && <button type="button" onClick={() => setQuery('')}><XCircle size={13} /></button>}
           </div>
           <div className="live-event-summary">
-            <div><strong>{visibleEvents.length}</strong><span>matched signals</span></div>
-            <div><strong>{scopeEvents.filter(event => event.type === 'warnings').length}</strong><span>safety signals</span></div>
-            <div><strong>{roadVectors.length}</strong><span>Autobahns modeled</span></div>
+            <div><strong>{visibleEvents.length}</strong><span>Matched</span></div>
+            <div><strong>{scopeEvents.filter(event => event.type === 'warnings').length}</strong><span>Safety</span></div>
+            <div><strong>{roadVectors.length}</strong><span>Autobahns</span></div>
           </div>
           {selectedEvent && (
             <div className="selected-map-evidence">
@@ -548,7 +567,7 @@ export default function LiveMap() {
         </aside>
 
         <main className="live-map-stage">
-          <div ref={mapContainer} className="maplibre-map" aria-label="Interactive live mobility map of Germany" />
+          <div ref={mapContainer} className="maplibre-map" data-testid="corridor-map" aria-label="Interactive live mobility map of Germany" />
 
           <section className={`live-layer-panel ${layerPanelOpen ? 'open' : ''}`}>
             <button type="button" className="layer-panel-heading" onClick={() => setLayerPanelOpen(open => !open)}>
