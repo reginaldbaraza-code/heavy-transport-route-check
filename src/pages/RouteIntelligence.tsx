@@ -2,16 +2,10 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   AlertTriangle, ArrowLeft, Briefcase, CheckCircle2, ChevronDown, CircleX, Download,
-  FileUp, Loader2, MapPin, ShieldCheck, Truck, Upload, AlertOctagon, Eye, Radio,
+  FileUp, Loader2, MapPin, ShieldCheck, Truck, Upload,
 } from 'lucide-react'
 import type { RouteMapHandle } from '../components/RouteMapGL'
 import { Toast } from '../components/Feedback'
-import { StatusTimeline } from '../components/StatusTimeline'
-import { EscalateDialog } from '../components/EscalateDialog'
-import { HoldActionSheet } from '../components/HoldActionSheet'
-import { HoldDepartureDialog } from '../components/HoldDepartureDialog'
-import { MonitoringControls } from '../components/MonitoringControls'
-import { TestScenariosDrawer } from '../components/TestScenariosDrawer'
 import {
   checkRoute,
   loadTestPermit,
@@ -93,13 +87,6 @@ export default function RouteIntelligencePolished() {
   const [acknowledgements, setAcknowledgements] = useState<SiteAcknowledgement[]>([])
   const lastHistoryId = useRef<string | null>(null)
   const clearanceConfirmedRef = useRef(clearanceConfirmed)
-  const [showEscalateDialog, setShowEscalateDialog] = useState(false)
-  const [showHoldActionSheet, setShowHoldActionSheet] = useState(false)
-  const [showHoldDepartureDialog, setShowHoldDepartureDialog] = useState(false)
-  const [departureOnHold, setDepartureOnHold] = useState(false)
-  const [escalationRecorded, setEscalationRecorded] = useState(false)
-  const [isMonitoring, setIsMonitoring] = useState(false)
-  const [showTestScenarios, setShowTestScenarios] = useState(false)
   const clearanceByRef = useRef(clearanceBy)
   const confirmedAtRef = useRef(confirmedAt)
   clearanceConfirmedRef.current = clearanceConfirmed
@@ -535,62 +522,6 @@ export default function RouteIntelligencePolished() {
     }), format)
   }
 
-  const handleEscalate = () => {
-    setEscalationRecorded(true)
-    if (lastHistoryId.current) {
-      patchHistory(lastHistoryId.current, {
-        summary: (result?.summary || '') + ' · Escalated to transport manager.',
-      })
-    }
-    if (loadedJob.current) {
-      updateJob(loadedJob.current, {
-        lastSummary: (result?.summary || '') + ' · Escalated to transport manager.',
-      })
-    }
-    setToast('Escalation recorded. This is a client-side app, so no real notification was sent.')
-  }
-
-  const handleHoldDeparture = () => {
-    setDepartureOnHold(true)
-    const holdSummary = 'Departure is on hold. Do not depart.'
-    if (lastHistoryId.current) {
-      patchHistory(lastHistoryId.current, {
-        summary: holdSummary,
-        verdict: 'HOLD',
-      })
-    }
-    if (loadedJob.current) {
-      updateJob(loadedJob.current, {
-        lastSummary: holdSummary,
-        lastVerdict: 'HOLD',
-      })
-    }
-    setToast('Departure placed on hold and recorded in job history.')
-  }
-
-  const handleReviewIssue = () => {
-    const firstHoldItem = primaryEvidence.find(item => isHoldItem(item))
-    if (firstHoldItem && firstHoldItem.lat != null && firstHoldItem.lng != null) {
-      mapRef.current?.flyToEvidence(firstHoldItem)
-    }
-    setToast('Scrolled to blocking evidence.')
-  }
-
-  const handleTestScenario = (scenarioId: string) => {
-    const scenarios: Record<string, string> = {
-      'stale-data': 'Data source is returning stale information (simulated)',
-      'source-outage': 'Primary data source is unavailable (simulated)',
-      'no-response': 'API timeout or network failure (simulated)',
-      'new-disruption': 'New A7 closure detected during monitoring (simulated)',
-    }
-    setToast(scenarios[scenarioId] || 'Test scenario applied')
-  }
-
-  const toggleMonitoring = () => {
-    setIsMonitoring(!isMonitoring)
-    setToast(isMonitoring ? 'Monitoring paused' : 'Monitoring resumed')
-  }
-
   const VerdictIcon = displayed?.verdict === 'READY' ? CheckCircle2 
     : displayed?.verdict === 'HOLD' ? CircleX 
     : AlertTriangle
@@ -932,28 +863,6 @@ export default function RouteIntelligencePolished() {
         {/* Step 3: Results */}
         {displayed && !checking && currentVerdict && (
           <>
-            {/* Status Timeline */}
-            <StatusTimeline
-              permitNumber={permitNumber}
-              sources={['Autobahn GmbH roadworks feed', 'Road operator status feed', 'VEMAGS profile + route check']}
-              monitoringActive={isMonitoring && Boolean(loadedJob.current)}
-              monitoringUntil={plannedDeparture ? new Date(fromLocalInput(plannedDeparture)).toISOString() : undefined}
-              sourcesConnected={3}
-              issuesDetected={displayed.evidence.length}
-              dispatchDecision={departureOnHold ? 'Hold departure – recorded in-app' : displayed.verdict === 'READY' ? 'Ready to depart' : undefined}
-              retrievedAt={displayed.retrievedAt}
-            />
-
-            {/* Monitoring Controls */}
-            {loadedJob.current && (
-              <MonitoringControls
-                isMonitoring={isMonitoring}
-                onToggle={toggleMonitoring}
-                nextCheckAt={isMonitoring ? new Date(Date.now() + (jobInterval || 15) * 60 * 1000).toISOString() : undefined}
-                intervalMinutes={jobInterval}
-              />
-            )}
-
             {/* Verdict Banner */}
             <div className={`verdict-banner verdict-${currentVerdict.color}`}>
               <div className="verdict-icon">
@@ -962,7 +871,7 @@ export default function RouteIntelligencePolished() {
               <div className="verdict-content">
                 <div className="verdict-label">{currentVerdict.label}</div>
                 <h2>{displayed.title}</h2>
-                <p>{departureOnHold ? 'Departure is on hold. Do not depart.' : (displayed.summary || currentVerdict.description)}</p>
+                <p>{displayed.summary || currentVerdict.description}</p>
                 {displayed.degraded && (
                   <div className="degraded-notice">
                     <AlertTriangle size={16} />
@@ -990,22 +899,7 @@ export default function RouteIntelligencePolished() {
             </div>
 
             <div className="result-actions">
-              {displayed.verdict === 'HOLD' && !departureOnHold && (
-                <button type="button" className="btn-danger" onClick={() => setShowHoldActionSheet(true)}>
-                  <AlertOctagon size={16} /> Take action
-                </button>
-              )}
-              {displayed.verdict === 'READY' && (
-                <button type="button" className="btn-primary" onClick={() => setToast('Route details reviewed')}>
-                  <Eye size={16} /> View route details
-                </button>
-              )}
-              {displayed.verdict === 'VERIFY' && (
-                <button type="button" className="btn-primary" onClick={() => confirmOnSite(pendingVerify.map(item => item.id))}>
-                  <CheckCircle2 size={16} /> Confirm on site
-                </button>
-              )}
-              <button type="button" className="btn-secondary" onClick={() => setShowSaveJob(true)}>
+              <button type="button" className="btn-primary" onClick={() => setShowSaveJob(true)}>
                 <Briefcase size={16} /> Save as job
               </button>
               <button type="button" className="btn-secondary" onClick={() => exportCurrent('pdf')}>
@@ -1013,9 +907,6 @@ export default function RouteIntelligencePolished() {
               </button>
               <button type="button" className="btn-secondary" onClick={() => exportCurrent('csv')}>
                 <Download size={16} /> Export CSV
-              </button>
-              <button type="button" className="btn-text" onClick={() => setShowTestScenarios(true)}>
-                Test scenarios
               </button>
             </div>
 
@@ -1178,36 +1069,6 @@ export default function RouteIntelligencePolished() {
                 Confirm on site
               </button>
             </div>
-
-            {/* Dialogs and Sheets */}
-            <EscalateDialog
-              isOpen={showEscalateDialog}
-              onClose={() => setShowEscalateDialog(false)}
-              onConfirm={() => {
-                handleEscalate()
-                setShowEscalateDialog(false)
-              }}
-            />
-            <HoldActionSheet
-              isOpen={showHoldActionSheet}
-              onClose={() => setShowHoldActionSheet(false)}
-              onReviewIssue={handleReviewIssue}
-              onEscalate={() => setShowEscalateDialog(true)}
-              onHoldDeparture={() => setShowHoldDepartureDialog(true)}
-            />
-            <HoldDepartureDialog
-              isOpen={showHoldDepartureDialog}
-              onClose={() => setShowHoldDepartureDialog(false)}
-              onConfirm={() => {
-                handleHoldDeparture()
-                setShowHoldDepartureDialog(false)
-              }}
-            />
-            <TestScenariosDrawer
-              isOpen={showTestScenarios}
-              onClose={() => setShowTestScenarios(false)}
-              onScenario={handleTestScenario}
-            />
           </>
         )}
       </div>
