@@ -77,7 +77,9 @@ export default function MarketplaceActivity() {
                 </div>
                 <span className="route-alert-badges">
                   <span className={`alert-status ${alert.status.toLowerCase()}`}>{alert.status}</span>
-                  {alert.escalated && <span className="alert-status escalated">Escalated</span>}
+                  {alert.escalated && (
+                    <span className="alert-status escalated" title="Escalated" aria-label="Escalated">Escalated</span>
+                  )}
                 </span>
                 <ChevronRight size={18} className="route-alert-chevron" aria-hidden="true" />
               </button>

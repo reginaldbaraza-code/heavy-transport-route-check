@@ -372,6 +372,35 @@ async function main() {
       JSON.stringify(searchInner),
     )
   }
+
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(base + '/map-explorer', { waitUntil: 'domcontentloaded', timeout: 60000 })
+  await skipIfNeeded()
+  await page.locator('.live-event-panel').waitFor({ timeout: 20000 })
+  for (const panelWidth of [280, 320, 360, 400]) {
+    await page.locator('.live-event-panel').evaluate((el, width) => {
+      el.style.width = `${width}px`
+      el.style.minWidth = `${width}px`
+      el.style.maxWidth = `${width}px`
+      el.style.flex = 'none'
+    }, panelWidth)
+    const sized = await overflowReport(page, ['.live-event-panel', '.live-event-summary', '.live-event-search'])
+    const labels = await page.evaluate(() => [...document.querySelectorAll('.live-event-summary span')].map(el => ({
+      text: el.textContent.trim(),
+      overflow: el.scrollWidth > el.clientWidth + 1,
+    })))
+    record(
+      `Corridor panel at forced ${panelWidth}px has no horizontal overflow`,
+      sized.every(item => !item.missing && !item.overflow) && labels.every(item => !item.overflow),
+      JSON.stringify({ sized, labels }),
+    )
+  }
+  await page.locator('.live-event-panel').evaluate(el => {
+    el.style.width = ''
+    el.style.minWidth = ''
+    el.style.maxWidth = ''
+    el.style.flex = ''
+  })
   await page.setViewportSize({ width: 1440, height: 900 })
 
   await page.goto(base + '/robots.txt', { waitUntil: 'domcontentloaded', timeout: 15000 })
