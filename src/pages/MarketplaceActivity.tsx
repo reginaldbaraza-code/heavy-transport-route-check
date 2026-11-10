@@ -13,79 +13,9 @@ const filters = ['All', 'Hold', 'Verify', 'Resolved'] as const
 export default function MarketplaceActivity() {
   const [filter, setFilter] = useState<(typeof filters)[number]>('All')
   const [routeFilter, setRouteFilter] = useState('all')
-  const [demoLoaded, setDemoLoaded] = useState(false)
-  const { alerts, history, acknowledgeAlert, resolveAlert, addAlert, recordCheck } = useRouteMonitoring()
+  const { alerts, history, acknowledgeAlert, resolveAlert } = useRouteMonitoring()
   const navigate = useNavigate()
   const routeOptions = Array.from(new Set(history.map(record => record.permitName).filter(Boolean)))
-
-  const loadDemoHistory = () => {
-    const now = Date.now()
-    const demoEvents = [
-      {
-        permitName: 'DEMO: A9 München → Leipzig',
-        routeLabel: 'Munich → Leipzig',
-        verdict: 'HOLD' as const,
-        summary: 'Lane closure detected on A9 at AS Ingolstadt-Süd',
-        evidenceCount: 2,
-        source: 'Autobahn GmbH',
-        degraded: false,
-      },
-      {
-        permitName: 'DEMO: A3 Frankfurt → Nürnberg',
-        routeLabel: 'Frankfurt → Nuremberg',
-        verdict: 'READY' as const,
-        summary: 'Route clear, all restrictions accounted for',
-        evidenceCount: 0,
-        source: 'Autobahn GmbH',
-        degraded: false,
-      },
-      {
-        permitName: 'DEMO: A7 Hamburg → Hannover',
-        routeLabel: 'Hamburg → Hannover',
-        verdict: 'VERIFY' as const,
-        summary: 'Conflicting reports on A7 roadworks near AS Soltau-Süd',
-        evidenceCount: 3,
-        source: 'Road operator status feed',
-        degraded: false,
-      },
-      {
-        permitName: 'DEMO: A8 München → Stuttgart',
-        routeLabel: 'Munich → Stuttgart',
-        verdict: 'HOLD' as const,
-        summary: 'Data source unavailable, manual verification required',
-        evidenceCount: 1,
-        source: 'Autobahn GmbH',
-        degraded: true,
-      },
-    ]
-
-    demoEvents.forEach((event, i) => {
-      const runAt = new Date(now - (i * 3600000)).toISOString()
-      const historyRecord = recordCheck({
-        ...event,
-        runAt,
-        retrievedAt: runAt,
-        alertEligible: false,
-        title: event.summary,
-      })
-
-      if (event.verdict === 'HOLD' || event.verdict === 'VERIFY') {
-        addAlert({
-          runAt,
-          routeId: historyRecord.id,
-          routeLabel: event.routeLabel,
-          change: `Route check: ${event.verdict}`,
-          detail: event.summary,
-          severity: event.verdict,
-          status: i === 0 ? 'New' : i === 1 ? 'Acknowledged' : 'Resolved',
-          source: event.source,
-          kind: 'check',
-        })
-      }
-    })
-
-    setDemoLoaded(true)
-  }
   const shown = alerts.filter(alert => {
     const matchesRoute = routeFilter === 'all' || alert.routeLabel === routeFilter || history.find(record => record.id === alert.id)?.permitName === routeFilter
     const matchesFilter = filter === 'All'
@@ -103,19 +33,6 @@ export default function MarketplaceActivity() {
         description="Alerts and history come only from route checks you actually ran in this browser, plus their Autobahn GmbH results."
       />
       <p className="storage-note activity-storage-note">History is stored only in this browser. It is not synced to a server.</p>
-
-      {!demoLoaded && history.length === 0 && (
-        <div className="demo-history-prompt">
-          <History size={20} />
-          <div>
-            <strong>Want to see how alerts look?</strong>
-            <p>Load clearly labelled example events (closures, READY→HOLD, conflicting reports, source unavailable).</p>
-          </div>
-          <button type="button" className="btn-secondary" onClick={loadDemoHistory}>
-            Load demo history
-          </button>
-        </div>
-      )}
 
       <div className="route-alert-filters">
         <div className="activity-filters" role="group" aria-label="Alert severity">
