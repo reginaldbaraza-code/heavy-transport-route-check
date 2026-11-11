@@ -178,46 +178,117 @@ async function main() {
     })
     log('Bug2 map header not clipped under tabs at 390', headerMetrics.ok, JSON.stringify(headerMetrics))
 
-    // Bug 3: overlays at 1440 / 1024 / 390
+    // Bug 3: overlays at desktop/tablet/mobile sizes (incl. KPI vs Layers at ≤1280)
     for (const viewport of [
       { w: 1440, h: 900, name: '1440' },
+      { w: 1366, h: 768, name: '1366' },
+      { w: 1280, h: 720, name: '1280' },
       { w: 1024, h: 768, name: '1024' },
       { w: 390, h: 844, name: '390' },
     ]) {
       await page.setViewportSize({ width: viewport.w, height: viewport.h })
       await page.goto(base + '/map-explorer', { waitUntil: 'domcontentloaded' })
       await page.locator('.live-map-stage, .maplibregl-map').first().waitFor({ timeout: 20000 })
+      await page.locator('.live-layer-panel').waitFor({ timeout: 20000 })
       await page.waitForTimeout(2500)
+      // Ensure Layers panel is expanded (default), matching the regression repro.
+      const layerOpen = await page.locator('.live-layer-panel.open').count()
+      if (!layerOpen) {
+        await page.locator('.layer-panel-heading').click()
+        await page.waitForTimeout(300)
+      }
       await page.screenshot({ path: join(outDir, `03-map-overlays-${viewport.name}.png`) })
       const overlap = await page.evaluate(() => {
         const box = el => {
           if (!el) return null
-          const r = el.getBoundingClientRect()
-          if (r.width < 2 || r.height < 2) return null
-          return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height }
+          const style = getComputedStyle(el)
+          if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return null
+          let { left, right, top, bottom } = el.getBoundingClientRect()
+          let node = el.parentElement
+          while (node && !node.classList?.contains('live-map-stage')) {
+            const cs = getComputedStyle(node)
+            if (/(auto|scroll|hidden)/.test(`${cs.overflow}${cs.overflowX}${cs.overflowY}`)) {
+              const parent = node.getBoundingClientRect()
+              left = Math.max(left, parent.left)
+              right = Math.min(right, parent.right)
+              top = Math.max(top, parent.top)
+              bottom = Math.min(bottom, parent.bottom)
+            }
+            node = node.parentElement
+          }
+          const width = Math.max(0, right - left)
+          const height = Math.max(0, bottom - top)
+          if (width < 2 || height < 2) return null
+          return { left, right, top, bottom, width, height, z: style.zIndex }
         }
         const overlaps = (a, b) => a && b && !(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top)
         const legend = box(document.querySelector('.live-map-legend'))
         const kpis = box(document.querySelector('.live-map-kpis'))
+        const layers = box(document.querySelector('.live-layer-panel'))
+        const stack = box(document.querySelector('.live-map-end-stack'))
         const attrib = box(document.querySelector('.maplibregl-ctrl-attrib'))
         const zoom = box(document.querySelector('.maplibregl-ctrl-bottom-right .maplibregl-ctrl-group'))
         const scale = box(document.querySelector('.maplibregl-ctrl-scale'))
+        let kpisOccludedByLayers = false
+        if (kpis && layers) {
+          const samples = [
+            [kpis.left + 4, kpis.top + 4],
+            [(kpis.left + kpis.right) / 2, (kpis.top + kpis.bottom) / 2],
+            [kpis.right - 4, kpis.bottom - 4],
+          ]
+          kpisOccludedByLayers = samples.some(([x, y]) => {
+            const hit = document.elementFromPoint(x, y)
+            return Boolean(hit && hit.closest('.live-layer-panel') && !hit.closest('.live-map-kpis'))
+          })
+        }
         return {
-          legend,
-          kpis,
-          attrib,
-          zoom,
-          scale,
+          legend: !!legend,
+          kpis: !!kpis,
+          layers: !!layers,
+          attrib: !!attrib,
+          zoom: !!zoom,
+          scale: !!scale,
+          boxes: { legend, kpis, layers, stack, attrib, zoom, scale },
           legendKpis: overlaps(legend, kpis),
+          kpisLayers: overlaps(kpis, layers),
+          kpisOccludedByLayers,
           kpisAttrib: overlaps(kpis, attrib),
           legendAttrib: overlaps(legend, attrib),
           legendZoom: overlaps(legend, zoom),
           legendScale: overlaps(legend, scale),
           kpisZoom: overlaps(kpis, zoom),
+          layersZoom: overlaps(layers, zoom),
+          layersAttrib: overlaps(layers, attrib),
+          stackLegend: overlaps(stack, legend),
+          stackZoom: overlaps(stack, zoom),
+          stackScale: overlaps(stack, scale),
+          stackAttrib: overlaps(stack, attrib),
         }
       })
-      const ok = !overlap.legendKpis && !overlap.kpisAttrib && !overlap.legendAttrib && !overlap.legendZoom && !overlap.legendScale && !overlap.kpisZoom
-      log(`Bug3 no overlay collisions at ${viewport.name}`, ok, JSON.stringify(overlap))
+      // Zoom is intentionally hidden on narrow mobile (pinch-zoom still works).
+      const requireZoom = viewport.w > 768
+      const visible = Boolean(
+        overlap.legend
+        && overlap.kpis
+        && overlap.layers
+        && overlap.attrib
+        && (!requireZoom || overlap.zoom),
+      )
+      const clear = !overlap.legendKpis
+        && !overlap.kpisLayers
+        && !overlap.kpisOccludedByLayers
+        && !overlap.kpisAttrib
+        && !overlap.legendAttrib
+        && !overlap.legendZoom
+        && !overlap.legendScale
+        && !overlap.kpisZoom
+        && !overlap.layersZoom
+        && !overlap.layersAttrib
+        && !overlap.stackLegend
+        && !overlap.stackZoom
+        && !overlap.stackScale
+        && !overlap.stackAttrib
+      log(`Bug3 map chrome visible + clear at ${viewport.name}`, visible && clear, JSON.stringify(overlap))
     }
 
     // Bug 4: evidence chip overflow — Leipzig → Nürnberg sample
