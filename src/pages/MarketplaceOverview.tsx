@@ -272,9 +272,10 @@ export default function MarketplaceOverview() {
                   endpointMode="cities"
                   showLegend
                 />
-                <OverviewTallies permits={overviewPermits} />
               </div>
             </section>
+
+            <OverviewTallies permits={overviewPermits} />
 
             <section className="transport-workflow" aria-label="Heavy transport route monitoring workflow">
               <div><span>1</span><FileJson size={18} /><strong>Import the permit</strong><p>Upload the exact VEMAGS route and approved transport dimensions.</p></div>

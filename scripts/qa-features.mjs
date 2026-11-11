@@ -203,6 +203,71 @@ async function main() {
   const tileFilter = await page.locator('.permit-leaflet-map .leaflet-tile-pane').evaluate(el => getComputedStyle(el).filter)
   record('Homepage tiles are desaturated', /grayscale/i.test(tileFilter), tileFilter)
 
+  async function assertOverviewTalliesVisible(width, height) {
+    await page.setViewportSize({ width, height })
+    await page.goto(base + '/', { waitUntil: 'domcontentloaded', timeout: 60000 })
+    const skip = page.getByRole('button', { name: /skip/i })
+    if (await skip.count()) await skip.first().click().catch(() => {})
+    await page.getByRole('tab', { name: 'Demo dashboard' }).click()
+    await page.locator('[data-permit-map="overview"]').waitFor({ timeout: 25000 })
+    const tallies = page.locator('.overview-tallies')
+    await tallies.waitFor({ timeout: 10000 })
+    await tallies.scrollIntoViewIfNeeded()
+    // Keep the tallies center clear of sticky chrome for elementFromPoint
+    await page.evaluate(() => {
+      const el = document.querySelector('.overview-tallies')
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      const cy = rect.top + rect.height / 2
+      const target = window.innerHeight * 0.45
+      window.scrollBy(0, cy - target)
+    })
+    const visibility = await tallies.evaluate(el => {
+      const rect = el.getBoundingClientRect()
+      const cx = rect.left + rect.width / 2
+      const cy = rect.top + rect.height / 2
+      const hit = document.elementFromPoint(cx, cy)
+      const hitOk = Boolean(hit && (hit === el || el.contains(hit)))
+      const workflow = document.querySelector('.transport-workflow')
+      let intersectsWorkflow = false
+      if (workflow) {
+        const wr = workflow.getBoundingClientRect()
+        intersectsWorkflow = !(
+          rect.right <= wr.left
+          || rect.left >= wr.right
+          || rect.bottom <= wr.top
+          || rect.top >= wr.bottom
+        )
+      }
+      return {
+        hitOk,
+        intersectsWorkflow,
+        hitTag: hit ? hit.tagName : null,
+        hitClass: hit && 'className' in hit ? String(hit.className).slice(0, 80) : null,
+        talliesTop: Math.round(rect.top),
+        talliesBottom: Math.round(rect.bottom),
+      }
+    })
+    record(
+      `Overview tallies visible (elementFromPoint) at ${width}×${height}`,
+      visibility.hitOk,
+      JSON.stringify(visibility),
+    )
+    record(
+      `Overview tallies do not intersect .transport-workflow at ${width}×${height}`,
+      !visibility.intersectsWorkflow,
+      JSON.stringify(visibility),
+    )
+  }
+  await assertOverviewTalliesVisible(1440, 900)
+  await assertOverviewTalliesVisible(390, 844)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(base + '/', { waitUntil: 'domcontentloaded', timeout: 60000 })
+  const skipAfterTallies = page.getByRole('button', { name: /skip/i })
+  if (await skipAfterTallies.count()) await skipAfterTallies.first().click().catch(() => {})
+  await page.getByRole('tab', { name: 'Demo dashboard' }).click()
+  await page.locator('[data-permit-map="overview"]').waitFor({ timeout: 25000 })
+
   await page.getByRole('tab', { name: 'Try a sample permit' }).click()
   record(
     'Sample permit tab is selected',
