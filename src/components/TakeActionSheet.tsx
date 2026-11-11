@@ -1,4 +1,4 @@
-import { FileText, Pause, PhoneCall } from 'lucide-react'
+import { FileText, Pause, PhoneCall, ClipboardCheck } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 
 interface TakeActionSheetProps {
@@ -7,6 +7,7 @@ interface TakeActionSheetProps {
   onReviewIssue?: () => void
   onEscalate: () => void
   onHoldDeparture: () => void
+  onRequestOnSiteCheck?: () => void
 }
 
 export default function TakeActionSheet({
@@ -15,6 +16,7 @@ export default function TakeActionSheet({
   onReviewIssue,
   onEscalate,
   onHoldDeparture,
+  onRequestOnSiteCheck,
 }: TakeActionSheetProps) {
   const sheetRef = useRef<HTMLDivElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
@@ -69,6 +71,12 @@ export default function TakeActionSheet({
             <Pause size={20} />
             <span>Hold departure</span>
           </button>
+          {onRequestOnSiteCheck && (
+            <button type="button" className="action-sheet-option" onClick={onRequestOnSiteCheck}>
+              <ClipboardCheck size={20} />
+              <span>Request on-site check</span>
+            </button>
+          )}
         </div>
         <button ref={cancelRef} type="button" className="btn-secondary" onClick={onClose}>
           Cancel

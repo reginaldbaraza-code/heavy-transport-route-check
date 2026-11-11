@@ -13,7 +13,7 @@ const filters = ['All', 'Hold', 'Verify', 'Resolved'] as const
 export default function MarketplaceActivity() {
   const [filter, setFilter] = useState<(typeof filters)[number]>('All')
   const [routeFilter, setRouteFilter] = useState('all')
-  const { alerts, history, acknowledgeAlert, resolveAlert } = useRouteMonitoring()
+  const { alerts, history, acknowledgeAlert, resolveAlert, recordCheck, addAlert } = useRouteMonitoring()
   const navigate = useNavigate()
   const routeOptions = Array.from(new Set(history.map(record => record.permitName).filter(Boolean)))
   const shown = alerts.filter(alert => {
@@ -56,8 +56,73 @@ export default function MarketplaceActivity() {
             type="button"
             className="btn-text load-demo-btn"
             onClick={() => {
-              // Demo mode - would load sample history
-              alert('Demo history loader - would populate sample alerts for testing')
+              const now = new Date()
+              const hour = 3600000
+              
+              // Sample 1: HOLD alert from 2 hours ago
+              const holdCheck = recordCheck({
+                permitName: 'Mannheim to Freiburg',
+                routeLabel: 'A5 Karlsruhe → Basel',
+                runAt: new Date(now.getTime() - 2 * hour).toISOString(),
+                verdict: 'HOLD',
+                evidenceCount: 3,
+                retrievedAt: new Date(now.getTime() - 2 * hour).toISOString(),
+                source: 'Autobahn GmbH MIA, Open Roadworks',
+                summary: 'Full closure detected on mainline',
+                alertEligible: true,
+              })
+              
+              addAlert({
+                runAt: holdCheck.runAt,
+                routeId: holdCheck.id,
+                routeLabel: holdCheck.routeLabel,
+                change: 'READY → HOLD',
+                detail: 'Full carriageway closure detected near AS Baden-Baden',
+                severity: 'HOLD',
+                status: 'New',
+                source: holdCheck.source,
+                previousVerdict: 'READY',
+                nextVerdict: 'HOLD',
+              })
+              
+              // Sample 2: VERIFY alert from 45 minutes ago
+              const verifyCheck = recordCheck({
+                permitName: 'Stuttgart to Karlsruhe',
+                routeLabel: 'A8 Stuttgart → Karlsruhe',
+                runAt: new Date(now.getTime() - 45 * 60000).toISOString(),
+                verdict: 'VERIFY',
+                evidenceCount: 2,
+                retrievedAt: new Date(now.getTime() - 45 * 60000).toISOString(),
+                source: 'Autobahn GmbH MIA',
+                summary: 'Width restriction requires verification',
+                alertEligible: true,
+              })
+              
+              addAlert({
+                runAt: verifyCheck.runAt,
+                routeId: verifyCheck.id,
+                routeLabel: verifyCheck.routeLabel,
+                change: 'READY → VERIFY',
+                detail: 'Roadworks with 3.2m width limit detected',
+                severity: 'VERIFY',
+                status: 'New',
+                source: verifyCheck.source,
+                previousVerdict: 'READY',
+                nextVerdict: 'VERIFY',
+              })
+              
+              // Sample 3: Resolved VERIFY from yesterday
+              const oldCheck = recordCheck({
+                permitName: 'Frankfurt to Mannheim',
+                routeLabel: 'A67 Darmstadt → Mannheim',
+                runAt: new Date(now.getTime() - 24 * hour).toISOString(),
+                verdict: 'READY',
+                evidenceCount: 0,
+                retrievedAt: new Date(now.getTime() - 24 * hour).toISOString(),
+                source: 'Autobahn GmbH MIA',
+                summary: 'Route clear',
+                alertEligible: false,
+              })
             }}
           >
             <Plus size={16} />

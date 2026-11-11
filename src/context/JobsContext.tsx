@@ -83,7 +83,9 @@ export function JobsProvider({ children }: { children: ReactNode }) {
       id: existing?.id || id || newJobId(),
       createdAt: existing?.createdAt || now,
       updatedAt: now,
-      monitoringStoppedReason: isFutureDeparture(draft) ? null : 'departed',
+      monitoringStoppedReason: draft.monitoringStoppedReason !== undefined 
+        ? draft.monitoringStoppedReason 
+        : (isFutureDeparture(draft) ? null : 'departed'),
     }
     persistJobs([saved, ...jobsRef.current.filter(job => job.id !== saved.id)])
     return saved

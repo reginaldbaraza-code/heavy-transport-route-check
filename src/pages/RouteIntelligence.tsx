@@ -82,7 +82,7 @@ export default function RouteIntelligencePolished() {
   const mapRef = useRef<RouteMapHandle>(null)
   const loadedPermit = useRef<string | null>(null)
   const [searchParams] = useSearchParams()
-  const { recordCheck, patchHistory } = useRouteMonitoring()
+  const { recordCheck, patchHistory, addAlert } = useRouteMonitoring()
   const { saveJob, getJob, updateJob, prefs, requestNotifications } = useJobs()
   const { savedProfile } = useOrgSettings()
   const [plannedDeparture, setPlannedDeparture] = useState(toLocalInput(defaultDepartureIso(8)))
@@ -109,6 +109,8 @@ export default function RouteIntelligencePolished() {
   const [showHoldDeparture, setShowHoldDeparture] = useState(false)
   const [showRequestOnSite, setShowRequestOnSite] = useState(false)
   const [showOnSiteConfirm, setShowOnSiteConfirm] = useState(false)
+  const [pendingConfirmIds, setPendingConfirmIds] = useState<string[]>([])
+  const [confirmLocation, setConfirmLocation] = useState<string>()
   const [showInfoChecked, setShowInfoChecked] = useState(false)
   const [showTestScenarios, setShowTestScenarios] = useState(false)
   const [monitoring, setMonitoring] = useState(false)
@@ -209,6 +211,21 @@ export default function RouteIntelligencePolished() {
         siteAcknowledgements: acks,
       })
       lastHistoryId.current = history.id
+      
+      // Create alert for HOLD verdict on manual checks (not from jobs)
+      if (!loadedJob.current && checkResult.verdict === 'HOLD' && history.alertEligible) {
+        addAlert({
+          runAt,
+          routeId: history.id,
+          routeLabel: history.routeLabel,
+          change: `Route check: ${checkResult.verdict}`,
+          detail: checkResult.summary || 'Route requires attention',
+          severity: checkResult.verdict,
+          status: 'New',
+          source: checkResult.source || 'Autobahn GmbH',
+        })
+      }
+      
       if (loadedJob.current) {
         updateJob(loadedJob.current, {
           lastCheckedAt: runAt,
@@ -633,7 +650,7 @@ export default function RouteIntelligencePolished() {
               <input
                 ref={fileInput}
                 type="file"
-                accept=".gpx,application/gpx+xml,text/xml"
+                accept=".gpx,application/gpx+xml,text/xml,.pdf,application/pdf,.xml,application/xml"
                 onChange={e => {
                   const file = e.target.files?.[0]
                   if (file) {
@@ -945,6 +962,9 @@ export default function RouteIntelligencePolished() {
                   Take action
                 </button>
               )}
+              <button type="button" className="btn-text" onClick={resetFlow}>
+                Check another route
+              </button>
             </div>
 
             <div className="result-actions">
@@ -1100,7 +1120,11 @@ export default function RouteIntelligencePolished() {
                         item={item}
                         retrievedAt={displayed.retrievedAt}
                         onFly={() => item.lat != null && item.lng != null && mapRef.current?.flyToEvidence(item)}
-                        onConfirm={() => confirmOnSite([item.id])}
+                        onConfirm={() => {
+                          setPendingConfirmIds([item.id])
+                          setConfirmLocation(item.location || undefined)
+                          setShowOnSiteConfirm(true)
+                        }}
                       />
                     ))}
                   </div>
@@ -1132,9 +1156,15 @@ export default function RouteIntelligencePolished() {
               <button
                 type="button"
                 className="btn-primary"
-                onClick={() => pendingVerify.length
-                  ? confirmOnSite(pendingVerify.map(item => item.id))
-                  : setToast(displayed.verdict === 'HOLD' ? 'HOLD items cannot be acknowledged away.' : 'No VERIFY items left to confirm.')}
+                onClick={() => {
+                  if (!pendingVerify.length) {
+                    setToast(displayed.verdict === 'HOLD' ? 'HOLD items cannot be acknowledged away.' : 'No VERIFY items left to confirm.')
+                    return
+                  }
+                  setPendingConfirmIds(pendingVerify.map(item => item.id))
+                  setConfirmLocation(pendingVerify[0]?.location || undefined)
+                  setShowOnSiteConfirm(true)
+                }}
               >
                 Confirm on site
               </button>
@@ -1149,6 +1179,12 @@ export default function RouteIntelligencePolished() {
       <TakeActionSheet
         open={showTakeAction}
         onClose={() => setShowTakeAction(false)}
+        onReviewIssue={() => {
+          setShowTakeAction(false)
+          // Scroll to primary evidence
+          const primaryEvidence = document.querySelector('.evidence-list')
+          primaryEvidence?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }}
         onEscalate={() => {
           setShowTakeAction(false)
           setShowEscalate(true)
@@ -1156,6 +1192,10 @@ export default function RouteIntelligencePolished() {
         onHoldDeparture={() => {
           setShowTakeAction(false)
           setShowHoldDeparture(true)
+        }}
+        onRequestOnSiteCheck={() => {
+          setShowTakeAction(false)
+          setShowRequestOnSite(true)
         }}
       />
 
@@ -1189,19 +1229,132 @@ export default function RouteIntelligencePolished() {
 
       <OnSiteConfirmDialog
         open={showOnSiteConfirm}
-        onClose={() => setShowOnSiteConfirm(false)}
+        onClose={() => {
+          setShowOnSiteConfirm(false)
+          setPendingConfirmIds([])
+          setConfirmLocation(undefined)
+        }}
+        location={confirmLocation}
         onConfirm={(outcome, note, photo) => {
-          setToast(`Status confirmed as ${outcome}${note ? ': ' + note : ''}`)
+          if (!result) return
+          
+          const name = clearanceByRef.current.trim() || clearanceBy.trim() || 'Dispatcher'
+          if (!clearanceByRef.current.trim()) {
+            clearanceByRef.current = name
+            setClearanceBy(name)
+          }
+          const at = new Date().toISOString()
+          const next = [...acknowledgements]
+          let added = 0
+          
+          for (const id of pendingConfirmIds) {
+            const item = result.evidence.find(entry => entry.id === id)
+            if (!item) continue
+            
+            // "closed" on a HOLD or verified closure means cannot proceed
+            if (outcome === 'closed' && isHoldItem(item)) {
+              setToast('Confirmed closed — HOLD remains.')
+              continue
+            }
+            
+            // "open" or "partly" can acknowledge VERIFY items
+            if ((outcome === 'open' || outcome === 'partly') && !isHoldItem(item) && isAcknowledgeable(item)) {
+              if (!next.some(ack => ack.evidenceId === id)) {
+                next.push({ 
+                  evidenceId: id, 
+                  acknowledgedBy: name, 
+                  acknowledgedAt: at,
+                  note: note || undefined,
+                  photo: photo?.name || undefined
+                })
+                added += 1
+              }
+            }
+          }
+          
+          if (added > 0) {
+            setAcknowledgements(next)
+            setToast(`${added} item${added === 1 ? '' : 's'} confirmed on site as ${outcome}`)
+          } else {
+            setToast(`Status recorded as ${outcome}${note ? ': ' + note : ''}`)
+          }
+          
+          setShowOnSiteConfirm(false)
+          setPendingConfirmIds([])
+          setConfirmLocation(undefined)
         }}
       />
 
       <TestScenariosDrawer
         open={showTestScenarios}
         onClose={() => setShowTestScenarios(false)}
-        onSimulateClosure={() => setToast('Closure simulated (demo only)')}
-        onSimulateRoadwork={() => setToast('Roadworks added (demo only)')}
-        onClearSimulations={() => setToast('Simulations cleared')}
+        onSimulateClosure={() => {
+          if (!result) return
+          // Simulate a closure on the route
+          const mockClosure: RouteEvidenceItem = {
+            id: 'sim-closure-' + Date.now(),
+            type: 'closure',
+            severity: 'high',
+            source: 'MIA DATEX II (simulated)',
+            location: 'A5 Karlsruhe → Basel, near AS Baden-Baden',
+            direction: 'South',
+            description: 'Test closure scenario: Full carriageway closure for bridge maintenance',
+            lat: 48.7758,
+            lng: 8.2396,
+            onCorridor: true,
+            blocks: { mainline: true },
+          }
+          setResult({
+            ...result,
+            evidence: [mockClosure, ...result.evidence],
+          })
+          setToast('Closure simulated — check verdict')
+        }}
+        onSimulateRoadwork={() => {
+          if (!result) return
+          // Simulate roadworks with width restriction
+          const mockRoadwork: RouteEvidenceItem = {
+            id: 'sim-roadwork-' + Date.now(),
+            type: 'roadworks',
+            severity: 'medium',
+            source: 'Open Roadworks (simulated)',
+            location: 'A5 near AS Offenburg',
+            direction: 'Both',
+            description: 'Test roadworks scenario: Lane narrowing with 3.2m width limit',
+            restriction: { type: 'width', limit: 3.2, unit: 'm' },
+            lat: 48.4734,
+            lng: 7.9403,
+            onCorridor: true,
+            blocks: {},
+          }
+          setResult({
+            ...result,
+            evidence: [mockRoadwork, ...result.evidence],
+          })
+          setToast('Roadworks simulated — check verdict')
+        }}
+        onClearSimulations={() => {
+          if (!result) return
+          setResult({
+            ...result,
+            evidence: result.evidence.filter(item => !item.id.startsWith('sim-')),
+          })
+          setToast('Simulations cleared')
+        }}
       />
+
+      {/* Floating test scenarios trigger (hidden in production) */}
+      {import.meta.env.DEV && (
+        <button
+          type="button"
+          className="test-scenarios-trigger"
+          onClick={() => setShowTestScenarios(true)}
+          title="Test scenarios"
+          aria-label="Open test scenarios"
+        >
+          🧪
+        </button>
+      )}
     </div>
   )
 }

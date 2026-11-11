@@ -1173,9 +1173,9 @@ button, a, input, select, textarea {
 }
 
 @media (max-width: 600px) {
-  .topbar-help { display: none !important; }
   .topbar-actions { gap: 1px !important; }
   .notification-popover { position: fixed !important; top: 64px !important; right: 12px !important; left: 12px; width: auto !important; max-height: calc(100dvh - 76px); overflow-y: auto !important; }
+  .topbar-dropdown { position: fixed !important; top: 64px !important; right: 12px !important; width: auto !important; left: 12px; }
   .market-page, .offer-detail-page, .market-form-page, .publish-page, .request-market-page { padding-left: 13px; padding-right: 13px; }
   .market-page-actions, .page-heading > div:last-child, .connector-page-actions { grid-template-columns: 1fr; }
   .market-page-actions .market-button { width: 100%; }
@@ -2326,14 +2326,14 @@ h4 { font-size: 18px !important; line-height: 1.35 !important; }
 }
 
 .btn-primary {
-  background: var(--accent);
+  background: var(--navy);
   color: white;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--accent-hover);
-  box-shadow: 0 4px 12px rgba(23, 92, 211, 0.2);
+  background: #0d2c47;
+  box-shadow: 0 4px 12px rgba(12, 36, 57, 0.3);
 }
 
 .btn-primary:disabled {
@@ -3088,10 +3088,6 @@ body, button, input, select, textarea {
     background: rgba(0, 0, 0, 0.5);
     z-index: 199;
     backdrop-filter: blur(4px);
-  }
-  
-  .topbar-help {
-    display: none !important;
   }
   
   .mobile-nav-trigger {
@@ -4463,6 +4459,29 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   }
 }
 
+.test-scenarios-trigger {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 1px solid var(--gray-300);
+  background: var(--white);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.15);
+  cursor: pointer;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 900;
+  transition: all 0.2s ease;
+}
+.test-scenarios-trigger:hover {
+  box-shadow: 0 6px 16px rgb(0 0 0 / 0.2);
+  transform: scale(1.05);
+}
+
 @media (max-width: 768px) {
   .action-sheet {
     border-radius: var(--r-lg) var(--r-lg) 0 0;
@@ -4482,5 +4501,12 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   }
   .monitoring-btn {
     width: 100%;
+  }
+  .test-scenarios-trigger {
+    bottom: 16px;
+    right: 16px;
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
   }
 }
