@@ -73,6 +73,7 @@ export default function Settings() {
             <div>
               <strong>{profile.orgName || 'Dispatcher'}</strong>
               <small className={complete ? 'status-complete' : ''}>{complete ? 'Saved locally' : 'No profile yet'}</small>
+              {complete && <span className="verified-badge">Verification pending</span>}
             </div>
           </div>
           <nav aria-label="Settings">
@@ -90,9 +91,15 @@ export default function Settings() {
               <header className="settings-card-header">
                 <div>
                   <span className="settings-card-icon"><Building2 size={18} /></span>
-                  <div><h2>Organisation profile</h2><p>This identity appears in the header. It is stored only in this browser.</p></div>
+                  <div>
+                    <h2>Organisation profile</h2>
+                    <p>This identity appears in the header. It is stored only in this browser.</p>
+                  </div>
                 </div>
-                <span className={`setup-pill ${complete && !dirty ? 'complete' : 'quiet'}`}>{statusLabel}</span>
+                <div className="settings-card-badges">
+                  {complete && !dirty && <span className="verified-badge">Verification pending</span>}
+                  <span className={`setup-pill ${complete && !dirty ? 'complete' : 'quiet'}`}>{statusLabel}</span>
+                </div>
               </header>
               <div className="settings-form">
                 <label className="settings-field">

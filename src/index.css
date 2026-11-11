@@ -4377,6 +4377,77 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   margin-bottom: 4px;
 }
 
+/* MDS Placeholder */
+.mds-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 48px 32px;
+  background: var(--bg-card);
+  border: 2px dashed var(--border);
+  border-radius: var(--r-lg);
+  text-align: center;
+  margin: 24px 0;
+}
+.mds-placeholder-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--bg-grouped);
+  display: grid;
+  place-items: center;
+  color: var(--text-tertiary);
+}
+.mds-placeholder-content {
+  max-width: 500px;
+}
+.mds-placeholder-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  background: var(--amber-bg);
+  color: var(--amber-text);
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 12px;
+}
+.mds-placeholder-content h2 {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+.mds-placeholder-content p {
+  font-size: 15px;
+  color: var(--text-secondary);
+  margin: 0 0 12px;
+}
+.mds-placeholder-note {
+  font-size: 14px !important;
+  color: var(--text-tertiary) !important;
+}
+
+/* Verified Badge */
+.verified-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  background: var(--blue-bg);
+  color: var(--blue-text);
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-top: 4px;
+}
+.settings-card-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 @media (max-width: 768px) {
   .settings-field-row {
     grid-template-columns: 1fr;

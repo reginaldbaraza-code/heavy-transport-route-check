@@ -268,6 +268,19 @@ export default function RouteIntelligencePolished() {
     setErrorTechnical('')
     setActivePermitId(null)
 
+    // Check for VEMAGS PDF/XML formats and provide helpful message
+    const fileName = file.name.toLowerCase()
+    if (fileName.endsWith('.pdf') || fileName.endsWith('.xml')) {
+      setError(
+        'VEMAGS PDF and XML formats are not yet supported. Please export your permitted route as GPX from VEMAGS and upload that file instead.'
+      )
+      setErrorTechnical(
+        'To export GPX from VEMAGS: Open your permit → Export → Select "GPX format" → Save the .gpx file → Upload here'
+      )
+      setRouteFile('')
+      return
+    }
+
     try {
       validateGpxFileSize(file.size)
     } catch (err) {
@@ -277,7 +290,7 @@ export default function RouteIntelligencePolished() {
       return
     }
 
-    if (!file.name.toLowerCase().endsWith('.gpx')) {
+    if (!fileName.endsWith('.gpx')) {
       setError("This file isn't a valid GPX route. Export the route from VEMAGS as GPX and try again.")
       setErrorTechnical(`Unexpected file name: ${file.name}`)
       setRouteFile('')
