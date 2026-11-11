@@ -85,7 +85,7 @@ export default function Settings() {
           </nav>
         </aside>
 
-        <main className="settings-content">
+        <div className="settings-content">
           {activeTab === 'profile' && (
             <section className="settings-card profile-settings-card">
               <header className="settings-card-header">
@@ -105,12 +105,13 @@ export default function Settings() {
                 <label className="settings-field">
                   <span>Organisation name</span>
                   <small>Your registered operator or legal entity name.</small>
-                  <input value={profile.orgName} onChange={event => { setProfile(current => ({ ...current, orgName: event.target.value })); setSaved(false) }} placeholder="e.g. RheinLift Logistics" aria-invalid={Boolean(error && !profile.orgName.trim())} />
+                  <input value={profile.orgName} onChange={event => { setProfile(current => ({ ...current, orgName: event.target.value })); setSaved(false); setError('') }} placeholder="e.g. RheinLift Logistics" aria-invalid={Boolean(error && !profile.orgName.trim())} />
                 </label>
                 <label className="settings-field">
                   <span>Website</span>
                   <small>Use the complete public URL, including https://.</small>
-                  <input value={profile.website} onChange={event => { setProfile(current => ({ ...current, website: event.target.value })); setSaved(false) }} placeholder="https://example.com" type="url" />
+                  <input value={profile.website} onChange={event => { setProfile(current => ({ ...current, website: event.target.value })); setSaved(false); setError('') }} placeholder="https://example.com" type="url" aria-invalid={Boolean(error && error.toLowerCase().includes('website'))} />
+                  {error && error.toLowerCase().includes('website') && <p role="alert" className="settings-error">{error}</p>}
                 </label>
                 <label className="settings-field">
                   <span>Description</span>
@@ -137,7 +138,7 @@ export default function Settings() {
                   <small>Used as the default name on on-site confirmations.</small>
                   <input value={profile.dispatcherName} onChange={event => { setProfile(current => ({ ...current, dispatcherName: event.target.value })); setSaved(false) }} placeholder="e.g. Ada Dispatcher" />
                 </label>
-                {error && <p role="alert" className="settings-error">{error}</p>}
+                {error && !error.toLowerCase().includes('website') && <p role="alert" className="settings-error">{error}</p>}
               </div>
               <footer className="settings-card-footer">
                 <p>{footerStatus} Settings are saved in this browser only.</p>
@@ -259,7 +260,7 @@ export default function Settings() {
               </div>
             </section>
           )}
-        </main>
+        </div>
       </div>
       {saved && <Toast message="Profile saved in this browser only. It is not stored on a server." onClose={() => setSaved(false)} />}
     </div>
