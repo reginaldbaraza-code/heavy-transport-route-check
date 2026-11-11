@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import PageHeader from '../components/PageHeader'
 import { useRouteMonitoring } from '../context/RouteMonitoringContext'
+import { alertMatchesRouteFilter, historyMatchesRouteFilter } from '../lib/activityFilter'
 import { formatBerlinDateTime } from '../lib/formatTime'
 import { downloadSnapshot, snapshotFromHistory } from '../lib/exportCheck'
 
@@ -17,13 +18,14 @@ export default function MarketplaceActivity() {
   const navigate = useNavigate()
   const routeOptions = Array.from(new Set(history.map(record => record.permitName).filter(Boolean)))
   const shown = alerts.filter(alert => {
-    const matchesRoute = routeFilter === 'all' || alert.routeLabel === routeFilter || history.find(record => record.id === alert.id)?.permitName === routeFilter
+    const matchesRoute = alertMatchesRouteFilter(alert, routeFilter, history)
     const matchesFilter = filter === 'All'
       || filter === 'Hold' && alert.severity === 'HOLD'
       || filter === 'Verify' && alert.severity === 'VERIFY'
       || filter === 'Resolved' && alert.status === 'Resolved'
     return matchesRoute && matchesFilter
   })
+  const shownHistory = history.filter(record => historyMatchesRouteFilter(record, routeFilter))
 
   return (
     <div className="market-page route-alert-page">
@@ -179,9 +181,9 @@ export default function MarketplaceActivity() {
       <section className="route-alert-log check-history-log">
         <header>
           <div><History size={20} /><h2>Check history</h2></div>
-          <span>{history.length} checks</span>
+          <span>{shownHistory.length} checks</span>
         </header>
-        {history.map(record => {
+        {shownHistory.map(record => {
           const Icon = record.verdict === 'HOLD' ? CircleX : record.verdict === 'VERIFY' ? AlertTriangle : CheckCircle2
           return (
             <article className={`route-alert-item severity-${record.verdict.toLowerCase()}`} key={record.id}>

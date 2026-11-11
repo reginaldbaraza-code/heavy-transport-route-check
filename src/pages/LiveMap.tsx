@@ -569,39 +569,41 @@ export default function LiveMap() {
         <main className="live-map-stage">
           <div ref={mapContainer} className="maplibre-map" data-testid="corridor-map" aria-label="Interactive live mobility map of Germany" />
 
-          <section className={`live-layer-panel ${layerPanelOpen ? 'open' : ''}`}>
-            <button type="button" className="layer-panel-heading" onClick={() => setLayerPanelOpen(open => !open)}>
-              <span><Layers3 size={14} /> Layers</span><ChevronDown size={13} />
-            </button>
-            {layerPanelOpen && (
-              <>
-                <div className="layer-panel-list">
-                  {layerOptions.map(layer => {
-                    const Icon = layer.icon
-                    const active = activeLayers.includes(layer.id)
-                    return (
-                      <button type="button" key={layer.id} onClick={() => toggleLayer(layer.id)} aria-pressed={active}>
-                        <span className="layer-icon" style={{ color: layer.color, background: `${layer.color}16` }}><Icon size={13} /></span>
-                        <strong>{layer.label}</strong>
-                        <small>{layerCount(layer.id)}</small>
-                        <i className={active ? 'active' : ''}><span /></i>
-                      </button>
-                    )
-                  })}
-                </div>
-                <div className="layer-panel-footer"><span>Data source</span><strong>Live: Autobahn GmbH · Updated {formatBerlinTime(lastUpdated)}</strong></div>
-              </>
-            )}
-          </section>
+          <div className="live-map-end-stack">
+            <section className={`live-layer-panel ${layerPanelOpen ? 'open' : ''}`}>
+              <button type="button" className="layer-panel-heading" onClick={() => setLayerPanelOpen(open => !open)}>
+                <span><Layers3 size={14} /> Layers</span><ChevronDown size={13} />
+              </button>
+              {layerPanelOpen && (
+                <>
+                  <div className="layer-panel-list">
+                    {layerOptions.map(layer => {
+                      const Icon = layer.icon
+                      const active = activeLayers.includes(layer.id)
+                      return (
+                        <button type="button" key={layer.id} onClick={() => toggleLayer(layer.id)} aria-pressed={active}>
+                          <span className="layer-icon" style={{ color: layer.color, background: `${layer.color}16` }}><Icon size={13} /></span>
+                          <strong>{layer.label}</strong>
+                          <small>{layerCount(layer.id)}</small>
+                          <i className={active ? 'active' : ''}><span /></i>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div className="layer-panel-footer"><span>Data source</span><strong>Live: Autobahn GmbH · Updated {formatBerlinTime(lastUpdated)}</strong></div>
+                </>
+              )}
+            </section>
+
+            <div className="live-map-kpis">
+              <div><Route size={14} /><span>Operational signals</span><strong>{events.length}</strong></div>
+              <div><AlertTriangle size={14} /><span>Warnings</span><strong>{events.filter(event => event.type === 'warnings').length}</strong></div>
+              <div><RefreshCw size={14} /><span>Autobahns in view</span><strong>{roadVectors.length}</strong></div>
+            </div>
+          </div>
 
           <div className="live-map-legend">
             <span>Corridor pressure</span><i className="legend-low" /><small>Flowing</small><i className="legend-mid" /><small>Pressure</small><i className="legend-high" /><small>Restricted</small>
-          </div>
-
-          <div className="live-map-kpis">
-            <div><Route size={14} /><span>Operational signals</span><strong>{events.length}</strong></div>
-            <div><AlertTriangle size={14} /><span>Warnings</span><strong>{events.filter(event => event.type === 'warnings').length}</strong></div>
-            <div><RefreshCw size={14} /><span>Autobahns in view</span><strong>{roadVectors.length}</strong></div>
           </div>
         </main>
       </div>
