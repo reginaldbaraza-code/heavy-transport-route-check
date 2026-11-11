@@ -83,7 +83,7 @@ export const HOLD_DISTANCE_KM = 0.5
 export const VERIFY_DISTANCE_KM = 1.5
 export const DEDUPE_KM = 0.25
 
-const RAMP_RE = /\b(AS\b|Auffahrt|Abfahrt|Anschlussstelle|Parkplatz|Rastanlage|Rastplatz|Raststätte|\bPWC\b)/i
+const RAMP_RE = /(?:^|\s|,|-)(AS\b|AD\b|AK\b|Auffahrt|Abfahrt|Anschlussstelle|Parkplatz|Rastanlage|Rastplatz|Raststätte|PWC\b|Rampe|Zubringer|Überfahrt|Tangente|Ohr|Verflechtung|Knotenpunkt|Betriebsumfahrung|Sperrung\s+im\s+Knotenpunkt)(?:\b|$|\s|,|-)/i
 const FULL_CLOSURE_RE = /\b(Vollsperrung|volle?\s+Sperrung|carriagewayClosed|roadClosed|both directions|beide Richtungen|gesamt(e)? Fahrbahn)\b/i
 const OPPOSITE_RE = /\b(Gegenrichtung|entgegen|opposite direction|Gegenfahrbahn)\b/i
 const NIGHT_RE = /(?:von\s+)?(\d{1,2}):(\d{2})\s*(?:Uhr\s*)?(?:–|-|bis)\s*(\d{1,2}):(\d{2})/gi
@@ -239,12 +239,20 @@ export function departureWindow(opts: {
 }
 
 function roadMatchesPermit(input: CandidateInput, permittedRoads: string[]): { road?: string; offPermit: boolean } {
-  const fromItem = extractRoadNumbers([input.road, input.title, input.description].filter(Boolean).join(' '))
-  const road = input.road?.toUpperCase().replace(/\s+/g, '') || fromItem[0]
+  const titleRoads = extractRoadNumbers(input.title)
+  const descRoads = extractRoadNumbers(input.description)
+  
+  // Prefer input.road if present, otherwise take the first road from title, then description
+  const road = input.road?.toUpperCase().replace(/\s+/g, '') || titleRoads[0] || descRoads[0]
+  
   if (!permittedRoads.length || !road) return { road, offPermit: false }
+  
   const permitted = new Set(permittedRoads.map(item => item.toUpperCase()))
-  const hits = [road, ...fromItem].some(value => permitted.has(value))
-  return { road, offPermit: !hits }
+  
+  // Only the primary road (not all mentioned roads) determines permit match
+  const offPermit = !permitted.has(road)
+  
+  return { road, offPermit }
 }
 
 export function classifyCandidate(input: CandidateInput, ctx: ClassifyContext): ClassifiedEvidence | null {
