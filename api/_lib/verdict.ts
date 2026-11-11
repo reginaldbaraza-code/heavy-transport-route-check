@@ -83,7 +83,9 @@ export const HOLD_DISTANCE_KM = 0.5
 export const VERIFY_DISTANCE_KM = 1.5
 export const DEDUPE_KM = 0.25
 
-const RAMP_RE = /(?:^|\s|,|-)(AS\b|AD\b|AK\b|Auffahrt|Abfahrt|Anschlussstelle|Parkplatz|Rastanlage|Rastplatz|Raststätte|PWC\b|Rampe|Zubringer|Überfahrt|Tangente|Ohr|Verflechtung|Knotenpunkt|Betriebsumfahrung|Sperrung\s+im\s+Knotenpunkt)(?:\b|$|\s|,|-)/i
+// Junction abbreviations AK/AD must be uppercase — lowercase "Ak – D …" is a MIA work-code, not Autobahnkreuz.
+const RAMP_RE = /(?:^|\s|,|-|\()(?:AS\b|Auffahrt|Abfahrt|Anschlussstelle|Parkplatz|Rastanlage|Rastplatz|Raststätte|PWC\b|Rampe|Zubringer|Überfahrt|Tangente|Ohr|Verf(?:le|el)chtung|Knotenpunkt|Betriebsumfahrung|Sperrung\s+im\s+Knotenpunkt)(?:\b|$|\s|,|-)/i
+const JUNCTION_RE = /(?:^|[\s,(/-])(?:AK|AD)(?=[\s,)/-]|$)/
 const FULL_CLOSURE_RE = /\b(Vollsperrung|volle?\s+Sperrung|carriagewayClosed|roadClosed|both directions|beide Richtungen|gesamt(e)? Fahrbahn)\b/i
 const OPPOSITE_RE = /\b(Gegenrichtung|entgegen|opposite direction|Gegenfahrbahn)\b/i
 const NIGHT_RE = /(?:von\s+)?(\d{1,2}):(\d{2})\s*(?:Uhr\s*)?(?:–|-|bis)\s*(\d{1,2}):(\d{2})/gi
@@ -113,7 +115,7 @@ export function distanceToRouteKm(routeLine: Feature<LineString>, lat: number, l
 
 export function classifyLocationKind(text: string): LocationKind {
   if (/\b(Parkplatz|Rastanlage|Rastplatz|Raststätte|\bPWC\b)/i.test(text)) return 'parking'
-  if (RAMP_RE.test(text)) return 'ramp'
+  if (RAMP_RE.test(text) || JUNCTION_RE.test(text)) return 'ramp'
   return 'mainline'
 }
 

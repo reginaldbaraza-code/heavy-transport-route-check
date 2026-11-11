@@ -429,10 +429,14 @@ test('Rampe / Zubringer keywords classify as ramp, not mainline', () => {
   assert.equal(classifyLocationKind('Ohr A3->A1'), 'ramp')
   assert.equal(classifyLocationKind('Tangente A3->A1'), 'ramp')
   assert.equal(classifyLocationKind('Verflechtung A46->A3'), 'ramp')
+  assert.equal(classifyLocationKind('Verfelchtung A46->A3 FR OB'), 'ramp') // common MIA misspelling
   assert.equal(classifyLocationKind('Sperrung im Knotenpunkt'), 'ramp')
   assert.equal(classifyLocationKind('Betriebsumfahrung'), 'ramp')
   assert.equal(classifyLocationKind('AK Maschen works'), 'ramp')
   assert.equal(classifyLocationKind('AD Horster Dreieck'), 'ramp')
+  assert.equal(classifyLocationKind('A9 von Bayreuth – Kulmbach (AD) Erneuerung'), 'ramp')
+  // MIA work-code "Ak – D …" is not Autobahnkreuz — keep mainline so genuine width HOLDs
+  assert.equal(classifyLocationKind('A1 - Bauwerksarbeiten - Ak – D 57914 - 1-str. R Köln'), 'mainline')
 })
 
 test('A1 ramp item must not HOLD an A7 permit', () => {
@@ -573,4 +577,19 @@ test('genuine A7 mainline closure must still HOLD', () => {
   assert.ok(genuine)
   assert.equal(genuine.locationKind, 'mainline', 'Should be mainline, not ramp')
   assert.equal(genuine.state, 'danger', 'Genuine mainline closure must HOLD')
+})
+
+test('genuine A1 width restriction with MIA Ak code still HOLDs', () => {
+  // Bremen→Dortmund control: "Ak – D 57914" must not demote a hard width limit to VERIFY
+  const width = classifyCandidate(candidate({
+    road: 'A1',
+    title: 'A1 - Bauwerksarbeiten - Ak – D 57914 - 1-str. R Köln',
+    description: 'Restbreite 3.25 m',
+    residualWidth: 3.25,
+    category: 'roadworks',
+  }), { ...baseCtx, permittedRoads: ['A1'], vehicle: { width: 3.5, height: 4.5, length: 28.5, grossWeight: 60 } })
+
+  assert.ok(width)
+  assert.equal(width.locationKind, 'mainline')
+  assert.equal(width.state, 'danger', 'Hard width on permitted A1 mainline must HOLD')
 })
