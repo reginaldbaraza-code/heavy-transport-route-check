@@ -49,6 +49,7 @@ export default function Layout() {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
@@ -80,6 +81,7 @@ export default function Layout() {
         setNotifOpen(false)
         setMobileOpen(false)
         setSearchOpen(false)
+        setHelpOpen(false)
       }
     }
     document.addEventListener('keydown', closeMenus)
@@ -445,14 +447,42 @@ export default function Layout() {
               )}
             </div>
 
-            <button
-              className="topbar-help hover:!bg-black/[0.06] hover:!text-[var(--text-primary)]"
-              onClick={() => navigate('/settings')}
-              aria-label="Help and settings"
-              style={{ width: 34, height: 34, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}
-            >
-              <HelpCircle size={17} />
-            </button>
+            <div style={{ position: 'relative' }}>
+              <button
+                className="topbar-help hover:!bg-black/[0.06] hover:!text-[var(--text-primary)]"
+                onClick={() => { setHelpOpen(!helpOpen); setNotifOpen(false) }}
+                aria-label="Help and settings"
+                aria-expanded={helpOpen}
+                style={{ width: 34, height: 34, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', color: helpOpen ? 'var(--text-primary)' : 'var(--text-secondary)', background: helpOpen ? 'rgba(0,0,0,0.06)' : 'transparent' }}
+              >
+                <HelpCircle size={17} />
+              </button>
+              {helpOpen && (
+                <div className="topbar-dropdown" style={{
+                  position: 'absolute', right: 0, top: 'calc(100% + 6px)',
+                  width: 220, background: 'var(--bg-card)', border: '1px solid var(--border)',
+                  borderRadius: 12, boxShadow: 'var(--shadow-lg)',
+                  padding: '6px', zIndex: 100,
+                }}>
+                  <button
+                    onClick={() => { navigate('/settings'); setHelpOpen(false) }}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, fontWeight: 500, background: 'transparent', cursor: 'pointer' }}
+                    className="hover:!bg-black/[0.04]"
+                  >
+                    <Settings size={16} />
+                    Settings
+                  </button>
+                  <button
+                    onClick={() => { window.open('https://github.com/team4-heavy-transport/heavy-transport-route-check', '_blank'); setHelpOpen(false) }}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, fontWeight: 500, background: 'transparent', cursor: 'pointer' }}
+                    className="hover:!bg-black/[0.04]"
+                  >
+                    <HelpCircle size={16} />
+                    Documentation
+                  </button>
+                </div>
+              )}
+            </div>
 
             <div className="topbar-divider" style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.1)', margin: '0 6px' }} />
 
@@ -495,7 +525,10 @@ export default function Layout() {
         {/* Page */}
         <main className="app-page-host"
           style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}
-          onClick={() => notifOpen && setNotifOpen(false)}
+          onClick={() => {
+            if (notifOpen) setNotifOpen(false)
+            if (helpOpen) setHelpOpen(false)
+          }}
         >
           <Outlet />
         </main>
