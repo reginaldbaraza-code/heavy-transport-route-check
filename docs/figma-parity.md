@@ -10,16 +10,16 @@ This document tracks all features from the Figma Make prototype at https://civic
 | Status timeline with steps | Route checks page, right sidebar | ✅ Present | RouteIntelligence.tsx | Shows: Route imported → Route checked → Monitoring live → Dispatch decision |
 | Source chips per evidence | Route checks page, evidence panel | ✅ Present | SourceChip.tsx + RouteIntelligence.tsx | Each evidence item shows source, age, confidence badge |
 | Dynamic primary CTA per verdict | Route checks page, verdict banner | ✅ Present | RouteIntelligence.tsx | READY: "Proceed with departure" / VERIFY: "Verify before departure" / HOLD: "Take action" |
-| Take action sheet | Route checks page, triggered by "Take action" button | ✅ Present | TakeActionSheet.tsx | Bottom sheet with: Review issue / Escalate / Hold departure |
+| Take action sheet | Route checks page, triggered by "Take action" button | ✅ Wired | TakeActionSheet.tsx | Bottom sheet with: Review issue (scrolls to evidence) / Escalate / Hold departure / Request on-site check |
 | Escalate dialog | Triggered from Take action sheet | ✅ Present | EscalateDialog.tsx | Confirm escalation to transport manager |
 | Hold departure dialog | Triggered from Take action sheet | ✅ Present | HoldDepartureDialog.tsx | Confirm placing route on hold |
 | Request on-site check dialog | Triggered from Take action sheet or evidence | ✅ Present | RequestOnSiteCheckDialog.tsx | Request field verification with optional notes |
-| On-site confirmation dialog | Evidence items with "Confirm on site" | ✅ Present | OnSiteConfirmDialog.tsx | Open / Closed / Partly open selector, photo upload, note field |
+| On-site confirmation dialog | Evidence items with "Confirm on site" | ✅ Wired | OnSiteConfirmDialog.tsx | Opens on "Confirm on site" click. Open/Closed/Partly selector, photo upload, note field. Updates verdict based on dispatcher observation. |
 | Information checked panel | Route checks page, expandable "Show details" | ✅ Present | InformationCheckedPanel.tsx | Lists all sources checked with status and freshness |
 | Monitoring controls | Route checks sidebar, below verdict | ✅ Present | MonitoringControls.tsx | Stop/Resume monitoring, countdown to departure/next check |
 | Stop monitoring button | Route checks sidebar | ✅ Present | MonitoringControls.tsx | Pauses live monitoring |
 | Resume monitoring button | When monitoring stopped | ✅ Present | MonitoringControls.tsx | Restarts monitoring |
-| Hidden test scenarios drawer | Route checks page, bottom-right corner | ✅ Present | TestScenariosDrawer.tsx | Demo controls to simulate closures, new roadworks, etc. |
+| Hidden test scenarios drawer | Route checks page, bottom-right corner | ✅ Wired | TestScenariosDrawer.tsx | 🧪 floating trigger button (dev mode). Simulates closures/roadworks by actually modifying route evidence, not just showing toast. |
 | Route file upload: VEMAGS support | Route import step | ✅ Present | RouteIntelligence.tsx | VEMAGS PDF/XML rejected with friendly message explaining GPX export process |
 | **Overview / Home Page** |
 | Germany map with route tallies | Overview page, top section | ✅ Present | OverviewMapWithTallies.tsx | Map showing monitored routes with Ready/Verify/Hold counts |
@@ -31,7 +31,7 @@ This document tracks all features from the Figma Make prototype at https://civic
 | Route filter dropdown | Activity page, top toolbar | ✅ Present | MarketplaceActivity.tsx | Filter alerts by specific route |
 | "Mark resolved" button per alert | Each alert card | ✅ Present | MarketplaceActivity.tsx | Dismiss/resolve individual alerts |
 | Alert cards with verdict changes | Activity page | ✅ Present | MarketplaceActivity.tsx | Show "Verdict changed READY → HOLD" etc. |
-| "Load demo history" button | Activity page (hidden/demo mode) | ✅ Present | MarketplaceActivity.tsx | Populate sample alert history for testing |
+| "Load demo history" button | Activity page (hidden/demo mode) | ✅ Wired | MarketplaceActivity.tsx | Populates real sample HOLD/VERIFY checks with actual alert entries. Manual HOLD checks now also create alert entries automatically. |
 | **Settings** |
 | Organisation name field | Settings page, Organisation profile tab | ✅ Present | Settings.tsx | Editable text field |
 | Organisation website field | Settings page | ✅ Present | Settings.tsx | URL field with https:// prefix guidance |
@@ -48,7 +48,7 @@ This document tracks all features from the Figma Make prototype at https://civic
 | "Mobility Data Space" nav item | Left sidebar | ⬜ Deferred | - | MDS integration out of scope; UI element not needed |
 | Organization avatar/initials | Top-right header | ✅ Present | Layout.tsx | Initials extracted from org name, displayed in circular avatar |
 | Notifications badge | Top-right toolbar | ✅ Present | Layout.tsx | Bell icon with unread count badge already implemented |
-| Help and settings menu | Top-right toolbar | ✅ Present | Layout.tsx | Dropdown menu with Settings and Documentation links |
+| Help and settings menu | Top-right toolbar | ✅ Wired | Layout.tsx | Dropdown menu with Settings and Documentation links. Now accessible on mobile (390px). |
 
 ## Implementation Priority
 
