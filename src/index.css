@@ -2718,6 +2718,9 @@ h4 { font-size: 18px !important; line-height: 1.35 !important; }
   font-weight: 600;
   color: var(--text-primary);
   line-height: 1.4;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  hyphens: none;
 }
 
 .confidence-badge {
@@ -4466,9 +4469,9 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  border: 1px solid var(--gray-300);
-  background: var(--white);
-  box-shadow: 0 4px 12px rgb(0 0 0 / 0.15);
+  border: 1px solid transparent;
+  background: transparent;
+  box-shadow: none;
   cursor: pointer;
   font-size: 20px;
   display: flex;
@@ -4476,8 +4479,12 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   justify-content: center;
   z-index: 900;
   transition: all 0.2s ease;
+  opacity: 0.05;
 }
 .test-scenarios-trigger:hover {
+  opacity: 1;
+  border: 1px solid var(--gray-300);
+  background: var(--white);
   box-shadow: 0 6px 16px rgb(0 0 0 / 0.2);
   transform: scale(1.05);
 }

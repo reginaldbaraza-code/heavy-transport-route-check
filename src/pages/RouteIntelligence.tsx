@@ -207,18 +207,19 @@ export default function RouteIntelligencePolished() {
         evidence: checkResult.evidence,
         confirmOnSite: confirmOnSiteTitles(checkResult.evidence),
         jobId: loadedJob.current || undefined,
-        alertEligible: !activePermit,
+        alertEligible: true,
         siteAcknowledgements: acks,
       })
       lastHistoryId.current = history.id
       
       // Create alert for HOLD verdict on manual checks (not from jobs)
       if (!loadedJob.current && checkResult.verdict === 'HOLD' && history.alertEligible) {
+        const isDemo = activePermit?.kind === 'scenario'
         addAlert({
           runAt,
           routeId: history.id,
           routeLabel: history.routeLabel,
-          change: `Route check: ${checkResult.verdict}`,
+          change: isDemo ? `Demo: ${checkResult.verdict}` : `Route check: ${checkResult.verdict}`,
           detail: checkResult.summary || 'Route requires attention',
           severity: checkResult.verdict,
           status: 'New',
@@ -466,7 +467,8 @@ export default function RouteIntelligencePolished() {
     }, loadedJob.current || undefined)
     loadedJob.current = saved.id
     setShowSaveJob(false)
-    setToast('Job saved in this browser only.')
+    setMonitoring(true)
+    setToast('Job saved and monitoring started.')
   }
 
   const displayed = result
@@ -963,7 +965,7 @@ export default function RouteIntelligencePolished() {
                 </button>
               )}
               <button type="button" className="btn-text" onClick={resetFlow}>
-                Check another route
+                Re-check
               </button>
             </div>
 
@@ -1122,7 +1124,7 @@ export default function RouteIntelligencePolished() {
                         onFly={() => item.lat != null && item.lng != null && mapRef.current?.flyToEvidence(item)}
                         onConfirm={() => {
                           setPendingConfirmIds([item.id])
-                          setConfirmLocation(item.location || undefined)
+                          setConfirmLocation(item.title || undefined)
                           setShowOnSiteConfirm(true)
                         }}
                       />
@@ -1162,7 +1164,7 @@ export default function RouteIntelligencePolished() {
                     return
                   }
                   setPendingConfirmIds(pendingVerify.map(item => item.id))
-                  setConfirmLocation(pendingVerify[0]?.location || undefined)
+                  setConfirmLocation(pendingVerify[0]?.title || undefined)
                   setShowOnSiteConfirm(true)
                 }}
               >
@@ -1264,8 +1266,6 @@ export default function RouteIntelligencePolished() {
                   evidenceId: id, 
                   acknowledgedBy: name, 
                   acknowledgedAt: at,
-                  note: note || undefined,
-                  photo: photo?.name || undefined
                 })
                 added += 1
               }
@@ -1291,70 +1291,94 @@ export default function RouteIntelligencePolished() {
         onSimulateClosure={() => {
           if (!result) return
           // Simulate a closure on the route
-          const mockClosure: RouteEvidenceItem = {
+          const mockClosure: RouteEvidence = {
             id: 'sim-closure-' + Date.now(),
-            type: 'closure',
-            severity: 'high',
+            title: 'A5 Karlsruhe → Basel, near AS Baden-Baden',
+            detail: 'Test closure scenario: Full carriageway closure for bridge maintenance',
             source: 'MIA DATEX II (simulated)',
-            location: 'A5 Karlsruhe → Basel, near AS Baden-Baden',
-            direction: 'South',
-            description: 'Test closure scenario: Full carriageway closure for bridge maintenance',
+            age: 'Just now',
+            confidence: 'high',
+            state: 'danger',
+            category: 'closures',
             lat: 48.7758,
             lng: 8.2396,
-            onCorridor: true,
-            blocks: { mainline: true },
+            blocker: true,
           }
+          const newEvidence = [mockClosure, ...result.evidence]
+          const hasDanger = newEvidence.some(e => e.state === 'danger')
+          const hasWarning = newEvidence.some(e => e.state === 'warning')
+          const newVerdict = hasDanger ? 'HOLD' : hasWarning ? 'VERIFY' : 'READY'
           setResult({
             ...result,
-            evidence: [mockClosure, ...result.evidence],
+            verdict: newVerdict,
+            evidence: newEvidence,
+            title: newVerdict === 'HOLD' ? 'HOLD DEPARTURE' : newVerdict === 'VERIFY' ? 'VERIFY BEFORE DEPARTURE' : 'READY TO DEPART',
+            summary: newVerdict === 'HOLD' 
+              ? 'Simulated closure — route blocked' 
+              : result.summary,
           })
           setToast('Closure simulated — check verdict')
         }}
         onSimulateRoadwork={() => {
           if (!result) return
           // Simulate roadworks with width restriction
-          const mockRoadwork: RouteEvidenceItem = {
+          const mockRoadwork: RouteEvidence = {
             id: 'sim-roadwork-' + Date.now(),
-            type: 'roadworks',
-            severity: 'medium',
+            title: 'A5 near AS Offenburg',
+            detail: 'Test roadworks scenario: Lane narrowing with 3.2m width limit',
             source: 'Open Roadworks (simulated)',
-            location: 'A5 near AS Offenburg',
-            direction: 'Both',
-            description: 'Test roadworks scenario: Lane narrowing with 3.2m width limit',
-            restriction: { type: 'width', limit: 3.2, unit: 'm' },
+            age: 'Just now',
+            confidence: 'medium',
+            state: 'warning',
+            category: 'roadworks',
             lat: 48.4734,
             lng: 7.9403,
-            onCorridor: true,
-            blocks: {},
+            reason: 'Width 3.2m',
           }
+          const newEvidence = [mockRoadwork, ...result.evidence]
+          const hasDanger = newEvidence.some(e => e.state === 'danger')
+          const hasWarning = newEvidence.some(e => e.state === 'warning')
+          const newVerdict = hasDanger ? 'HOLD' : hasWarning ? 'VERIFY' : 'READY'
           setResult({
             ...result,
-            evidence: [mockRoadwork, ...result.evidence],
+            verdict: newVerdict,
+            evidence: newEvidence,
+            title: newVerdict === 'VERIFY' ? 'VERIFY BEFORE DEPARTURE' : result.title,
+            summary: newVerdict === 'VERIFY' 
+              ? 'Simulated roadworks — verify before departure' 
+              : result.summary,
           })
           setToast('Roadworks simulated — check verdict')
         }}
         onClearSimulations={() => {
           if (!result) return
+          const newEvidence = result.evidence.filter(item => !item.id.startsWith('sim-'))
+          const hasDanger = newEvidence.some(e => e.state === 'danger')
+          const hasWarning = newEvidence.some(e => e.state === 'warning')
+          const newVerdict = hasDanger ? 'HOLD' : hasWarning ? 'VERIFY' : 'READY'
           setResult({
             ...result,
-            evidence: result.evidence.filter(item => !item.id.startsWith('sim-')),
+            verdict: newVerdict,
+            evidence: newEvidence,
+            title: newVerdict === 'READY' ? 'READY TO DEPART' : newVerdict === 'VERIFY' ? 'VERIFY BEFORE DEPARTURE' : 'HOLD DEPARTURE',
+            summary: newVerdict === 'READY' 
+              ? 'Simulations cleared — route ready' 
+              : result.summary,
           })
           setToast('Simulations cleared')
         }}
       />
 
-      {/* Floating test scenarios trigger (hidden in production) */}
-      {import.meta.env.DEV && (
-        <button
-          type="button"
-          className="test-scenarios-trigger"
-          onClick={() => setShowTestScenarios(true)}
-          title="Test scenarios"
-          aria-label="Open test scenarios"
-        >
-          🧪
-        </button>
-      )}
+      {/* Floating test scenarios trigger (discreet, visible on hover) */}
+      <button
+        type="button"
+        className="test-scenarios-trigger"
+        onClick={() => setShowTestScenarios(true)}
+        title="Test scenarios"
+        aria-label="Open test scenarios"
+      >
+        🧪
+      </button>
     </div>
   )
 }
