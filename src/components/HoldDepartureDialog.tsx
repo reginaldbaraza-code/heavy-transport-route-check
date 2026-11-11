@@ -35,11 +35,11 @@ export default function HoldDepartureDialog({ open, onClose, onConfirm, routeNam
     <div className="dialog-overlay" role="dialog" aria-modal="true" aria-labelledby="hold-dialog-title">
       <div ref={dialogRef} className="dialog-content">
         <header>
-          <h2 id="hold-dialog-title">Place departure on hold?</h2>
+          <h2 id="hold-dialog-title">Log a departure hold (demo)?</h2>
           <p>
-            This will mark{' '}
-            {routeName ? `the ${routeName} route` : 'the route'} as held and notify the dispatch team. The vehicle
-            will not be cleared for departure until the issue is resolved.
+            This demo only marks{' '}
+            {routeName ? `the ${routeName} route` : 'the route'} as held in this browser. The dispatch team is not
+            notified — nothing is sent.
           </p>
         </header>
         <div className="dialog-actions">

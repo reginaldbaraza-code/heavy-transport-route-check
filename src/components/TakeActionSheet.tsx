@@ -54,7 +54,7 @@ export default function TakeActionSheet({
       <div ref={sheetRef} className="action-sheet">
         <header>
           <h2 id="action-sheet-title">Take action on this Hold verdict</h2>
-          <p>Review the issue, notify the transport manager, or place the departure on hold.</p>
+          <p>Review the issue, or log an escalation / hold / on-site check in this browser (demo — nothing is sent).</p>
         </header>
         <div className="action-sheet-buttons">
           {onReviewIssue && (

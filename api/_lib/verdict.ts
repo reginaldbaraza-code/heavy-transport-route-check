@@ -83,12 +83,17 @@ export const HOLD_DISTANCE_KM = 0.5
 export const VERIFY_DISTANCE_KM = 1.5
 export const DEDUPE_KM = 0.25
 
-const RAMP_RE = /\b(AS\b|Auffahrt|Abfahrt|Anschlussstelle|Parkplatz|Rastanlage|Rastplatz|Raststätte|\bPWC\b)/i
+const PARKING_RE = /\b(Parkplatz|Rastanlage|Rastplatz|Raststätte|\bPWC\b)/i
+const RAMP_EXPLICIT_RE = /\b(Rampe|Auffahrt|Abfahrt|Anschlussstelle)\b/i
+const MAINLINE_SPAN_RE = /\b(zwischen|between)\b[\s\S]{0,100}\b(AS|Anschlussstelle)\b|\bAS\b[\s\S]{0,60}\b(und|and|bis|–|-)\s*(AS\b|Anschlussstelle)/i
+const LONG_SECTION_RE = /\b\d{1,3}[.,]\d+\s*km\b/i
 const FULL_CLOSURE_RE = /\b(Vollsperrung|volle?\s+Sperrung|carriagewayClosed|roadClosed|both directions|beide Richtungen|gesamt(e)? Fahrbahn)\b/i
 const OPPOSITE_RE = /\b(Gegenrichtung|entgegen|opposite direction|Gegenfahrbahn)\b/i
 const NIGHT_RE = /(?:von\s+)?(\d{1,2}):(\d{2})\s*(?:Uhr\s*)?(?:–|-|bis)\s*(\d{1,2}):(\d{2})/gi
 const ROAD_RE = /\bA\s?(\d{1,3})\b/gi
-const HARD_WIDTH_RE = /(?:Restbreite|residual(?:\s*road)?\s*width|max(?:imale)?\s*(?:Fahrbahn)?breite|lichte\s*Breite|Fahrbahnbreite(?:\s*max)?)\s*[:=]?\s*(\d+[.,]\d+)\s*m/i
+const HARD_WIDTH_RE = /(?:Restbreite|residual(?:\s*road)?\s*width|(?:maximale\s+)?Durchfahrtsbreite|max(?:imale)?\s*(?:Fahrbahn)?breite|lichte\s*Breite|Fahrbahnbreite(?:\s*max)?)\s*[:=]?\s*(\d+[.,]\d+)\s*m/i
+const HARD_HEIGHT_RE = /(?:(?:maximale\s+)?Durchfahrtshöhe|lichte\s*Höhe|height\s*limit|clearance(?:\s*height)?)\s*[:=]?\s*(\d+[.,]\d+)\s*m/i
+const HARD_WEIGHT_RE = /(?:(?:maximale[sn]?\s+)?(?:Achslast|Gewicht(?:sbeschränkung)?)|weight\s*limit|max(?:imum)?\s*weight)\s*[:=]?\s*(\d+[.,]?\d*)\s*t\b/i
 
 export function extractRoadNumbers(text?: string | null): string[] {
   if (!text) return []
@@ -112,8 +117,12 @@ export function distanceToRouteKm(routeLine: Feature<LineString>, lat: number, l
 }
 
 export function classifyLocationKind(text: string): LocationKind {
-  if (/\b(Parkplatz|Rastanlage|Rastplatz|Raststätte|\bPWC\b)/i.test(text)) return 'parking'
-  if (RAMP_RE.test(text)) return 'ramp'
+  if (PARKING_RE.test(text) && !MAINLINE_SPAN_RE.test(text) && !LONG_SECTION_RE.test(text)) return 'parking'
+  // Multi-km mainline sections often name endpoint junctions ("zwischen AS X und AS Y") — not ramps.
+  if (MAINLINE_SPAN_RE.test(text) || (LONG_SECTION_RE.test(text) && !RAMP_EXPLICIT_RE.test(text))) {
+    return 'mainline'
+  }
+  if (RAMP_EXPLICIT_RE.test(text) || /\bAS\b/i.test(text)) return 'ramp'
   return 'mainline'
 }
 
@@ -177,35 +186,52 @@ export function extractHardWidthLimit(text: string): number | null {
   return Number.isFinite(value) && value > 0 && value < 10 ? value : null
 }
 
+export function extractHardHeightLimit(text: string): number | null {
+  const match = text.match(HARD_HEIGHT_RE)
+  if (!match) return null
+  const value = parseFloat(match[1].replace(',', '.'))
+  return Number.isFinite(value) && value > 0 && value < 12 ? value : null
+}
+
+export function extractHardWeightLimit(text: string): number | null {
+  const match = text.match(HARD_WEIGHT_RE)
+  if (!match) return null
+  const value = parseFloat(match[1].replace(',', '.'))
+  return Number.isFinite(value) && value > 0 && value < 1000 ? value : null
+}
+
 function unknownDim(value?: number) {
   return !Number.isFinite(value) || !value || value <= 0
 }
 
 export function dimDecision(
   vehicle: VehicleDimensions,
-  input: Pick<CandidateInput, 'residualWidth' | 'minLaneWidth' | 'heightLimit' | 'weightLimit' | 'description'>,
+  input: Pick<CandidateInput, 'residualWidth' | 'minLaneWidth' | 'heightLimit' | 'weightLimit' | 'description' | 'title'>,
 ): { hold: boolean; verify: boolean; type?: string; restriction?: number } {
+  const text = `${input.title || ''} ${input.description || ''}`
   if (input.residualWidth && vehicle.width > input.residualWidth) {
     return { hold: true, verify: false, type: 'width', restriction: input.residualWidth }
   }
-  const hardWidth = extractHardWidthLimit(input.description || '')
+  const hardWidth = extractHardWidthLimit(text)
   if (hardWidth && vehicle.width > hardWidth) {
     return { hold: true, verify: false, type: 'width', restriction: hardWidth }
   }
-  if (input.heightLimit) {
+  const heightLimit = input.heightLimit || extractHardHeightLimit(text) || undefined
+  if (heightLimit) {
     if (unknownDim(vehicle.height)) {
-      return { hold: false, verify: true, type: 'height', restriction: input.heightLimit }
+      return { hold: false, verify: true, type: 'height', restriction: heightLimit }
     }
-    if (vehicle.height > input.heightLimit) {
-      return { hold: true, verify: false, type: 'height', restriction: input.heightLimit }
+    if (vehicle.height > heightLimit) {
+      return { hold: true, verify: false, type: 'height', restriction: heightLimit }
     }
   }
-  if (input.weightLimit) {
+  const weightLimit = input.weightLimit || extractHardWeightLimit(text) || undefined
+  if (weightLimit) {
     if (unknownDim(vehicle.grossWeight)) {
-      return { hold: false, verify: true, type: 'weight', restriction: input.weightLimit }
+      return { hold: false, verify: true, type: 'weight', restriction: weightLimit }
     }
-    if (vehicle.grossWeight > input.weightLimit) {
-      return { hold: true, verify: false, type: 'weight', restriction: input.weightLimit }
+    if (vehicle.grossWeight > weightLimit) {
+      return { hold: true, verify: false, type: 'weight', restriction: weightLimit }
     }
   }
   if (input.minLaneWidth && vehicle.width > input.minLaneWidth) {
@@ -240,11 +266,11 @@ export function departureWindow(opts: {
 
 function roadMatchesPermit(input: CandidateInput, permittedRoads: string[]): { road?: string; offPermit: boolean } {
   const fromItem = extractRoadNumbers([input.road, input.title, input.description].filter(Boolean).join(' '))
-  const road = input.road?.toUpperCase().replace(/\s+/g, '') || fromItem[0]
+  // Prefer the feed's explicit road; incidental mentions of the permitted corridor (e.g. "Zubringer A7" on an A1 ramp) must not count as on-permit.
+  const road = (input.road || '').toUpperCase().replace(/\s+/g, '') || fromItem[0]
   if (!permittedRoads.length || !road) return { road, offPermit: false }
-  const permitted = new Set(permittedRoads.map(item => item.toUpperCase()))
-  const hits = [road, ...fromItem].some(value => permitted.has(value))
-  return { road, offPermit: !hits }
+  const permitted = new Set(permittedRoads.map(item => item.toUpperCase().replace(/\s+/g, '')))
+  return { road, offPermit: !permitted.has(road) }
 }
 
 export function classifyCandidate(input: CandidateInput, ctx: ClassifyContext): ClassifiedEvidence | null {
@@ -409,10 +435,21 @@ const SEVERITY_RANK: Record<EvidenceState, number> = { danger: 4, warning: 3, in
 
 export function dedupeClassified(items: ClassifiedEvidence[], maxKm = DEDUPE_KM): ClassifiedEvidence[] {
   const kept: ClassifiedEvidence[] = []
+  const bySourceId = new Map<string, ClassifiedEvidence>()
   for (const item of items) {
+    if (item.id) {
+      const prior = bySourceId.get(item.id)
+      if (prior) {
+        if (SEVERITY_RANK[item.state] > SEVERITY_RANK[prior.state]) {
+          const index = kept.indexOf(prior)
+          if (index >= 0) kept[index] = item
+          bySourceId.set(item.id, item)
+        }
+        continue
+      }
+    }
     const match = kept.find(existing => {
-      const sameId = Boolean(item.id && existing.id && (existing.id === item.id || existing.id.includes(item.id) || item.id.includes(existing.id)))
-      if (sameId) return true
+      if (item.id && existing.id && item.id === existing.id) return true
       const sameRoad = (existing.road || '') === (item.road || '')
       const sameType = existing.category === item.category
       if (!sameRoad || !sameType) return false
@@ -422,11 +459,13 @@ export function dedupeClassified(items: ClassifiedEvidence[], maxKm = DEDUPE_KM)
     })
     if (!match) {
       kept.push(item)
+      if (item.id) bySourceId.set(item.id, item)
       continue
     }
     if (SEVERITY_RANK[item.state] > SEVERITY_RANK[match.state]) {
       const index = kept.indexOf(match)
       kept[index] = item
+      if (item.id) bySourceId.set(item.id, item)
     }
   }
   return kept

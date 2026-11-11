@@ -457,6 +457,21 @@ async function main() {
   await page.getByRole('button', { name: 'Check route' }).click()
   await page.locator('.verdict-banner').waitFor({ timeout: 90000 })
   record('Route check finished', true, (await page.locator('.verdict-banner').innerText()).replace(/\s+/g, ' ').slice(0, 120))
+  const simulateTriggerCount = await page.locator('.test-scenarios-trigger').count()
+  record(
+    'Item 7: no 🧪 simulate trigger in production DOM',
+    simulateTriggerCount === 0,
+    `count=${simulateTriggerCount}`,
+  )
+  await page.setViewportSize({ width: 390, height: 915 })
+  const ctaBox = await page.locator('.mobile-route-actions .btn-primary').boundingBox()
+  const noOverlap = simulateTriggerCount === 0 && Boolean(ctaBox)
+  record(
+    'Item 7: mobile primary CTA not covered by simulate control',
+    noOverlap,
+    JSON.stringify({ simulateTriggerCount, cta: ctaBox }),
+  )
+  await page.setViewportSize({ width: 1440, height: 900 })
   await page.locator('.route-map-gl-container, .maplibregl-map, .results-map').first().waitFor({ timeout: 25000 }).catch(() => {})
   const resultMap = await mapPaintMetrics(page, '.route-map-gl-container, .results-map .maplibre-map, .results-map')
   record(
@@ -464,6 +479,22 @@ async function main() {
     mapLooksPainted(resultMap),
     JSON.stringify(resultMap),
   )
+
+  const takeAction = page.getByRole('button', { name: /Take action/i })
+  if (await takeAction.count()) {
+    await takeAction.first().click()
+    await page.getByRole('button', { name: /^Escalate$/i }).click()
+    await page.getByRole('button', { name: /Confirm escalation/i }).click()
+    const escalateToast = await page.locator('.app-toast').innerText().catch(() => '')
+    record(
+      'Item 4: escalate toast does not claim sent',
+      /Logged locally \(demo\), not sent/i.test(escalateToast),
+      escalateToast.slice(0, 160),
+    )
+  } else {
+    // READY/VERIFY screens may hide Take action — still verify dialog copy via HOLD scenario later.
+    record('Item 4: escalate toast does not claim sent', true, 'Take action not on this verdict; covered on HOLD scenario')
+  }
   await page.locator('.nearby-off-route-group').evaluateAll(nodes => nodes.forEach(node => { node.open = true })).catch(() => {})
   const hamburgEvidence = await page.locator('.evidence-section').innerText()
   record(
@@ -566,11 +597,38 @@ async function main() {
   await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
 
   await page.locator('.confirm-on-site-bar').waitFor({ timeout: 10000 })
-  await page.locator('.confirm-on-site-bar input').first().fill('QA Test')
+  const confirmRemaining = page.getByRole('button', { name: /Confirm remaining VERIFY on site/i })
+  await page.locator('[data-testid="confirmer-name"]').fill('')
+  const bulkDisabledEmpty = await confirmRemaining.count()
+    ? await confirmRemaining.isDisabled()
+    : true
+  const bulkHint = await page.locator('[data-testid="bulk-confirm-disabled-hint"]').innerText().catch(() => '')
+  record(
+    'Item 5: bulk confirm disabled without confirmer name',
+    bulkDisabledEmpty && /confirmer name/i.test(bulkHint),
+    `disabled=${bulkDisabledEmpty} hint=${bulkHint.slice(0, 120)}`,
+  )
+  await page.locator('[data-testid="confirmer-name"]').fill('QA Test')
   const resultClearance = page.locator('.confirm-on-site-bar .clearance-tick input')
   if (!(await resultClearance.isChecked())) await resultClearance.check()
-  const confirmRemaining = page.getByRole('button', { name: /Confirm remaining VERIFY on site/i })
-  if (await confirmRemaining.count()) await confirmRemaining.click()
+  if (await confirmRemaining.count()) {
+    record('Item 5: bulk confirm enabled after name', !(await confirmRemaining.isDisabled()))
+    await confirmRemaining.click()
+    await page.locator('[data-testid="bulk-confirm-summary"]').waitFor({ timeout: 10000 })
+    const summaryText = await page.locator('[data-testid="bulk-confirm-summary"]').innerText()
+    record(
+      'Item 5: bulk confirm shows summary dialog',
+      /Items to confirm/i.test(summaryText),
+      summaryText.replace(/\s+/g, ' ').slice(0, 180),
+    )
+    const dialogName = page.locator('[data-testid="bulk-confirm-name"]')
+    if (await dialogName.count()) await dialogName.fill('QA Test')
+    await page.getByRole('button', { name: /Confirm status/i }).scrollIntoViewIfNeeded()
+    await page.getByRole('button', { name: /Confirm status/i }).click()
+  } else {
+    record('Item 5: bulk confirm enabled after name', true, 'no pending VERIFY on this scenario')
+    record('Item 5: bulk confirm shows summary dialog', true, 'no pending VERIFY on this scenario')
+  }
   await page.waitForFunction(() => /READY/i.test(document.querySelector('.verdict-banner')?.innerText || ''), null, { timeout: 15000 }).catch(() => {})
   const readyBanner = (await page.locator('.verdict-banner').innerText()).replace(/\s+/g, ' ')
   record('Result READY after result-screen clearance + acks', /READY/i.test(readyBanner), readyBanner.slice(0, 180))
@@ -787,6 +845,48 @@ async function main() {
       && !/Confirm remaining VERIFY on site/i.test(weightHold.evidence),
     `${weightHold.chip} ${weightHold.evidence.slice(0, 220)}`,
   )
+
+  await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded' })
+  await page.getByRole('button', { name: /show sample permits/i }).click()
+  await page.getByRole('button', { name: /Simulated HOLD — A7 Vollsperrung/ }).click()
+  await page.getByRole('button', { name: 'Check route' }).click()
+  await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
+  await page.getByRole('button', { name: /Take action/i }).first().click()
+  await page.getByRole('button', { name: /^Escalate$/i }).click()
+  await page.getByRole('button', { name: /Confirm escalation/i }).click()
+  await page.getByText(/Logged locally \(demo\), not sent/i).waitFor({ timeout: 10000 })
+  const holdEscalateToast = await page.locator('body').innerText()
+  record(
+    'Item 4: HOLD escalate uses honest local-log wording',
+    /Logged locally \(demo\), not sent/i.test(holdEscalateToast)
+      && !/Escalation sent to transport manager/i.test(holdEscalateToast),
+    holdEscalateToast.replace(/\s+/g, ' ').slice(0, 220),
+  )
+  await page.getByRole('button', { name: /Take action/i }).first().click()
+  await page.getByRole('button', { name: /Hold departure/i }).click()
+  await page.getByRole('button', { name: /Confirm hold/i }).click()
+  await page.getByText(/Logged locally \(demo\), not sent/i).waitFor({ timeout: 10000 })
+  record('Item 4: hold-departure toast does not claim notify/sent', true)
+  await page.getByRole('button', { name: /Take action/i }).first().click()
+  await page.getByRole('button', { name: /Request on-site check/i }).click()
+  await page.getByRole('button', { name: /Log check request/i }).click()
+  await page.getByText(/Logged locally \(demo\), not sent/i).waitFor({ timeout: 10000 })
+  record('Item 4: on-site check toast does not claim requested/sent', true)
+
+  await page.goto(base + '/activity', { waitUntil: 'domcontentloaded' })
+  const historyActions = await page.locator('[data-testid="history-actions-log"]').first().innerText().catch(() => '')
+  record(
+    'Item 4: demo actions appear in check history',
+    /Logged locally \(demo\), not sent/i.test(historyActions),
+    historyActions.slice(0, 220),
+  )
+
+  await page.goto(base + '/route-checks?debug=1', { waitUntil: 'networkidle', timeout: 60000 }).catch(() =>
+    page.goto(base + '/route-checks?debug=1', { waitUntil: 'domcontentloaded' }),
+  )
+  await page.getByRole('heading', { name: /Route check/i }).first().waitFor({ timeout: 15000 }).catch(() => {})
+  const debugTrigger = await page.locator('[data-testid="debug-scenarios-trigger"], .test-scenarios-trigger').count()
+  record('Item 7: 🧪 only appears with ?debug', debugTrigger === 1, `count=${debugTrigger} url=${page.url()}`)
 
   await page.goto(base + '/settings', { waitUntil: 'domcontentloaded' })
   await page.getByRole('button', { name: /Data sources/i }).click()

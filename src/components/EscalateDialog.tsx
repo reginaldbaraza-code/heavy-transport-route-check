@@ -35,11 +35,11 @@ export default function EscalateDialog({ open, onClose, onConfirm, routeName }: 
     <div className="dialog-overlay" role="dialog" aria-modal="true" aria-labelledby="escalate-dialog-title">
       <div ref={dialogRef} className="dialog-content">
         <header>
-          <h2 id="escalate-dialog-title">Escalate to the transport manager?</h2>
+          <h2 id="escalate-dialog-title">Log an escalation (demo)?</h2>
           <p>
-            The manager will be told that{' '}
-            {routeName ? `the ${routeName} route` : 'the route'} is still unconfirmed and needs a departure
-            decision.
+            This demo only records that{' '}
+            {routeName ? `the ${routeName} route` : 'the route'} still needs a departure decision. Nobody is
+            notified — nothing is sent.
           </p>
         </header>
         <div className="dialog-actions">

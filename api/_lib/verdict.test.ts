@@ -10,6 +10,8 @@ import {
   determineVerdict,
   dimDecision,
   distanceToRouteKm,
+  extractHardHeightLimit,
+  extractHardWeightLimit,
   extractHardWidthLimit,
   inferPermittedRoads,
   isAcknowledgeable,
@@ -213,6 +215,106 @@ test('weight exceeded => HOLD, weight OK => not HOLD', () => {
 test('generic meter values in descriptions are not hard width limits', () => {
   assert.equal(extractHardWidthLimit('Baustelle 3.25 m neben der Fahrbahn'), null)
   assert.ok(extractHardWidthLimit('Restbreite 3.10 m'))
+})
+
+test('item 1: Maximale Durchfahrtsbreite 3.5 m vs 3.8 m vehicle is HOLD, not a ramp', () => {
+  const text = 'Garlstorfer Wald – Vorm Naturschutzpark, 11.08 km, Maximale Durchfahrtsbreite: 3.5 m'
+  assert.equal(classifyLocationKind(text), 'mainline')
+  assert.equal(extractHardWidthLimit(text), 3.5)
+  const wide = { ...baseCtx, vehicle: { ...baseCtx.vehicle, width: 3.8 } }
+  const item = classifyCandidate(candidate({
+    title: 'A7 Garlstorfer Wald – Vorm Naturschutzpark',
+    description: text,
+    startTimestamp: '2026-11-02T00:00:00Z',
+    endTimestamp: '2026-11-16T00:00:00Z',
+  }), wide)
+  assert.ok(item)
+  assert.equal(item.locationKind, 'mainline')
+  assert.equal(item.state, 'danger')
+  assert.equal(isAcknowledgeable(item), false)
+  assert.equal(determineVerdict([item], { clearanceConfirmed: true }).verdict, 'HOLD')
+})
+
+test('item 1: text height and weight limits HOLD when vehicle exceeds them', () => {
+  assert.equal(extractHardHeightLimit('Maximale Durchfahrtshöhe: 4.0 m'), 4)
+  assert.equal(extractHardWeightLimit('Gewichtsbeschränkung 40 t'), 40)
+  const heightHold = classifyCandidate(candidate({
+    title: 'A7 Bauwerk',
+    description: 'Maximale Durchfahrtshöhe: 4.0 m',
+  }), baseCtx)
+  assert.equal(heightHold?.state, 'danger')
+  const weightHold = classifyCandidate(candidate({
+    title: 'A7 Bauwerk',
+    description: 'Maximale Gewichtsbeschränkung 40 t',
+  }), baseCtx)
+  assert.equal(weightHold?.state, 'danger')
+})
+
+test('item 3: A1 ramp mentioning A7 cannot HOLD an A7 corridor', () => {
+  const item = classifyCandidate(candidate({
+    id: 'a1-maschen-ramp',
+    road: 'A1',
+    title: 'A1, AK Maschen Rampe 3 – Zubringer A7 zur A39',
+    description: 'Sperrung Rampe 3 Zubringer A7 zur A39',
+    category: 'closures',
+    isBlocked: true,
+  }), baseCtx)
+  assert.ok(item)
+  assert.equal(item.locationKind, 'ramp')
+  assert.notEqual(item.state, 'danger')
+  assert.match(item.reason, /Ramp|not the permitted|other road/i)
+})
+
+test('item 3: primary road mismatch is off-permit even when permitted road is mentioned', () => {
+  const item = classifyCandidate(candidate({
+    road: 'A1',
+    title: 'A1 Vollsperrung near Zubringer A7',
+    description: 'Vollsperrung beide Richtungen Richtung A7',
+    category: 'closures',
+    isBlocked: true,
+  }), baseCtx)
+  assert.ok(item)
+  assert.equal(item.state, 'warning')
+  assert.match(item.reason, /not the permitted/)
+})
+
+test('item 6: closure that ended before departure is dropped', () => {
+  const ctx: ClassifyContext = {
+    ...baseCtx,
+    windowStartMs: Date.parse('2026-11-14T21:00:00Z'),
+    windowEndMs: Date.parse('2026-11-15T21:00:00Z'),
+    nowMs: Date.parse('2026-11-14T12:00:00Z'),
+  }
+  const ended = classifyCandidate(candidate({
+    title: 'Vollsperrung A7',
+    description: 'Vollsperrung beide Richtungen',
+    category: 'closures',
+    isBlocked: true,
+    startTimestamp: '2026-11-12T00:00:00Z',
+    endTimestamp: '2026-11-13T13:00:00Z',
+  }), ctx)
+  assert.equal(ended, null)
+
+  const active = classifyCandidate(candidate({
+    title: 'Vollsperrung A7',
+    description: 'Vollsperrung beide Richtungen',
+    category: 'closures',
+    isBlocked: true,
+    startTimestamp: '2026-11-12T00:00:00Z',
+    endTimestamp: '2026-11-16T13:00:00Z',
+  }), ctx)
+  assert.equal(active?.state, 'danger')
+
+  const win = departureWindow({
+    departureStart: '2026-11-14T21:00:00Z',
+    departureEnd: '2026-11-15T05:00:00Z',
+  })
+  assert.equal(win.startMs, Date.parse('2026-11-14T21:00:00Z'))
+})
+
+test('zwischen AS X und AS Y stays mainline, Rampe is ramp', () => {
+  assert.equal(classifyLocationKind('Sperrung zwischen AS Soltau und AS Fallingbostel, 4.2 km'), 'mainline')
+  assert.equal(classifyLocationKind('A1 AK Maschen Rampe 3'), 'ramp')
 })
 
 test('dedupe by ~250 m + road + type keeps worst severity', () => {

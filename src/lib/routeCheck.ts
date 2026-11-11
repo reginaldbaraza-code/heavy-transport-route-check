@@ -408,6 +408,15 @@ export function permitVehicleDims(
   return parseVehicleDims(metadata?.vehicle) || parseVehicleDims(permit?.vehicle)
 }
 
+/** Dimensions used for a route check: on-screen form wins over sample metadata. */
+export function resolveCheckVehicle(
+  form: VehicleDimsInput | null | undefined,
+  permit?: Pick<TestPermit, 'kind' | 'vehicle'> | null,
+  metadata?: { vehicle?: VehicleDimsInput } | null,
+) {
+  return parseVehicleDims(form) || permitVehicleDims(permit, metadata)
+}
+
 const OVERSIZE_MESSAGE = 'This file is larger than 4 MB. Export a smaller GPX from VEMAGS and try again.'
 
 async function errorFromCheckResponse(response: Response): Promise<string> {

@@ -194,6 +194,9 @@ export default function MarketplaceActivity() {
                   </span>
                   <strong>{record.verdict} · {record.routeLabel}</strong>
                   <p>{record.summary} · {record.evidenceCount} evidence · retrieved {formatBerlinDateTime(record.retrievedAt)}</p>
+                  {record.actionsLog?.length ? (
+                    <p data-testid="history-actions-log">{record.actionsLog.join(' · ')}</p>
+                  ) : null}
                 </div>
                 <span className="route-alert-badges">
                   <span className={`alert-status ${record.verdict.toLowerCase()}`}>{record.verdict}</span>

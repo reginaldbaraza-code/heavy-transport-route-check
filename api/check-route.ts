@@ -221,12 +221,13 @@ async function fetchAutobahnEventsForRoute(roads: string[], retrievedAt: string)
       })
     );
     
-    const processedRoadworks = allEvents.flatMap(({ roadworks }) =>
+    const processedRoadworks = allEvents.flatMap(({ road, roadworks }) =>
       roadworks.map((item: any) => {
         const processed = processAutobahnItem(item, 'Roadworks', 'Roadworks in progress', retrievedAt);
         const isBlocked = processed.isBlocked;
         return {
           ...processed,
+          road,
           type: 'roadworks' as const,
           severity: isBlocked ? 'warning' as const : 'info' as const,
           isBlocked,
@@ -234,26 +235,29 @@ async function fetchAutobahnEventsForRoute(roads: string[], retrievedAt: string)
       })
     ).filter(isUsableEvent);
 
-    const processedClosures = allEvents.flatMap(({ closures }) =>
+    const processedClosures = allEvents.flatMap(({ road, closures }) =>
       closures.map((item: any) => ({
         ...processAutobahnItem(item, 'Closure', 'Road closure in effect', retrievedAt),
+        road,
         type: 'closures' as const,
         severity: 'danger' as const,
       }))
     ).filter(isUsableEvent);
 
-    const processedWarnings = allEvents.flatMap(({ warnings }) =>
+    const processedWarnings = allEvents.flatMap(({ road, warnings }) =>
       warnings.map((item: any) => ({
         ...processAutobahnItem(item, 'Warning', 'Traffic warning', retrievedAt),
+        road,
         type: 'warnings' as const,
         severity: 'warning' as const,
         confidence: 'medium' as const,
       }))
     ).filter(isUsableEvent);
 
-    const processedParking = allEvents.flatMap(({ parking }) =>
+    const processedParking = allEvents.flatMap(({ road, parking }) =>
       parking.map((item: any) => ({
         ...processAutobahnItem(item, 'Lorry parking', 'HGV parking on this Autobahn', retrievedAt),
+        road,
         type: 'parking' as const,
         severity: String(item.isBlocked) === 'true' ? 'warning' as const : 'info' as const,
         isBlocked: String(item.isBlocked) === 'true',
@@ -412,6 +416,8 @@ export default async function handler(
       Array.isArray(requestedRoads) ? requestedRoads : [],
     );
     const affectedRoads = permittedRoads.length ? uniqueRoads(permittedRoads) : uniqueRoads(determineAffectedRoads(geometry.matchPoints));
+    // GPX uploads without a corridor must still classify against the inferred Autobahn set so the same geometry matches sample-permit verdicts.
+    const classifyRoads = permittedRoads.length ? uniqueRoads(permittedRoads) : affectedRoads;
     const window = departureWindow({
       departureStart,
       departureEnd,
@@ -421,7 +427,7 @@ export default async function handler(
     const classifyCtx = {
       routeLine,
       corridor: geometry.corridor,
-      permittedRoads,
+      permittedRoads: classifyRoads,
       vehicle,
       windowStartMs: window.startMs,
       windowEndMs: window.endMs,
@@ -492,6 +498,7 @@ export default async function handler(
           source: src,
           lat: event.lat,
           lng: event.lng,
+          road: event.road,
           startTimestamp: event.startTimestamp,
           endTimestamp: event.endTimestamp,
           retrievedAt: event.retrievedAt,
@@ -508,6 +515,7 @@ export default async function handler(
           source: src,
           lat: event.lat,
           lng: event.lng,
+          road: event.road,
           startTimestamp: event.startTimestamp,
           endTimestamp: event.endTimestamp,
           retrievedAt: event.retrievedAt,
@@ -524,6 +532,7 @@ export default async function handler(
           source: src,
           lat: event.lat,
           lng: event.lng,
+          road: event.road,
           startTimestamp: event.startTimestamp,
           endTimestamp: event.endTimestamp,
           retrievedAt: event.retrievedAt,
@@ -542,6 +551,7 @@ export default async function handler(
           source: `Autobahn GmbH parking_lorry · ${affectedRoads.join(', ')}`,
           lat: event.lat,
           lng: event.lng,
+          road: event.road,
           startTimestamp: event.startTimestamp,
           endTimestamp: event.endTimestamp,
           retrievedAt: event.retrievedAt,
