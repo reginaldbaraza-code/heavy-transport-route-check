@@ -284,6 +284,7 @@ export default function MarketplaceOverview() {
             </section>
 
             <OverviewMapWithTallies
+              permits={overviewPermits}
               routes={permittedRoutes.map(route => {
                 const result = getRouteCheckResult(route, defaultVehicleProfile)
                 return {

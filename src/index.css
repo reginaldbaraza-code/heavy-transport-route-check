@@ -4191,26 +4191,13 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   overflow: hidden;
   margin-bottom: 24px;
 }
-.overview-map-placeholder {
+.overview-map-real {
   position: relative;
-  padding: 32px;
-  background: var(--bg-grouped);
   border-bottom: 1px solid var(--divider);
 }
-.map-svg-container {
-  max-width: 400px;
-  margin: 0 auto 16px;
-}
-.germany-map-svg {
-  width: 100%;
-  height: auto;
-  display: block;
-}
-.map-coming-soon {
-  text-align: center;
-  font-size: 14px;
-  color: var(--text-tertiary);
-  margin: 0;
+.overview-map-real .heatmap-shell {
+  border: none;
+  border-radius: 0;
 }
 .overview-tallies {
   padding: 20px;
