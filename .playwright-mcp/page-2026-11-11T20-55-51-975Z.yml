@@ -1,0 +1,190 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - button "Go to home" [ref=e6]
+      - button "Mobility Data Space" [ref=e16]
+      - button "Collapse navigation" [ref=e18]
+    - navigation [ref=e20]:
+      - generic [ref=e21]: Heavy transport
+      - link "Overview" [ref=e22] [cursor=pointer]:
+        - /url: /
+      - link "Route checks" [ref=e29] [cursor=pointer]:
+        - /url: /route-checks
+      - link "Corridor monitor" [ref=e36] [cursor=pointer]:
+        - /url: /map-explorer
+      - link "Alerts & history" [ref=e41] [cursor=pointer]:
+        - /url: /activity
+      - generic [ref=e47]: Coming later
+      - link "Data partners" [ref=e48] [cursor=pointer]:
+        - /url: /data-partners
+    - link "Settings" [ref=e57] [cursor=pointer]:
+      - /url: /settings
+  - generic [ref=e63]:
+    - banner [ref=e64]:
+      - textbox "Search permits, routes, roads, and alerts" [ref=e69]:
+        - /placeholder: Search permits, routes, roads…
+      - generic [ref=e70]:
+        - button "Notifications" [ref=e72]:
+          - generic [ref=e76]: "3"
+        - button "Help and settings" [ref=e77]
+        - button "Open organization settings" [ref=e82] [cursor=pointer]:
+          - generic [ref=e83]: RL
+          - generic [ref=e84]:
+            - generic [ref=e85]: RheinLift Logistics
+            - generic [ref=e86]: Heavy-haul operator
+    - main [ref=e89]:
+      - generic [ref=e291]:
+        - generic [ref=e292]:
+          - generic [ref=e293]:
+            - link "Operations overview" [ref=e294] [cursor=pointer]:
+              - /url: /
+            - heading "Check a permitted route" [level=1] [ref=e297]
+            - paragraph [ref=e298]: Check the exact approved route before departure and monitor it for short-notice changes.
+          - button "Export check" [ref=e299] [cursor=pointer]
+        - generic [ref=e307]:
+          - strong [ref=e308]: This tool does not calculate a new route.
+          - generic [ref=e309]: Heavy transports may only use the route approved in their permit. We check and monitor that exact route.
+        - generic [ref=e310]:
+          - generic [ref=e316]:
+            - generic [ref=e317]: Hold departure
+            - heading "Do not depart – vehicle is too wide" [level=2] [ref=e318]
+            - paragraph [ref=e319]: Vehicle width 3.80 m exceeds restriction 3.50 m.
+          - button "Take action" [ref=e320]
+        - generic [ref=e323]:
+          - complementary [ref=e324]:
+            - generic [ref=e325]:
+              - text: Permit route
+              - heading "Select permitted route" [level=2] [ref=e326]
+            - generic [ref=e327]:
+              - generic [ref=e328]: Route and permit
+              - combobox "Route and permit" [ref=e329]:
+                - option "Hamburg → Kassel · DE-HH-2026-01208"
+                - option "Duisburg → Munich · DE-NW-2026-04821" [selected]
+                - option "Bremen → Hannover · DE-HB-2026-00914"
+                - option "Leipzig → Nuremberg · DE-SN-2026-03147"
+            - button "VEMAGS_DE-NW-2026-04821.json PDF, XML, or GPX · exact approved route Replace" [ref=e330] [cursor=pointer]:
+              - generic [ref=e336]:
+                - strong [ref=e337]: VEMAGS_DE-NW-2026-04821.json
+                - generic [ref=e338]: PDF, XML, or GPX · exact approved route
+              - generic [ref=e339]: Replace
+            - generic [ref=e340]:
+              - generic [ref=e341]:
+                - generic [ref=e345]: Origin
+                - strong [ref=e346]: Duisburg Logistics Yard
+              - generic [ref=e349]:
+                - generic [ref=e352]: Destination
+                - strong [ref=e353]: Munich Wind Farm
+            - generic [ref=e354]:
+              - generic [ref=e355]: Planned departure
+              - textbox "Planned departure Use DD.MM.YYYY and 24-hour time (Europe/Berlin)." [ref=e361]: 22.10.2026, 22:00
+              - generic [ref=e362]: Use DD.MM.YYYY and 24-hour time (Europe/Berlin).
+            - generic [ref=e363]:
+              - generic [ref=e364]: Approved transport profile
+              - combobox "Approved transport profile Use the measurements approved in the transport permit." [ref=e365]:
+                - option "Standard heavy haulage · 3.00 m W × 4.00 m H × 25.0 m L · 52 t"
+                - option "Wide heavy haulage · 3.80 m W × 4.20 m H × 32.0 m L · 68 t" [selected]
+                - option "Custom vehicle"
+              - generic [ref=e366]: Use the measurements approved in the transport permit.
+            - generic [ref=e367]:
+              - generic [ref=e368]:
+                - generic [ref=e369]: Width
+                - strong [ref=e370]: 3.80 m
+              - generic [ref=e371]:
+                - generic [ref=e372]: Height
+                - strong [ref=e373]: 4.20 m
+              - generic [ref=e374]:
+                - generic [ref=e375]: Length
+                - strong [ref=e376]: 32.0 m
+              - generic [ref=e377]:
+                - generic [ref=e378]: Gross weight
+                - strong [ref=e379]: 68 t
+            - button "Check route" [ref=e380] [cursor=pointer]
+            - paragraph [ref=e389]:
+              - strong [ref=e390]: Permit remains authoritative
+              - generic [ref=e391]: The check supports dispatch decisions. It does not replace VEMAGS or authority approval.
+          - main [ref=e392]:
+            - generic [ref=e393]:
+              - generic [ref=e394]:
+                - group "Map layers" [ref=e395]:
+                  - button "Roadworks (2)" [pressed] [ref=e400] [cursor=pointer]
+                  - button "Closures (0)" [ref=e401] [cursor=pointer]
+                  - button "On-site observations (1)" [ref=e402] [cursor=pointer]
+                - generic [ref=e403]: Updated 2 min ago
+              - group "Roadworks (2) coverage across Germany" [ref=e405]:
+                - generic [ref=e406]:
+                  - generic:
+                    - generic:
+                      - button "Start Duisburg":
+                        - generic:
+                          - generic:
+                            - generic: Start
+                            - strong: Duisburg
+                      - button "Destination Munich":
+                        - generic:
+                          - generic:
+                            - generic: Destination
+                            - strong: Munich
+                      - button "! Lane-width restriction 3.50 m Autobahn GmbH roadworks feed · Updated 2 min ago":
+                        - generic:
+                          - generic: "!"
+                          - paragraph:
+                            - strong: Lane-width restriction 3.50 m
+                            - generic: Autobahn GmbH roadworks feed · Updated 2 min ago
+                      - button "!"
+                - generic "Map zoom controls" [ref=e407]:
+                  - button "Zoom in" [ref=e408] [cursor=pointer]
+                  - button "Zoom out" [ref=e410] [cursor=pointer]
+                - generic [ref=e417]:
+                  - strong [ref=e418]: DE-NW-2026-04821
+                  - generic [ref=e419]: Approved route · A3 / A9
+                - generic [ref=e420]:
+                  - generic [ref=e421]: Permitted route
+                  - generic [ref=e423]: Blocking issue
+            - generic [ref=e425]:
+              - generic [ref=e427]:
+                - text: Route check details
+                - heading "Duisburg Logistics Yard Munich Wind Farm" [level=2] [ref=e428]
+              - generic [ref=e431]:
+                - generic [ref=e432]:
+                  - generic [ref=e433]: Permitted distance
+                  - strong [ref=e434]: 638 km
+                - generic [ref=e435]:
+                  - generic [ref=e436]: Route area
+                  - strong [ref=e437]: A3 / A9
+                - generic [ref=e438]:
+                  - generic [ref=e439]: Data checked
+                  - strong [ref=e440]: Updated 2 min ago
+              - generic [ref=e441]:
+                - generic [ref=e442]:
+                  - strong [ref=e443]: Why this result?
+                  - generic [ref=e444]: "Selected vehicle: 3.80 m W × 4.20 m H × 32.0 m L · 68 t. The width conflict blocks the exact permitted route."
+                - button "Show details" [ref=e445]
+              - generic [ref=e446]:
+                - generic [ref=e453]:
+                  - strong [ref=e454]: Monitoring until departure
+                  - generic [ref=e455]: Next refresh in 14:32 · departure 22.10.2026, 22:00
+                - button "Stop monitoring" [ref=e456]
+              - generic [ref=e459]:
+                - generic [ref=e460]: Sources
+                - generic [ref=e461]: Autobahn GmbH roadworks feed
+                - generic [ref=e462]: Road operator status feed
+                - generic [ref=e463]: VEMAGS profile + route check
+                - generic [ref=e464]: Continuous monitoring active until 22.10.2026, 22:00
+              - generic "Route monitoring progress" [ref=e465]:
+                - paragraph [ref=e473]:
+                  - strong [ref=e474]: Route imported
+                  - generic [ref=e475]: DE-NW-2026-04821
+                - paragraph [ref=e483]:
+                  - strong [ref=e484]: Route checked
+                  - generic [ref=e485]: 1 issue detected
+                - paragraph [ref=e495]:
+                  - strong [ref=e496]: Monitoring live
+                  - generic [ref=e497]: 3 sources connected
+                - paragraph [ref=e504]:
+                  - strong [ref=e505]: Dispatch decision
+                  - generic [ref=e506]: Hold departure – vehicle exceeds lane width
+        - complementary "Test scenarios" [ref=e507]:
+          - button "Test scenarios Demo controls" [ref=e508]:
+            - generic [ref=e511]:
+              - strong [ref=e512]: Test scenarios
+              - generic [ref=e513]: Demo controls

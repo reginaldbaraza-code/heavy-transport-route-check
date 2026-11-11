@@ -475,7 +475,7 @@ async function main() {
   await page.getByRole('button', { name: 'Save as job' }).click()
   await page.locator('[data-testid="save-job-form"]').waitFor()
   await page.getByRole('button', { name: 'Save job' }).click()
-  await page.getByText(/Job saved in this browser only/i).waitFor({ timeout: 10000 })
+  await page.getByText(/Job saved and monitoring started/i).waitFor({ timeout: 10000 })
   record('Save as job after check', true)
 
   const pdf = await downloadFile(page, 'Export PDF')
@@ -553,7 +553,7 @@ async function main() {
   const csv = await downloadFile(page, 'Export CSV')
   record('Result CSV download is non-empty', csv.size > 50, `${csv.suggested} ${csv.size} bytes`)
 
-  await page.getByRole('button', { name: 'Check another route' }).click()
+  await page.getByRole('button', { name: 'Re-check' }).click()
   await page.getByRole('button', { name: /show sample permits/i }).click()
   await page.getByRole('button', { name: /Simulated HOLD — A3 residual width/ }).click()
   await page.locator('[data-testid="vehicle-width"]').waitFor({ timeout: 10000 })

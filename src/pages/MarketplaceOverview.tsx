@@ -6,6 +6,8 @@ import {
 } from 'lucide-react'
 import LazyPermitMap from '../components/LazyPermitMap'
 import PageHeader from '../components/PageHeader'
+import OverviewMapWithTallies from '../components/OverviewMapWithTallies'
+import SourceStatusPanel from '../components/SourceStatusPanel'
 import {
   defaultVehicleProfile, getRouteCheckResult, permittedRoutes,
 } from '../data/routeChecks'
@@ -281,6 +283,18 @@ export default function MarketplaceOverview() {
               <div><span>3</span><ShieldCheck size={18} /><strong>Monitor until departure</strong><p>Receive early warnings when conditions change or evidence is uncertain.</p></div>
             </section>
 
+            <OverviewMapWithTallies
+              routes={permittedRoutes.map(route => {
+                const result = getRouteCheckResult(route, defaultVehicleProfile)
+                return {
+                  id: route.id,
+                  origin: route.originShort,
+                  destination: route.destinationShort,
+                  verdict: result.verdict,
+                }
+              })}
+            />
+
             <div className="market-two-column">
               <section className="market-section">
                 <div className="market-section-header compact">
@@ -311,28 +325,32 @@ export default function MarketplaceOverview() {
                 </div>
               </section>
 
-              <section className="market-section">
-                <div className="market-section-header compact">
-                  <div><span className="market-eyebrow">Source status</span><h2>Information covering your next route</h2></div>
-                  <Link to="/settings">Data sources <ArrowRight size={16} /></Link>
-                </div>
-                <div className="transport-source-list">
-                  <div>
-                    <span>AG</span>
-                    <div><strong>Autobahn GmbH</strong><small>Roadworks and closures on the permitted A8 · Example</small></div>
-                    <b>Example</b>
-                  </div>
-                  <div>
-                    <span>SP</span>
-                    <div><strong>{featuredPermit.permitNumber}</strong><small>Snapped GPX for München → Stuttgart · Example</small></div>
-                    <b>Example</b>
-                  </div>
-                  <div>
-                    <span>BC</span>
-                    <div><strong>Bridge, clearance, Mobilithek</strong><small>Height restriction 4.00 m vs 4.30 m vehicle · Example</small></div>
-                    <b>Example</b>
-                  </div>
-                </div>
+              <section>
+                <SourceStatusPanel
+                  sources={[
+                    {
+                      id: 'ag',
+                      name: 'Autobahn GmbH roadworks feed',
+                      status: 'active',
+                      lastUpdate: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
+                      detail: 'Lane-width restriction 3.50 m',
+                    },
+                    {
+                      id: 'ro',
+                      name: 'Road operator status feed',
+                      status: 'active',
+                      lastUpdate: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
+                      detail: 'Work zone confirmed active',
+                    },
+                    {
+                      id: 'vb',
+                      name: 'VEMAGS profile + route check',
+                      status: 'active',
+                      lastUpdate: new Date().toISOString(),
+                      detail: 'Vehicle clearance check · Calculated now',
+                    },
+                  ]}
+                />
               </section>
             </div>
           </div>

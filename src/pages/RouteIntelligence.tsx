@@ -6,6 +6,16 @@ import {
 } from 'lucide-react'
 import type { RouteMapHandle } from '../components/RouteMapGL'
 import { Toast } from '../components/Feedback'
+import StatusTimeline from '../components/StatusTimeline'
+import TakeActionSheet from '../components/TakeActionSheet'
+import EscalateDialog from '../components/EscalateDialog'
+import HoldDepartureDialog from '../components/HoldDepartureDialog'
+import RequestOnSiteCheckDialog from '../components/RequestOnSiteCheckDialog'
+import OnSiteConfirmDialog from '../components/OnSiteConfirmDialog'
+import InformationCheckedPanel from '../components/InformationCheckedPanel'
+import MonitoringControls from '../components/MonitoringControls'
+import TestScenariosDrawer from '../components/TestScenariosDrawer'
+import SourceChip from '../components/SourceChip'
 import {
   checkRoute,
   loadTestPermit,
@@ -72,7 +82,7 @@ export default function RouteIntelligencePolished() {
   const mapRef = useRef<RouteMapHandle>(null)
   const loadedPermit = useRef<string | null>(null)
   const [searchParams] = useSearchParams()
-  const { recordCheck, patchHistory } = useRouteMonitoring()
+  const { recordCheck, patchHistory, addAlert } = useRouteMonitoring()
   const { saveJob, getJob, updateJob, prefs, requestNotifications } = useJobs()
   const { savedProfile } = useOrgSettings()
   const [plannedDeparture, setPlannedDeparture] = useState(toLocalInput(defaultDepartureIso(8)))
@@ -92,6 +102,18 @@ export default function RouteIntelligencePolished() {
   clearanceConfirmedRef.current = clearanceConfirmed
   clearanceByRef.current = clearanceBy
   confirmedAtRef.current = confirmedAt
+
+  // New dialog state
+  const [showTakeAction, setShowTakeAction] = useState(false)
+  const [showEscalate, setShowEscalate] = useState(false)
+  const [showHoldDeparture, setShowHoldDeparture] = useState(false)
+  const [showRequestOnSite, setShowRequestOnSite] = useState(false)
+  const [showOnSiteConfirm, setShowOnSiteConfirm] = useState(false)
+  const [pendingConfirmIds, setPendingConfirmIds] = useState<string[]>([])
+  const [confirmLocation, setConfirmLocation] = useState<string>()
+  const [showInfoChecked, setShowInfoChecked] = useState(false)
+  const [showTestScenarios, setShowTestScenarios] = useState(false)
+  const [monitoring, setMonitoring] = useState(false)
 
   const vehicle = {
     width: parseFloat(vehicleWidth) || 0,
@@ -185,10 +207,26 @@ export default function RouteIntelligencePolished() {
         evidence: checkResult.evidence,
         confirmOnSite: confirmOnSiteTitles(checkResult.evidence),
         jobId: loadedJob.current || undefined,
-        alertEligible: !activePermit,
+        alertEligible: true,
         siteAcknowledgements: acks,
       })
       lastHistoryId.current = history.id
+      
+      // Create alert for HOLD verdict on manual checks (not from jobs)
+      if (!loadedJob.current && checkResult.verdict === 'HOLD' && history.alertEligible) {
+        const isDemo = activePermit?.kind === 'scenario'
+        addAlert({
+          runAt,
+          routeId: history.id,
+          routeLabel: history.routeLabel,
+          change: isDemo ? `Demo: ${checkResult.verdict}` : `Route check: ${checkResult.verdict}`,
+          detail: checkResult.summary || 'Route requires attention',
+          severity: checkResult.verdict,
+          status: 'New',
+          source: checkResult.source || 'Autobahn GmbH',
+        })
+      }
+      
       if (loadedJob.current) {
         updateJob(loadedJob.current, {
           lastCheckedAt: runAt,
@@ -248,6 +286,19 @@ export default function RouteIntelligencePolished() {
     setErrorTechnical('')
     setActivePermitId(null)
 
+    // Check for VEMAGS PDF/XML formats and provide helpful message
+    const fileName = file.name.toLowerCase()
+    if (fileName.endsWith('.pdf') || fileName.endsWith('.xml')) {
+      setError(
+        'VEMAGS PDF and XML formats are not yet supported. Please export your permitted route as GPX from VEMAGS and upload that file instead.'
+      )
+      setErrorTechnical(
+        'To export GPX from VEMAGS: Open your permit → Export → Select "GPX format" → Save the .gpx file → Upload here'
+      )
+      setRouteFile('')
+      return
+    }
+
     try {
       validateGpxFileSize(file.size)
     } catch (err) {
@@ -257,7 +308,7 @@ export default function RouteIntelligencePolished() {
       return
     }
 
-    if (!file.name.toLowerCase().endsWith('.gpx')) {
+    if (!fileName.endsWith('.gpx')) {
       setError("This file isn't a valid GPX route. Export the route from VEMAGS as GPX and try again.")
       setErrorTechnical(`Unexpected file name: ${file.name}`)
       setRouteFile('')
@@ -416,7 +467,8 @@ export default function RouteIntelligencePolished() {
     }, loadedJob.current || undefined)
     loadedJob.current = saved.id
     setShowSaveJob(false)
-    setToast('Job saved in this browser only.')
+    setMonitoring(true)
+    setToast('Job saved and monitoring started.')
   }
 
   const displayed = result
@@ -600,7 +652,7 @@ export default function RouteIntelligencePolished() {
               <input
                 ref={fileInput}
                 type="file"
-                accept=".gpx,application/gpx+xml,text/xml"
+                accept=".gpx,application/gpx+xml,text/xml,.pdf,application/pdf,.xml,application/xml"
                 onChange={e => {
                   const file = e.target.files?.[0]
                   if (file) {
@@ -893,8 +945,27 @@ export default function RouteIntelligencePolished() {
                   )
                 })()}
               </div>
+              {/* Dynamic CTA based on verdict */}
+              {displayed.verdict === 'READY' && (
+                <button type="button" className="btn-primary verdict-cta" onClick={() => setToast('Proceed with departure')}>
+                  <CheckCircle2 size={16} />
+                  Proceed with departure
+                </button>
+              )}
+              {displayed.verdict === 'VERIFY' && (
+                <button type="button" className="btn-primary verdict-cta" onClick={() => setShowRequestOnSite(true)}>
+                  <AlertTriangle size={16} />
+                  Verify before departure
+                </button>
+              )}
+              {displayed.verdict === 'HOLD' && (
+                <button type="button" className="btn-primary verdict-cta" onClick={() => setShowTakeAction(true)}>
+                  <CircleX size={16} />
+                  Take action
+                </button>
+              )}
               <button type="button" className="btn-text" onClick={resetFlow}>
-                Check another route
+                Re-check
               </button>
             </div>
 
@@ -968,6 +1039,27 @@ export default function RouteIntelligencePolished() {
               </div>
 
               <div className="results-sidebar">
+                {/* Status Timeline */}
+                <StatusTimeline result={displayed} permitNumber={permitNumber} monitoring={monitoring} />
+
+                {/* Monitoring Controls */}
+                {loadedJob.current && (
+                  <MonitoringControls
+                    monitoring={monitoring}
+                    onStop={() => setMonitoring(false)}
+                    onResume={() => setMonitoring(true)}
+                    departureTime={plannedDeparture ? fromLocalInput(plannedDeparture) : undefined}
+                    nextCheckIn={jobInterval}
+                  />
+                )}
+
+                {/* Information Checked Panel */}
+                <InformationCheckedPanel
+                  result={displayed}
+                  expanded={showInfoChecked}
+                  onToggle={() => setShowInfoChecked(!showInfoChecked)}
+                />
+
                 <div className="results-summary">
                   <h3>Route details</h3>
                   <div className="summary-grid">
@@ -1030,7 +1122,11 @@ export default function RouteIntelligencePolished() {
                         item={item}
                         retrievedAt={displayed.retrievedAt}
                         onFly={() => item.lat != null && item.lng != null && mapRef.current?.flyToEvidence(item)}
-                        onConfirm={() => confirmOnSite([item.id])}
+                        onConfirm={() => {
+                          setPendingConfirmIds([item.id])
+                          setConfirmLocation(item.title || undefined)
+                          setShowOnSiteConfirm(true)
+                        }}
                       />
                     ))}
                   </div>
@@ -1062,9 +1158,15 @@ export default function RouteIntelligencePolished() {
               <button
                 type="button"
                 className="btn-primary"
-                onClick={() => pendingVerify.length
-                  ? confirmOnSite(pendingVerify.map(item => item.id))
-                  : setToast(displayed.verdict === 'HOLD' ? 'HOLD items cannot be acknowledged away.' : 'No VERIFY items left to confirm.')}
+                onClick={() => {
+                  if (!pendingVerify.length) {
+                    setToast(displayed.verdict === 'HOLD' ? 'HOLD items cannot be acknowledged away.' : 'No VERIFY items left to confirm.')
+                    return
+                  }
+                  setPendingConfirmIds(pendingVerify.map(item => item.id))
+                  setConfirmLocation(pendingVerify[0]?.title || undefined)
+                  setShowOnSiteConfirm(true)
+                }}
               >
                 Confirm on site
               </button>
@@ -1074,6 +1176,209 @@ export default function RouteIntelligencePolished() {
       </div>
 
       {toast && <Toast message={toast} tone="info" onClose={() => setToast('')} />}
+
+      {/* Dialogs */}
+      <TakeActionSheet
+        open={showTakeAction}
+        onClose={() => setShowTakeAction(false)}
+        onReviewIssue={() => {
+          setShowTakeAction(false)
+          // Scroll to primary evidence
+          const primaryEvidence = document.querySelector('.evidence-list')
+          primaryEvidence?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }}
+        onEscalate={() => {
+          setShowTakeAction(false)
+          setShowEscalate(true)
+        }}
+        onHoldDeparture={() => {
+          setShowTakeAction(false)
+          setShowHoldDeparture(true)
+        }}
+        onRequestOnSiteCheck={() => {
+          setShowTakeAction(false)
+          setShowRequestOnSite(true)
+        }}
+      />
+
+      <EscalateDialog
+        open={showEscalate}
+        onClose={() => setShowEscalate(false)}
+        onConfirm={() => {
+          setShowEscalate(false)
+          setToast('Escalation sent to transport manager')
+        }}
+        routeName={result ? `${result.route.origin} → ${result.route.destination}` : undefined}
+      />
+
+      <HoldDepartureDialog
+        open={showHoldDeparture}
+        onClose={() => setShowHoldDeparture(false)}
+        onConfirm={() => {
+          setShowHoldDeparture(false)
+          setToast('Departure placed on hold')
+        }}
+        routeName={result ? `${result.route.origin} → ${result.route.destination}` : undefined}
+      />
+
+      <RequestOnSiteCheckDialog
+        open={showRequestOnSite}
+        onClose={() => setShowRequestOnSite(false)}
+        onConfirm={(note) => {
+          setToast(`On-site check requested${note ? ': ' + note : ''}`)
+        }}
+      />
+
+      <OnSiteConfirmDialog
+        open={showOnSiteConfirm}
+        onClose={() => {
+          setShowOnSiteConfirm(false)
+          setPendingConfirmIds([])
+          setConfirmLocation(undefined)
+        }}
+        location={confirmLocation}
+        onConfirm={(outcome, note, photo) => {
+          if (!result) return
+          
+          const name = clearanceByRef.current.trim() || clearanceBy.trim() || 'Dispatcher'
+          if (!clearanceByRef.current.trim()) {
+            clearanceByRef.current = name
+            setClearanceBy(name)
+          }
+          const at = new Date().toISOString()
+          const next = [...acknowledgements]
+          let added = 0
+          
+          for (const id of pendingConfirmIds) {
+            const item = result.evidence.find(entry => entry.id === id)
+            if (!item) continue
+            
+            // "closed" on a HOLD or verified closure means cannot proceed
+            if (outcome === 'closed' && isHoldItem(item)) {
+              setToast('Confirmed closed — HOLD remains.')
+              continue
+            }
+            
+            // "open" or "partly" can acknowledge VERIFY items
+            if ((outcome === 'open' || outcome === 'partly') && !isHoldItem(item) && isAcknowledgeable(item)) {
+              if (!next.some(ack => ack.evidenceId === id)) {
+                next.push({ 
+                  evidenceId: id, 
+                  acknowledgedBy: name, 
+                  acknowledgedAt: at,
+                })
+                added += 1
+              }
+            }
+          }
+          
+          if (added > 0) {
+            setAcknowledgements(next)
+            setToast(`${added} item${added === 1 ? '' : 's'} confirmed on site as ${outcome}`)
+          } else {
+            setToast(`Status recorded as ${outcome}${note ? ': ' + note : ''}`)
+          }
+          
+          setShowOnSiteConfirm(false)
+          setPendingConfirmIds([])
+          setConfirmLocation(undefined)
+        }}
+      />
+
+      <TestScenariosDrawer
+        open={showTestScenarios}
+        onClose={() => setShowTestScenarios(false)}
+        onSimulateClosure={() => {
+          if (!result) return
+          // Simulate a closure on the route
+          const mockClosure: RouteEvidence = {
+            id: 'sim-closure-' + Date.now(),
+            title: 'A5 Karlsruhe → Basel, near AS Baden-Baden',
+            detail: 'Test closure scenario: Full carriageway closure for bridge maintenance',
+            source: 'MIA DATEX II (simulated)',
+            age: 'Just now',
+            confidence: 'high',
+            state: 'danger',
+            category: 'closures',
+            lat: 48.7758,
+            lng: 8.2396,
+            blocker: true,
+          }
+          const newEvidence = [mockClosure, ...result.evidence]
+          const hasDanger = newEvidence.some(e => e.state === 'danger')
+          const hasWarning = newEvidence.some(e => e.state === 'warning')
+          const newVerdict = hasDanger ? 'HOLD' : hasWarning ? 'VERIFY' : 'READY'
+          setResult({
+            ...result,
+            verdict: newVerdict,
+            evidence: newEvidence,
+            title: newVerdict === 'HOLD' ? 'HOLD DEPARTURE' : newVerdict === 'VERIFY' ? 'VERIFY BEFORE DEPARTURE' : 'READY TO DEPART',
+            summary: newVerdict === 'HOLD' 
+              ? 'Simulated closure — route blocked' 
+              : result.summary,
+          })
+          setToast('Closure simulated — check verdict')
+        }}
+        onSimulateRoadwork={() => {
+          if (!result) return
+          // Simulate roadworks with width restriction
+          const mockRoadwork: RouteEvidence = {
+            id: 'sim-roadwork-' + Date.now(),
+            title: 'A5 near AS Offenburg',
+            detail: 'Test roadworks scenario: Lane narrowing with 3.2m width limit',
+            source: 'Open Roadworks (simulated)',
+            age: 'Just now',
+            confidence: 'medium',
+            state: 'warning',
+            category: 'roadworks',
+            lat: 48.4734,
+            lng: 7.9403,
+            reason: 'Width 3.2m',
+          }
+          const newEvidence = [mockRoadwork, ...result.evidence]
+          const hasDanger = newEvidence.some(e => e.state === 'danger')
+          const hasWarning = newEvidence.some(e => e.state === 'warning')
+          const newVerdict = hasDanger ? 'HOLD' : hasWarning ? 'VERIFY' : 'READY'
+          setResult({
+            ...result,
+            verdict: newVerdict,
+            evidence: newEvidence,
+            title: newVerdict === 'VERIFY' ? 'VERIFY BEFORE DEPARTURE' : result.title,
+            summary: newVerdict === 'VERIFY' 
+              ? 'Simulated roadworks — verify before departure' 
+              : result.summary,
+          })
+          setToast('Roadworks simulated — check verdict')
+        }}
+        onClearSimulations={() => {
+          if (!result) return
+          const newEvidence = result.evidence.filter(item => !item.id.startsWith('sim-'))
+          const hasDanger = newEvidence.some(e => e.state === 'danger')
+          const hasWarning = newEvidence.some(e => e.state === 'warning')
+          const newVerdict = hasDanger ? 'HOLD' : hasWarning ? 'VERIFY' : 'READY'
+          setResult({
+            ...result,
+            verdict: newVerdict,
+            evidence: newEvidence,
+            title: newVerdict === 'READY' ? 'READY TO DEPART' : newVerdict === 'VERIFY' ? 'VERIFY BEFORE DEPARTURE' : 'HOLD DEPARTURE',
+            summary: newVerdict === 'READY' 
+              ? 'Simulations cleared — route ready' 
+              : result.summary,
+          })
+          setToast('Simulations cleared')
+        }}
+      />
+
+      {/* Floating test scenarios trigger (discreet, visible on hover) */}
+      <button
+        type="button"
+        className="test-scenarios-trigger"
+        onClick={() => setShowTestScenarios(true)}
+        title="Test scenarios"
+        aria-label="Open test scenarios"
+      >
+        🧪
+      </button>
     </div>
   )
 }
@@ -1106,9 +1411,11 @@ function EvidenceCard({
     >
       <div className="evidence-header">
         <strong data-testid="evidence-title">{title}</strong>
-        <span className={`confidence-badge confidence-${String(item.confidence).toLowerCase()}`}>
-          {String(item.confidence).toLowerCase() === 'high' ? 'High confidence' : 'Medium confidence'}
-        </span>
+        <SourceChip
+          source={item.source}
+          retrievedAt={item.retrievedAt || retrievedAt}
+          confidence={String(item.confidence)}
+        />
       </div>
       {keepOriginalAside ? (
         <details className="evidence-original">
