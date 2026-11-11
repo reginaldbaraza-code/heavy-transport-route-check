@@ -1,22 +1,20 @@
 import { MapPin } from 'lucide-react'
 import LazyPermitMap from './LazyPermitMap'
 import type { TestPermit } from '../lib/routeCheck'
+import { overviewVerdictForPermit } from '../lib/overviewTracks'
 
 interface OverviewMapWithTalliesProps {
   permits: TestPermit[]
-  routes: Array<{
-    id: string
-    origin: string
-    destination: string
-    verdict: 'READY' | 'VERIFY' | 'HOLD'
-  }>
 }
 
-export default function OverviewMapWithTallies({ permits, routes }: OverviewMapWithTalliesProps) {
+export default function OverviewMapWithTallies({ permits }: OverviewMapWithTalliesProps) {
+  // Compute verdicts from the same data source as the map
+  const verdicts = permits.map(permit => overviewVerdictForPermit(permit))
+  
   const tallies = {
-    ready: routes.filter(r => r.verdict === 'READY').length,
-    verify: routes.filter(r => r.verdict === 'VERIFY').length,
-    hold: routes.filter(r => r.verdict === 'HOLD').length,
+    ready: verdicts.filter(v => v === 'READY').length,
+    verify: verdicts.filter(v => v === 'VERIFY').length,
+    hold: verdicts.filter(v => v === 'HOLD').length,
   }
 
   return (
@@ -28,10 +26,11 @@ export default function OverviewMapWithTallies({ permits, routes }: OverviewMapW
           badgeSubtitle="Example verdicts across Germany"
           endpointMode="cities"
           showLegend
+          dataTestId="overview-tallies"
         />
       </div>
       <div className="overview-tallies">
-        <strong>{routes.length} monitored route{routes.length === 1 ? '' : 's'}</strong>
+        <strong>{permits.length} monitored route{permits.length === 1 ? '' : 's'}</strong>
         <div className="overview-tallies-grid">
           <div className="tally-item tally-ready">
             <MapPin size={16} />

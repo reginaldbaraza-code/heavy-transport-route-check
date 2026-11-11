@@ -172,7 +172,7 @@ async function main() {
   await page.getByRole('button', { name: 'Expand navigation' }).click()
 
   await page.locator('.overview-mode-panel').scrollIntoViewIfNeeded()
-  await page.locator('.permit-leaflet-map.leaflet-container').waitFor({ timeout: 25000 })
+  await page.locator('.permit-leaflet-map.leaflet-container').first().waitFor({ timeout: 25000 })
   const heroBadge = await page.locator('.permit-map-badge strong').first().innerText()
   record('Homepage hero uses Demo: 4 monitored routes badge', heroBadge.includes('Demo: 4 monitored routes'), heroBadge)
   record(
@@ -184,9 +184,9 @@ async function main() {
     'Demo mode copy explains it is not live',
     await page.getByText(/Made-up routes and verdicts, never live, never saved/i).isVisible(),
   )
-  const osmAttr = await page.locator('.permit-leaflet-map .leaflet-control-attribution').innerText()
+  const osmAttr = await page.locator('.permit-leaflet-map .leaflet-control-attribution').first().innerText()
   record('Homepage map keeps OSM attribution', /OpenStreetMap/i.test(osmAttr), osmAttr)
-  const tileDisplay = await page.locator('.permit-leaflet-map .leaflet-tile-pane').evaluate(el => getComputedStyle(el).display)
+  const tileDisplay = await page.locator('.permit-leaflet-map .leaflet-tile-pane').first().evaluate(el => getComputedStyle(el).display)
   record('Homepage map shows tile layer', tileDisplay !== 'none', tileDisplay)
   record(
     'Homepage hero is not the illustrated Germany map',
@@ -198,7 +198,7 @@ async function main() {
     /München|Stuttgart/.test(heroCard) && !/Duisburg Logistics/.test(heroCard),
     heroCard.replace(/\s+/g, ' ').slice(0, 180),
   )
-  const tileFilter = await page.locator('.permit-leaflet-map .leaflet-tile-pane').evaluate(el => getComputedStyle(el).filter)
+  const tileFilter = await page.locator('.permit-leaflet-map .leaflet-tile-pane').first().evaluate(el => getComputedStyle(el).filter)
   record('Homepage tiles are desaturated', /grayscale/i.test(tileFilter), tileFilter)
 
   await page.getByRole('tab', { name: 'Try a sample permit' }).click()

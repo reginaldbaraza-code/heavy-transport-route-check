@@ -38,7 +38,7 @@ function PermitMapSkeleton({
 
 export default function LazyPermitMap(props: PermitLeafletMapProps) {
   return (
-    <div className="permit-leaflet-host">
+    <div className="permit-leaflet-host" data-permit-map-host={props.dataTestId}>
       <Suspense fallback={<PermitMapSkeleton badgeTitle={props.badgeTitle} badgeSubtitle={props.badgeSubtitle} showLegend={props.showLegend} />}>
         <PermitLeafletMap {...props} />
       </Suspense>

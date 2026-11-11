@@ -283,18 +283,7 @@ export default function MarketplaceOverview() {
               <div><span>3</span><ShieldCheck size={18} /><strong>Monitor until departure</strong><p>Receive early warnings when conditions change or evidence is uncertain.</p></div>
             </section>
 
-            <OverviewMapWithTallies
-              permits={overviewPermits}
-              routes={permittedRoutes.map(route => {
-                const result = getRouteCheckResult(route, defaultVehicleProfile)
-                return {
-                  id: route.id,
-                  origin: route.originShort,
-                  destination: route.destinationShort,
-                  verdict: result.verdict,
-                }
-              })}
-            />
+            <OverviewMapWithTallies permits={overviewPermits} />
 
             <div className="market-two-column">
               <section className="market-section">
