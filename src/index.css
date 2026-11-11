@@ -4363,9 +4363,32 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   box-shadow: 0 0 0 3px var(--accent-light);
 }
 
+/* Alert filters row */
+.route-alert-filter-row {
+  display: flex;
+  align-items: end;
+  gap: 16px;
+}
+.load-demo-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  margin-bottom: 4px;
+}
+
 @media (max-width: 768px) {
   .settings-field-row {
     grid-template-columns: 1fr;
+  }
+  .route-alert-filter-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .load-demo-btn {
+    width: 100%;
+    justify-content: center;
+    margin-bottom: 0;
   }
 }
 

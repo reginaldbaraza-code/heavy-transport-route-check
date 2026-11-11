@@ -15,6 +15,7 @@ import OnSiteConfirmDialog from '../components/OnSiteConfirmDialog'
 import InformationCheckedPanel from '../components/InformationCheckedPanel'
 import MonitoringControls from '../components/MonitoringControls'
 import TestScenariosDrawer from '../components/TestScenariosDrawer'
+import SourceChip from '../components/SourceChip'
 import {
   checkRoute,
   loadTestPermit,
@@ -1220,9 +1221,11 @@ function EvidenceCard({
     >
       <div className="evidence-header">
         <strong data-testid="evidence-title">{title}</strong>
-        <span className={`confidence-badge confidence-${String(item.confidence).toLowerCase()}`}>
-          {String(item.confidence).toLowerCase() === 'high' ? 'High confidence' : 'Medium confidence'}
-        </span>
+        <SourceChip
+          source={item.source}
+          retrievedAt={item.retrievedAt || retrievedAt}
+          confidence={String(item.confidence)}
+        />
       </div>
       {keepOriginalAside ? (
         <details className="evidence-original">

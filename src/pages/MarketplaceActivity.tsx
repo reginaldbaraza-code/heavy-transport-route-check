@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  AlertTriangle, BellRing, CheckCircle2, ChevronRight, CircleX, Download, History, Route,
+  AlertTriangle, BellRing, CheckCircle2, ChevronRight, CircleX, Download, History, Route, Plus,
 } from 'lucide-react'
 import PageHeader from '../components/PageHeader'
 import { useRouteMonitoring } from '../context/RouteMonitoringContext'
@@ -42,15 +42,28 @@ export default function MarketplaceActivity() {
             </button>
           ))}
         </div>
-        <label>
-          <span>Route</span>
-          <select value={routeFilter} onChange={event => setRouteFilter(event.target.value)}>
-            <option value="all">All saved checks</option>
-            {routeOptions.map(name => (
-              <option value={name} key={name}>{name}</option>
-            ))}
-          </select>
-        </label>
+        <div className="route-alert-filter-row">
+          <label>
+            <span>Route</span>
+            <select value={routeFilter} onChange={event => setRouteFilter(event.target.value)}>
+              <option value="all">All permitted routes</option>
+              {routeOptions.map(name => (
+                <option value={name} key={name}>{name}</option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className="btn-text load-demo-btn"
+            onClick={() => {
+              // Demo mode - would load sample history
+              alert('Demo history loader - would populate sample alerts for testing')
+            }}
+          >
+            <Plus size={16} />
+            Load demo history
+          </button>
+        </div>
       </div>
 
       <section className="route-alert-log">
