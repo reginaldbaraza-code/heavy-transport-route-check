@@ -87,8 +87,3 @@ export const rivers: Array<{ name: string; points: GeoPoint[] }> = [
   { name: 'Main', points: [[50.10, 8.68], [49.92, 9.16], [49.79, 9.94], [49.90, 10.68], [49.82, 11.12]] },
 ]
 
-export const regionalCities: Array<[string, number, number]> = [
-  ['Kiel', 54.32, 10.14], ['Rostock', 54.09, 12.14], ['Münster', 51.96, 7.63], ['Düsseldorf', 51.23, 6.78],
-  ['Bonn', 50.74, 7.10], ['Kassel', 51.31, 9.49], ['Erfurt', 50.98, 11.03], ['Saarbrücken', 49.24, 6.99],
-  ['Mainz', 50.00, 8.27], ['Karlsruhe', 49.01, 8.40], ['Freiburg', 48.00, 7.84], ['Regensburg', 49.02, 12.10],
-]
