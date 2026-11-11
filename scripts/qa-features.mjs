@@ -172,8 +172,10 @@ async function main() {
   await page.getByRole('button', { name: 'Expand navigation' }).click()
 
   await page.locator('.overview-mode-panel').scrollIntoViewIfNeeded()
-  await page.locator('.permit-leaflet-map.leaflet-container').first().waitFor({ timeout: 25000 })
-  const heroBadge = await page.locator('.permit-map-badge strong').first().innerText()
+  await page.locator('.permit-leaflet-map.leaflet-container').waitFor({ timeout: 25000 })
+  const demoMapCount = await page.locator('.permit-leaflet-map.leaflet-container').count()
+  record('Demo dashboard has exactly one Leaflet map', demoMapCount === 1, `count=${demoMapCount}`)
+  const heroBadge = await page.locator('.permit-map-badge strong').innerText()
   record('Homepage hero uses Demo: 4 monitored routes badge', heroBadge.includes('Demo: 4 monitored routes'), heroBadge)
   record(
     'Demo dashboard tab is selected on load',
@@ -184,9 +186,9 @@ async function main() {
     'Demo mode copy explains it is not live',
     await page.getByText(/Made-up routes and verdicts, never live, never saved/i).isVisible(),
   )
-  const osmAttr = await page.locator('.permit-leaflet-map .leaflet-control-attribution').first().innerText()
+  const osmAttr = await page.locator('.permit-leaflet-map .leaflet-control-attribution').innerText()
   record('Homepage map keeps OSM attribution', /OpenStreetMap/i.test(osmAttr), osmAttr)
-  const tileDisplay = await page.locator('.permit-leaflet-map .leaflet-tile-pane').first().evaluate(el => getComputedStyle(el).display)
+  const tileDisplay = await page.locator('.permit-leaflet-map .leaflet-tile-pane').evaluate(el => getComputedStyle(el).display)
   record('Homepage map shows tile layer', tileDisplay !== 'none', tileDisplay)
   record(
     'Homepage hero is not the illustrated Germany map',
@@ -198,7 +200,7 @@ async function main() {
     /München|Stuttgart/.test(heroCard) && !/Duisburg Logistics/.test(heroCard),
     heroCard.replace(/\s+/g, ' ').slice(0, 180),
   )
-  const tileFilter = await page.locator('.permit-leaflet-map .leaflet-tile-pane').first().evaluate(el => getComputedStyle(el).filter)
+  const tileFilter = await page.locator('.permit-leaflet-map .leaflet-tile-pane').evaluate(el => getComputedStyle(el).filter)
   record('Homepage tiles are desaturated', /grayscale/i.test(tileFilter), tileFilter)
 
   await page.getByRole('tab', { name: 'Try a sample permit' }).click()
@@ -218,6 +220,8 @@ async function main() {
   const sampleMap = page.locator('[data-permit-map="sample"]')
   await sampleMap.waitFor({ timeout: 15000 })
   await page.locator('[data-permit-map="overview"]').waitFor({ state: 'detached', timeout: 10000 }).catch(() => {})
+  const sampleMapCount = await page.locator('.permit-leaflet-map.leaflet-container').count()
+  record('Sample permit panel has exactly one Leaflet map', sampleMapCount === 1, `count=${sampleMapCount}`)
   record(
     'Sample permit panel defaults to Hamburg→Hannover',
     (await page.locator('[data-permit-map="sample"][data-selected-permit="hamburg-hannover"]').count()) > 0,

@@ -4183,24 +4183,13 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   font-weight: 600;
 }
 
-/* Overview Map with Tallies */
-.overview-map-tallies {
+/* Overview Tallies */
+.overview-tallies {
+  margin-top: 16px;
+  padding: 20px;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
-  overflow: hidden;
-  margin-bottom: 24px;
-}
-.overview-map-real {
-  position: relative;
-  border-bottom: 1px solid var(--divider);
-}
-.overview-map-real .heatmap-shell {
-  border: none;
-  border-radius: 0;
-}
-.overview-tallies {
-  padding: 20px;
 }
 .overview-tallies strong {
   display: block;

@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import LazyPermitMap from '../components/LazyPermitMap'
 import PageHeader from '../components/PageHeader'
-import OverviewMapWithTallies from '../components/OverviewMapWithTallies'
+import OverviewTallies from '../components/OverviewTallies'
 import SourceStatusPanel from '../components/SourceStatusPanel'
 import {
   defaultVehicleProfile, getRouteCheckResult, permittedRoutes,
@@ -272,6 +272,7 @@ export default function MarketplaceOverview() {
                   endpointMode="cities"
                   showLegend
                 />
+                <OverviewTallies permits={overviewPermits} />
               </div>
             </section>
 
@@ -282,8 +283,6 @@ export default function MarketplaceOverview() {
               <ArrowRight size={18} />
               <div><span>3</span><ShieldCheck size={18} /><strong>Monitor until departure</strong><p>Receive early warnings when conditions change or evidence is uncertain.</p></div>
             </section>
-
-            <OverviewMapWithTallies permits={overviewPermits} />
 
             <div className="market-two-column">
               <section className="market-section">
