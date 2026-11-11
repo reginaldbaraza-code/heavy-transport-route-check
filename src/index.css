@@ -539,7 +539,9 @@ button, a, input, select, textarea {
 .live-map-kpis { position: absolute; z-index: 450; left: 50%; bottom: 48px; display: flex; overflow: hidden; border: 1px solid rgba(0,0,0,.1); border-radius: 10px; background: rgba(10,37,64,.92); color: white; box-shadow: var(--shadow-lg); backdrop-filter: blur(12px); transform: translateX(-50%); }.live-map-kpis div { min-width: 160px; padding: 10px 13px; display: grid; grid-template-columns: 20px 1fr; align-items: center; column-gap: 4px; }.live-map-kpis div + div { border-left: 1px solid rgba(255,255,255,.1); }.live-map-kpis svg { grid-row: 1 / 3; color: #f5c518; }.live-map-kpis span { color: rgba(255,255,255,.72); font-size: 14px; }.live-map-kpis strong { font-size: 14px; }
 
 @media (max-width: 1280px) {
-  /* Park KPIs under the Layers panel (not behind it) so mid-width maps clear OSM attribution. */
+  /* Park KPIs under the Layers panel (not behind it) so mid-width maps clear OSM attribution.
+     Pin with top+bottom (not max-height alone): top offset + calc(100% - Npx) only left ~N-top
+     px above the scale bar, which collided at 1280×800. */
   .live-map-end-stack {
     display: flex;
     flex-direction: column;
@@ -548,12 +550,12 @@ button, a, input, select, textarea {
     z-index: 500;
     top: 14px;
     right: 14px;
+    /* Clear MapLibre scale / zoom / attribution (and KPI drop-shadow) in the bottom-right. */
+    bottom: 188px;
     width: 290px;
     max-width: calc(100% - 28px);
-    /* Leave room for legend / zoom / scale / attribution along the bottom edge. */
-    max-height: calc(100% - 160px);
-    overflow-x: hidden;
-    overflow-y: auto;
+    max-height: none;
+    overflow: hidden;
     overscroll-behavior: contain;
     pointer-events: none;
   }
@@ -569,7 +571,8 @@ button, a, input, select, textarea {
     z-index: auto;
   }
   .live-map-end-stack .live-layer-panel {
-    flex: 1 1 auto;
+    /* Shrink to scroll when needed; do not stretch a collapsed header into empty space. */
+    flex: 0 1 auto;
     min-height: 48px;
     overflow: auto;
   }
@@ -577,11 +580,33 @@ button, a, input, select, textarea {
     flex: 0 0 auto;
     flex-direction: column;
     max-height: none;
+    overflow: visible;
     align-self: stretch;
+    /* Soften the wide floating shadow so it cannot veil the scale bar below. */
+    box-shadow: var(--shadow-md);
   }
+  /* Compact single-line KPI rows so all three stay readable on short stages. */
   .live-map-end-stack .live-map-kpis div {
     min-width: 0;
+    min-height: 0;
     padding: 6px 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    grid-template-columns: none;
+  }
+  .live-map-end-stack .live-map-kpis svg {
+    grid-row: auto;
+    flex: none;
+  }
+  .live-map-end-stack .live-map-kpis span {
+    flex: 1 1 auto;
+    min-width: 0;
+    line-height: 1.2;
+  }
+  .live-map-end-stack .live-map-kpis strong {
+    flex: none;
+    line-height: 1.2;
   }
   .live-map-end-stack .live-map-kpis div + div {
     border-left: 0;
@@ -602,7 +627,7 @@ button, a, input, select, textarea {
   .app-toast { top: 68px; left: 12px; right: 12px; }
   .live-map-header { align-items: flex-start; }.live-map-header-actions button:last-child { display: none; }.live-map-title { align-items: flex-start; flex-direction: column; gap: 4px; }
   .live-map-workspace { grid-template-columns: 1fr; }.live-event-panel { display: none; }
-  .live-map-end-stack { right: 8px; top: 8px; width: min(240px, calc(100% - 16px)); max-height: calc(100% - 160px); }
+  .live-map-end-stack { right: 8px; top: 8px; bottom: 200px; width: min(240px, calc(100% - 16px)); max-height: none; }
   .route-page { padding: 18px 14px 30px; }.route-mode-switch { grid-template-columns: 1fr; }.route-result-top { flex-direction: column; }.route-stat-grid { grid-template-columns: 1fr; }
   .transport-facts { grid-template-columns: 1fr; }.transport-facts div + div { border-top: 1px solid var(--divider); border-left: 0; }.transport-workflow { grid-template-columns: 1fr; }.transport-workflow > svg { display: none; }
   .verification-evidence { grid-template-columns: 1fr; }.verification-evidence > div + div { border-top: 1px solid var(--divider); border-left: 0; }.verification-action { align-items: stretch; flex-direction: column; }.verification-action button { justify-content: center; }.monitoring-timeline { grid-template-columns: 1fr; gap: 8px; }.monitoring-timeline > i { width: 1px; height: 8px; margin: -5px 0 -5px 12px; }
@@ -3034,9 +3059,12 @@ h4 { font-size: 18px !important; line-height: 1.35 !important; }
     top: 8px !important;
     right: 8px !important;
     left: auto !important;
+    /* Clear legend (bottom-left) plus scale/attribution on short mobile stages. */
+    bottom: 200px !important;
     width: min(220px, calc(100% - 16px)) !important;
     max-width: calc(100% - 16px) !important;
-    max-height: calc(100% - 200px) !important;
+    max-height: none !important;
+    overflow: hidden !important;
   }
 
   .live-map-end-stack .live-layer-panel {
@@ -3058,12 +3086,14 @@ h4 { font-size: 18px !important; line-height: 1.35 !important; }
   .live-map-end-stack .live-map-kpis {
     display: flex !important;
     flex-direction: column !important;
+    flex: 0 0 auto !important;
     bottom: auto !important;
     top: auto !important;
     right: auto !important;
     left: auto !important;
     transform: none !important;
     max-width: none !important;
+    overflow: visible !important;
   }
   
   .live-event-list {
@@ -3675,7 +3705,8 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
     max-width: min(180px, calc(100% - 140px));
   }
   .live-map-end-stack {
-    max-height: calc(100% - 160px);
+    /* Keep the top+bottom pin from the stack rule; do not reintroduce max-height. */
+    max-height: none;
   }
 }
 .heatmap-zoom { overflow: hidden; border-radius: var(--r-sm); }
@@ -3754,8 +3785,8 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   .result-actions button, .result-actions a, .history-export-actions button { width: 100%; justify-content: center; }
   .app-page, .route-page, .market-page, .jobs-page { overflow-x: clip; padding-left: 16px; padding-right: 16px; }
   .live-map-legend { max-width: min(200px, calc(100% - 110px)); left: 8px; bottom: 120px; transform: none; }
-  .live-map-end-stack { display: flex; top: 8px; right: 8px; left: auto; width: min(220px, calc(100% - 16px)); max-height: calc(100% - 200px); }
-  .live-map-end-stack .live-map-kpis { display: flex; max-width: none; left: auto; right: auto; top: auto; bottom: auto; transform: none; }
+  .live-map-end-stack { display: flex; top: 8px; right: 8px; left: auto; bottom: 200px; width: min(220px, calc(100% - 16px)); max-height: none; overflow: hidden; }
+  .live-map-end-stack .live-map-kpis { display: flex; flex: 0 0 auto; max-width: none; left: auto; right: auto; top: auto; bottom: auto; transform: none; overflow: visible; }
   .results-map, .route-map-gl { border-radius: var(--r-md); }
   .transport-readiness-copy { padding: 20px; }
 }
