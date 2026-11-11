@@ -6,6 +6,15 @@ import {
 } from 'lucide-react'
 import type { RouteMapHandle } from '../components/RouteMapGL'
 import { Toast } from '../components/Feedback'
+import StatusTimeline from '../components/StatusTimeline'
+import TakeActionSheet from '../components/TakeActionSheet'
+import EscalateDialog from '../components/EscalateDialog'
+import HoldDepartureDialog from '../components/HoldDepartureDialog'
+import RequestOnSiteCheckDialog from '../components/RequestOnSiteCheckDialog'
+import OnSiteConfirmDialog from '../components/OnSiteConfirmDialog'
+import InformationCheckedPanel from '../components/InformationCheckedPanel'
+import MonitoringControls from '../components/MonitoringControls'
+import TestScenariosDrawer from '../components/TestScenariosDrawer'
 import {
   checkRoute,
   loadTestPermit,
@@ -92,6 +101,16 @@ export default function RouteIntelligencePolished() {
   clearanceConfirmedRef.current = clearanceConfirmed
   clearanceByRef.current = clearanceBy
   confirmedAtRef.current = confirmedAt
+
+  // New dialog state
+  const [showTakeAction, setShowTakeAction] = useState(false)
+  const [showEscalate, setShowEscalate] = useState(false)
+  const [showHoldDeparture, setShowHoldDeparture] = useState(false)
+  const [showRequestOnSite, setShowRequestOnSite] = useState(false)
+  const [showOnSiteConfirm, setShowOnSiteConfirm] = useState(false)
+  const [showInfoChecked, setShowInfoChecked] = useState(false)
+  const [showTestScenarios, setShowTestScenarios] = useState(false)
+  const [monitoring, setMonitoring] = useState(false)
 
   const vehicle = {
     width: parseFloat(vehicleWidth) || 0,
@@ -893,9 +912,25 @@ export default function RouteIntelligencePolished() {
                   )
                 })()}
               </div>
-              <button type="button" className="btn-text" onClick={resetFlow}>
-                Check another route
-              </button>
+              {/* Dynamic CTA based on verdict */}
+              {displayed.verdict === 'READY' && (
+                <button type="button" className="btn-primary verdict-cta" onClick={() => setToast('Proceed with departure')}>
+                  <CheckCircle2 size={16} />
+                  Proceed with departure
+                </button>
+              )}
+              {displayed.verdict === 'VERIFY' && (
+                <button type="button" className="btn-primary verdict-cta" onClick={() => setShowRequestOnSite(true)}>
+                  <AlertTriangle size={16} />
+                  Verify before departure
+                </button>
+              )}
+              {displayed.verdict === 'HOLD' && (
+                <button type="button" className="btn-primary verdict-cta" onClick={() => setShowTakeAction(true)}>
+                  <CircleX size={16} />
+                  Take action
+                </button>
+              )}
             </div>
 
             <div className="result-actions">
@@ -968,6 +1003,27 @@ export default function RouteIntelligencePolished() {
               </div>
 
               <div className="results-sidebar">
+                {/* Status Timeline */}
+                <StatusTimeline result={displayed} permitNumber={permitNumber} monitoring={monitoring} />
+
+                {/* Monitoring Controls */}
+                {loadedJob.current && (
+                  <MonitoringControls
+                    monitoring={monitoring}
+                    onStop={() => setMonitoring(false)}
+                    onResume={() => setMonitoring(true)}
+                    departureTime={plannedDeparture ? fromLocalInput(plannedDeparture) : undefined}
+                    nextCheckIn={jobInterval}
+                  />
+                )}
+
+                {/* Information Checked Panel */}
+                <InformationCheckedPanel
+                  result={displayed}
+                  expanded={showInfoChecked}
+                  onToggle={() => setShowInfoChecked(!showInfoChecked)}
+                />
+
                 <div className="results-summary">
                   <h3>Route details</h3>
                   <div className="summary-grid">
@@ -1074,6 +1130,64 @@ export default function RouteIntelligencePolished() {
       </div>
 
       {toast && <Toast message={toast} tone="info" onClose={() => setToast('')} />}
+
+      {/* Dialogs */}
+      <TakeActionSheet
+        open={showTakeAction}
+        onClose={() => setShowTakeAction(false)}
+        onEscalate={() => {
+          setShowTakeAction(false)
+          setShowEscalate(true)
+        }}
+        onHoldDeparture={() => {
+          setShowTakeAction(false)
+          setShowHoldDeparture(true)
+        }}
+      />
+
+      <EscalateDialog
+        open={showEscalate}
+        onClose={() => setShowEscalate(false)}
+        onConfirm={() => {
+          setShowEscalate(false)
+          setToast('Escalation sent to transport manager')
+        }}
+        routeName={result ? `${result.route.origin} → ${result.route.destination}` : undefined}
+      />
+
+      <HoldDepartureDialog
+        open={showHoldDeparture}
+        onClose={() => setShowHoldDeparture(false)}
+        onConfirm={() => {
+          setShowHoldDeparture(false)
+          setToast('Departure placed on hold')
+        }}
+        routeName={result ? `${result.route.origin} → ${result.route.destination}` : undefined}
+      />
+
+      <RequestOnSiteCheckDialog
+        open={showRequestOnSite}
+        onClose={() => setShowRequestOnSite(false)}
+        onConfirm={(note) => {
+          setToast(`On-site check requested${note ? ': ' + note : ''}`)
+        }}
+      />
+
+      <OnSiteConfirmDialog
+        open={showOnSiteConfirm}
+        onClose={() => setShowOnSiteConfirm(false)}
+        onConfirm={(outcome, note, photo) => {
+          setToast(`Status confirmed as ${outcome}${note ? ': ' + note : ''}`)
+        }}
+      />
+
+      <TestScenariosDrawer
+        open={showTestScenarios}
+        onClose={() => setShowTestScenarios(false)}
+        onSimulateClosure={() => setToast('Closure simulated (demo only)')}
+        onSimulateRoadwork={() => setToast('Roadworks added (demo only)')}
+        onClearSimulations={() => setToast('Simulations cleared')}
+      />
     </div>
   )
 }

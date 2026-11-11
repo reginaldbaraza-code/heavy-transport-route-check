@@ -97,9 +97,34 @@ export default function Settings() {
               <div className="settings-form">
                 <label className="settings-field">
                   <span>Organisation name</span>
-                  <small>Shown in the header. Stored only in this browser.</small>
-                  <input value={profile.orgName} onChange={event => { setProfile(current => ({ ...current, orgName: event.target.value })); setSaved(false) }} placeholder="e.g. Nordhauler GmbH" aria-invalid={Boolean(error && !profile.orgName.trim())} />
+                  <small>Your registered operator or legal entity name.</small>
+                  <input value={profile.orgName} onChange={event => { setProfile(current => ({ ...current, orgName: event.target.value })); setSaved(false) }} placeholder="e.g. RheinLift Logistics" aria-invalid={Boolean(error && !profile.orgName.trim())} />
                 </label>
+                <label className="settings-field">
+                  <span>Website</span>
+                  <small>Use the complete public URL, including https://.</small>
+                  <input value={profile.website} onChange={event => { setProfile(current => ({ ...current, website: event.target.value })); setSaved(false) }} placeholder="https://example.com" type="url" />
+                </label>
+                <label className="settings-field">
+                  <span>Description</span>
+                  <small>Describe the operator role in heavy-transport dispatch.</small>
+                  <textarea value={profile.description} onChange={event => { setProfile(current => ({ ...current, description: event.target.value.slice(0, 500) })); setSaved(false) }} placeholder="e.g. Heavy-haul logistics operator coordinating permitted oversized and overweight transports across Germany." rows={3} maxLength={500} />
+                  <small>{profile.description.length} / 500</small>
+                </label>
+                <div className="settings-field-row">
+                  <label className="settings-field">
+                    <span>Organisation type</span>
+                    <input value={profile.orgType} onChange={event => { setProfile(current => ({ ...current, orgType: event.target.value })); setSaved(false) }} placeholder="Heavy-haul operator" />
+                  </label>
+                  <label className="settings-field">
+                    <span>Country</span>
+                    <select value={profile.country} onChange={event => { setProfile(current => ({ ...current, country: event.target.value })); setSaved(false) }}>
+                      <option value="Germany">Germany</option>
+                      <option value="Austria">Austria</option>
+                      <option value="Switzerland">Switzerland</option>
+                    </select>
+                  </label>
+                </div>
                 <label className="settings-field">
                   <span>Dispatcher name</span>
                   <small>Used as the default name on on-site confirmations.</small>
