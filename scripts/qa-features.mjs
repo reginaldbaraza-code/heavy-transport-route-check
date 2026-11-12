@@ -1157,6 +1157,95 @@ async function main() {
     sourcesText.replace(/\s+/g, ' ').slice(0, 400),
   )
 
+  // Dark-mode HOLD banner title must stay ≥4.5:1 (safety-critical).
+  const darkContext = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    colorScheme: 'dark',
+  })
+  const darkPage = await darkContext.newPage()
+  await darkPage.emulateMedia({ colorScheme: 'dark' })
+  await darkPage.goto(base + '/route-checks', { waitUntil: 'domcontentloaded', timeout: 60000 })
+  await darkPage.getByRole('heading', { name: /Route check/i }).first().waitFor({ timeout: 15000 }).catch(() => {})
+  const darkSkip = darkPage.getByRole('button', { name: /skip/i })
+  if (await darkSkip.count()) await darkSkip.first().click({ timeout: 2000 }).catch(() => {})
+  const darkLater = darkPage.getByRole('button', { name: /later|not now|continue without/i })
+  if (await darkLater.count()) await darkLater.first().click({ timeout: 1500 }).catch(() => {})
+  await darkPage.getByRole('button', { name: /show sample permits/i }).click({ timeout: 15000 })
+  await darkPage.getByRole('button', { name: /Simulated HOLD — A3 residual width/ }).click({ timeout: 15000 })
+  await fillPlannedDeparture(darkPage)
+  await darkPage.getByRole('button', { name: 'Check route' }).click()
+  await darkPage.locator('.verdict-banner.verdict-red').waitFor({ timeout: 90000 })
+  const holdContrast = await darkPage.evaluate(() => {
+    const parse = (input) => {
+      if (!input || input === 'transparent') return null
+      const m = String(input).match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)/i)
+      if (!m) return null
+      const a = m[4] === undefined ? 1 : Number(m[4])
+      if (a <= 0.01) return null
+      return { r: Number(m[1]), g: Number(m[2]), b: Number(m[3]), a }
+    }
+    const luminance = (r, g, b) => {
+      const toLin = (c) => {
+        const s = c / 255
+        return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+      }
+      return 0.2126 * toLin(r) + 0.7152 * toLin(g) + 0.0722 * toLin(b)
+    }
+    const ratio = (fg, bg) => {
+      const a = fg.a ?? 1
+      const blended = {
+        r: fg.r * a + bg.r * (1 - a),
+        g: fg.g * a + bg.g * (1 - a),
+        b: fg.b * a + bg.b * (1 - a),
+      }
+      const L1 = luminance(blended.r, blended.g, blended.b)
+      const L2 = luminance(bg.r, bg.g, bg.b)
+      return (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05)
+    }
+    const effectiveBg = (el) => {
+      let node = el
+      while (node && node !== document.documentElement) {
+        const bg = parse(getComputedStyle(node).backgroundColor)
+        if (bg && bg.a >= 0.85) return bg
+        node = node.parentElement
+      }
+      return parse(getComputedStyle(document.body).backgroundColor) || { r: 0, g: 0, b: 0, a: 1 }
+    }
+    const banner = document.querySelector('.verdict-banner.verdict-red')
+    const title = banner?.querySelector('h2')
+    const pill = banner?.querySelector('.verdict-label')
+    const button = document.querySelector('.btn-primary')
+    const measure = (el) => {
+      if (!el) return null
+      const fg = parse(getComputedStyle(el).color)
+      const bg = effectiveBg(el)
+      if (!fg || !bg) return null
+      return Number(ratio(fg, bg).toFixed(2))
+    }
+    return {
+      title: measure(title),
+      pill: measure(pill),
+      button: measure(button),
+      titleText: (title?.textContent || '').trim().slice(0, 80),
+    }
+  })
+  record(
+    'Dark-mode HOLD banner title contrast ≥ 4.5:1',
+    Number(holdContrast.title) >= 4.5,
+    JSON.stringify(holdContrast),
+  )
+  record(
+    'Dark-mode Hold departure pill contrast ≥ 4.5:1',
+    holdContrast.pill == null || Number(holdContrast.pill) >= 4.5,
+    `pill=${holdContrast.pill}`,
+  )
+  record(
+    'Dark-mode primary button contrast ≥ 4.5:1',
+    holdContrast.button == null || Number(holdContrast.button) >= 4.5,
+    `button=${holdContrast.button}`,
+  )
+  await darkContext.close()
+
   await browser.close()
   preview.kill('SIGTERM')
 
