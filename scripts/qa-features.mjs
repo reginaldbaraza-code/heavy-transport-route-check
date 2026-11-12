@@ -586,6 +586,30 @@ async function main() {
     JSON.stringify(mainLandmark),
   )
 
+  // Lorry parking must span fetched roads (not A1-only from a naive flatten+slice cap).
+  const parkingFeed = await page.request.get(base + '/api/autobahn-events').then(res => res.json()).catch(() => null)
+  const parkingTitles = Array.isArray(parkingFeed?.parking) ? parkingFeed.parking.map(item => String(item?.title || '')) : []
+  const parkingRoads = [...new Set(parkingTitles.map(title => (title.match(/^A\d+/) || [])[0]).filter(Boolean))]
+  const parkingInBavaria = Array.isArray(parkingFeed?.parking)
+    ? parkingFeed.parking.filter(item => {
+      const lat = Number(item?.lat)
+      const lng = Number(item?.lng)
+      return Number.isFinite(lat) && Number.isFinite(lng)
+        && Math.abs(lat - 48.14) < 1.15
+        && Math.abs(lng - 11.58) < 1.55
+    }).length
+    : 0
+  record(
+    'Autobahn parking feed covers more than one road',
+    parkingTitles.length > 0 && parkingRoads.length > 1,
+    JSON.stringify({ count: parkingTitles.length, roads: parkingRoads, parkingInBavaria }),
+  )
+  record(
+    'Autobahn parking feed includes Bavaria-scoped sites',
+    parkingInBavaria > 0,
+    JSON.stringify({ parkingInBavaria, roads: parkingRoads }),
+  )
+
   // Map KPI strip must track the same filtered set as the list/map (scope + layers),
   // not the raw national feed total.
   await page.locator('[data-testid="corridor-map-kpis"]').waitFor({ timeout: 20000 })
