@@ -866,6 +866,92 @@ async function main() {
   await page.locator('[data-testid="vehicle-width"]').waitFor({ timeout: 10000 })
   const holdWidth = await page.locator('[data-testid="vehicle-width"]').inputValue()
   record('Scenario dims populate immediately', holdWidth === '3.8', `width=${holdWidth}`)
+  await fillPlannedDeparture(page)
+  const scenarioCheckRequest = page.waitForRequest(
+    req => req.url().includes('/api/check-route') && req.method() === 'POST',
+    { timeout: 30000 },
+  )
+  await page.getByRole('button', { name: 'Check route' }).click()
+  const scenarioCheckPost = await scenarioCheckRequest.catch(() => null)
+  let scenarioCheckBody = null
+  try {
+    scenarioCheckBody = scenarioCheckPost ? scenarioCheckPost.postDataJSON() : null
+  } catch {
+    scenarioCheckBody = null
+  }
+  await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
+  const scenarioHoldBanner = await page.locator('.verdict-banner').innerText()
+  const scenarioSimulated = await page.locator('.scenario-banner').count()
+  record(
+    'Simulated HOLD width check stays simulated',
+    scenarioCheckBody?.scenario === 'hold-width'
+      && /HOLD/i.test(scenarioHoldBanner)
+      && scenarioSimulated > 0,
+    JSON.stringify({
+      scenario: scenarioCheckBody?.scenario,
+      banner: scenarioHoldBanner.replace(/\s+/g, ' ').slice(0, 160),
+      simulatedBanner: scenarioSimulated,
+    }),
+  )
+  await page.getByRole('button', { name: 'Save as job' }).click()
+  await page.getByRole('button', { name: 'Save job' }).click()
+  const scenarioJobMeta = await page.evaluate(() => {
+    const jobs = window.__HT_TEST__?.getJobs() || []
+    const match = jobs.find(job => job.scenario === 'hold-width' || /SCENARIO-HOLD-WIDTH|residual width|Duisburg/i.test(`${job.name} ${job.permitNumber}`))
+    return match
+      ? { id: match.id, scenario: match.scenario || null, lastVerdict: match.lastVerdict || null, source: match.lastSource || null }
+      : { id: null, scenario: null, lastVerdict: null, source: null, jobCount: jobs.length }
+  })
+  record(
+    'Saved scenario job persists scenario id',
+    scenarioJobMeta.scenario === 'hold-width',
+    JSON.stringify(scenarioJobMeta),
+  )
+  if (scenarioJobMeta.id) {
+    await page.goto(base + '/jobs', { waitUntil: 'domcontentloaded' })
+    const scenarioRerunRequest = page.waitForRequest(
+      req => req.url().includes('/api/check-route') && req.method() === 'POST',
+      { timeout: 30000 },
+    )
+    await page.locator(`[data-job-id="${scenarioJobMeta.id}"]`).getByRole('button', { name: /Re-run check/i }).click()
+    await page.waitForURL(/route-checks\?.*job=/, { timeout: 15000 })
+    const scenarioRerunPost = await scenarioRerunRequest.catch(() => null)
+    let scenarioRerunBody = null
+    try {
+      scenarioRerunBody = scenarioRerunPost ? scenarioRerunPost.postDataJSON() : null
+    } catch {
+      scenarioRerunBody = null
+    }
+    await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
+    const rerunBanner = await page.locator('.verdict-banner').innerText()
+    const rerunSimulated = await page.locator('.scenario-banner').count()
+    const rerunSource = await page.evaluate(() => {
+      const jobs = window.__HT_TEST__?.getJobs() || []
+      const job = jobs.find(item => item.scenario === 'hold-width')
+      return {
+        lastVerdict: job?.lastVerdict || null,
+        lastSource: job?.lastSource || null,
+        scenario: job?.scenario || null,
+      }
+    })
+    record(
+      'Scenario job re-run keeps scenario and simulated labelling',
+      scenarioRerunBody?.scenario === 'hold-width'
+        && /HOLD/i.test(rerunBanner)
+        && rerunSimulated > 0
+        && /Simulated/i.test(String(rerunSource.lastSource || ''))
+        && rerunSource.lastVerdict === 'HOLD',
+      JSON.stringify({
+        postScenario: scenarioRerunBody?.scenario || null,
+        banner: rerunBanner.replace(/\s+/g, ' ').slice(0, 160),
+        simulatedBanner: rerunSimulated,
+        ...rerunSource,
+      }),
+    )
+  } else {
+    record('Scenario job re-run keeps scenario and simulated labelling', false, 'scenario job not saved')
+  }
+
   await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded' })
   await page.getByRole('button', { name: /show sample permits/i }).click()
   await page.getByRole('button', { name: /Simulated VERIFY/ }).click()
@@ -981,16 +1067,22 @@ async function main() {
   const jobVisible = await page.locator('.job-row').count()
   record('Jobs list shows saved job', jobVisible >= 1, `jobs=${jobVisible}`)
 
-  const lastCheckedBefore = await page.evaluate(() => window.__HT_TEST__?.getJobs()?.[0]?.lastCheckedAt || '')
-  const jobVehicleBefore = await page.evaluate(() => {
-    const job = window.__HT_TEST__?.getJobs()?.[0]
-    return job?.vehicle || null
+  // Prefer the live (non-scenario) job — scenario jobs are covered separately above.
+  const liveJobMeta = await page.evaluate(() => {
+    const jobs = window.__HT_TEST__?.getJobs() || []
+    const job = jobs.find(item => !item.scenario) || jobs[0]
+    return job
+      ? { id: job.id, lastCheckedAt: job.lastCheckedAt || '', vehicle: job.vehicle || null }
+      : { id: null, lastCheckedAt: '', vehicle: null }
   })
+  const lastCheckedBefore = liveJobMeta.lastCheckedAt
+  const jobVehicleBefore = liveJobMeta.vehicle
   const jobRerunRequest = page.waitForRequest(
     req => req.url().includes('/api/check-route') && req.method() === 'POST',
     { timeout: 30000 },
   )
-  await page.getByRole('button', { name: /Re-run check/i }).click()
+  if (!liveJobMeta.id) throw new Error('No live job found for re-run QA')
+  await page.locator(`[data-job-id="${liveJobMeta.id}"]`).getByRole('button', { name: /Re-run check/i }).click()
   await page.waitForURL(/route-checks\?.*job=/, { timeout: 15000 })
   const jobRerunPost = await jobRerunRequest.catch(() => null)
   let jobRerunBody = null
@@ -1007,6 +1099,7 @@ async function main() {
     && jobRerunBody.permittedRoads.every(road => /^A\d{1,3}$/i.test(road))
     && jobRerunBody.validFrom
     && jobRerunBody.validUntil
+    && !jobRerunBody.scenario
   )
   record(
     'Job re-run POST sends clean corridor, roads, and validity window',
@@ -1016,6 +1109,7 @@ async function main() {
       permittedRoads: jobRerunBody?.permittedRoads,
       validFrom: jobRerunBody?.validFrom,
       validUntil: jobRerunBody?.validUntil,
+      scenario: jobRerunBody?.scenario || null,
       travelFrom: jobRerunBody?.travelFrom,
       travelTo: jobRerunBody?.travelTo,
     }),
@@ -1028,15 +1122,15 @@ async function main() {
   } else {
     await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
   }
-  const rerunVehicleMatch = await page.evaluate(expected => {
+  const rerunVehicleMatch = await page.evaluate(({ expected, jobId }) => {
     let history = []
     try {
       history = JSON.parse(localStorage.getItem('htr-route-check-history') || '[]')
     } catch {
       history = []
     }
-    const withJob = history.filter(item => item.jobId)
-    const latest = withJob[0] || history[0]
+    const withJob = history.filter(item => item.jobId === jobId)
+    const latest = withJob[0] || history.find(item => item.jobId) || history[0]
     const vehicle = latest?.vehicle || null
     const match = Boolean(
       expected
@@ -1051,38 +1145,43 @@ async function main() {
       && Number(vehicle.height) === 4
       && Number(vehicle.length) === 25
       && Number(vehicle.grossWeight) === 52
-    return { match, staleDefaults, expected, vehicle }
-  }, jobVehicleBefore)
+    return { match, staleDefaults, expected, vehicle, jobId }
+  }, { expected: jobVehicleBefore, jobId: liveJobMeta.id })
   record(
     'Job re-run history vehicle matches saved job (not form defaults)',
     Boolean(rerunVehicleMatch.match) && !rerunVehicleMatch.staleDefaults,
     JSON.stringify(rerunVehicleMatch),
   )
   await page.goto(base + '/jobs', { waitUntil: 'domcontentloaded' })
-  await page.locator('[data-testid="job-last-check"]').waitFor({ timeout: 15000 })
-  const lastCheckAfter = await page.evaluate(() => {
-    const job = window.__HT_TEST__?.getJobs()?.[0]
-    return { lastCheckedAt: job?.lastCheckedAt || '', label: document.querySelector('[data-testid="job-last-check"]')?.textContent || '' }
-  })
+  await page.locator(`[data-job-id="${liveJobMeta.id}"] [data-testid="job-last-check"]`).waitFor({ timeout: 15000 })
+  const lastCheckAfter = await page.evaluate(jobId => {
+    const job = (window.__HT_TEST__?.getJobs() || []).find(item => item.id === jobId)
+    const row = document.querySelector(`[data-job-id="${jobId}"]`)
+    return {
+      lastCheckedAt: job?.lastCheckedAt || '',
+      label: row?.querySelector('[data-testid="job-last-check"]')?.textContent || '',
+    }
+  }, liveJobMeta.id)
   const lastCheckUpdated = Boolean(lastCheckAfter.lastCheckedAt)
     && lastCheckAfter.lastCheckedAt !== lastCheckedBefore
     && /Just now/i.test(lastCheckAfter.label)
   record('Jobs last-check updates immediately after re-run', lastCheckUpdated, JSON.stringify({ lastCheckedBefore, ...lastCheckAfter }))
 
-  const hookResult = await page.evaluate(async () => {
+  const hookResult = await page.evaluate(async jobId => {
     const jobs = window.__HT_TEST__?.getJobs() || []
-    if (!jobs[0]) return { ok: false, reason: 'no job' }
-    window.__HT_TEST__.simulateVerdictChange(jobs[0].id, 'HOLD')
+    const job = jobs.find(item => item.id === jobId) || jobs[0]
+    if (!job) return { ok: false, reason: 'no job' }
+    window.__HT_TEST__.simulateVerdictChange(job.id, 'HOLD')
     await new Promise(resolve => setTimeout(resolve, 200))
     const alerts = window.__HT_TEST__.getAlerts()
     return {
       ok: true,
-      jobId: jobs[0].id,
+      jobId: job.id,
       alertCount: alerts.length,
       holdAlert: alerts.some(alert => /HOLD/.test(alert.change) || alert.severity === 'HOLD'),
       unread: alerts.filter(alert => alert.status === 'New').length,
     }
-  })
+  }, liveJobMeta.id)
   record('Monitoring test hook created HOLD alert', Boolean(hookResult.ok && hookResult.holdAlert), JSON.stringify(hookResult))
 
   await page.reload({ waitUntil: 'domcontentloaded' })

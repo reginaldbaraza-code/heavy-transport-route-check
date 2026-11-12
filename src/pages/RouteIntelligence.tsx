@@ -117,6 +117,7 @@ export default function RouteIntelligencePolished() {
     bridgeClearanceConfirmed?: boolean
     clearanceConfirmedBy?: string
     confirmedAt?: string
+    scenario?: string
   } | null>(null)
   const [activePermitId, setActivePermitId] = useState<string | null>(null)
   const [clearanceConfirmed, setClearanceConfirmed] = useState(false)
@@ -228,6 +229,7 @@ export default function RouteIntelligencePolished() {
       bridgeClearanceConfirmed?: boolean
       clearanceConfirmedBy?: string
       confirmedAt?: string
+      scenario?: string
     } | null,
   ) => {
     const corridor = sanitizeCorridor(
@@ -255,6 +257,7 @@ export default function RouteIntelligencePolished() {
       bridgeClearanceConfirmed: metadata?.bridgeClearanceConfirmed ?? permit?.bridgeClearanceConfirmed,
       clearanceConfirmedBy: metadata?.clearanceConfirmedBy || permit?.clearanceConfirmedBy,
       confirmedAt: metadata?.confirmedAt || permit?.confirmedAt,
+      scenario: metadata?.scenario || permit?.scenario,
     }
   }
 
@@ -365,9 +368,11 @@ export default function RouteIntelligencePolished() {
         confirmedAt: permitOverride
           ? (metadata?.confirmedAt || permitOverride.confirmedAt)
           : (metadata?.confirmedAt || confirmedAt || undefined),
-        scenario: activePermit?.scenario,
+        // Prefer the active sample permit; fall back to job/meta so re-runs keep the scenario.
+        scenario: activePermit?.scenario || metadata?.scenario || remembered?.scenario,
         acknowledgements: acks,
       })
+      const scenarioId = activePermit?.scenario || metadata?.scenario || remembered?.scenario
       lastPermitMeta.current = {
         ...(lastPermitMeta.current || {}),
         corridor: corridor || lastPermitMeta.current?.corridor,
@@ -377,6 +382,7 @@ export default function RouteIntelligencePolished() {
         travelFrom,
         travelTo,
         permitNumber: permit,
+        scenario: scenarioId || lastPermitMeta.current?.scenario,
       }
       setResult(checkResult)
       setActiveLayer('roadworks')
@@ -409,6 +415,8 @@ export default function RouteIntelligencePolished() {
       // Create alert for HOLD verdict on manual checks (not from jobs)
       if (!loadedJob.current && checkResult.verdict === 'HOLD' && history.alertEligible) {
         const isDemo = activePermit?.kind === 'scenario'
+          || Boolean(activePermit?.scenario || metadata?.scenario || lastPermitMeta.current?.scenario)
+          || checkResult.mode === 'simulated'
         addAlert({
           runAt,
           routeId: history.id,
@@ -437,6 +445,8 @@ export default function RouteIntelligencePolished() {
           validUntil,
           travelFrom,
           travelTo,
+          // Preserve simulated scenario across job updates from re-runs.
+          scenario: scenarioId || getJob(loadedJob.current)?.scenario,
           siteAcknowledgements: acks,
         })
       }
@@ -732,6 +742,8 @@ export default function RouteIntelligencePolished() {
     if (!gpxContent) return
     const name = jobName.trim() || defaultJobName(routeFile, result?.route.origin, result?.route.destination, permitNumber)
     const meta = lastPermitMeta.current
+    const activePermit = activePermitId ? testPermits.find(item => item.id === activePermitId) : undefined
+    const scenario = meta?.scenario || activePermit?.scenario
     const corridor = sanitizeCorridor(meta?.corridor, meta?.permittedRoads, result?.route.corridor)
     const roads = extractPermittedRoads(corridor, meta?.permittedRoads)
     const saved = saveJob({
@@ -747,6 +759,7 @@ export default function RouteIntelligencePolished() {
       validUntil: meta?.validUntil,
       travelFrom: meta?.travelFrom || result?.route.origin,
       travelTo: meta?.travelTo || result?.route.destination,
+      scenario,
       vehicle,
       plannedDeparture: fromLocalInput(plannedDeparture),
       monitorIntervalMinutes: jobInterval || prefs.intervalMinutes,
