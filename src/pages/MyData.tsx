@@ -90,7 +90,7 @@ export default function MyData() {
         ].map((stat) => {
           const Icon = stat.icon
           return (
-            <div key={stat.label} className="metric-card bg-white rounded-xl border border-[var(--border)] p-4">
+            <div key={stat.label} className="metric-card bg-[var(--bg-card)] rounded-xl border border-[var(--border)] p-4">
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm font-medium text-[var(--muted-foreground)] mb-1">{stat.label}</p>
@@ -140,7 +140,7 @@ export default function MyData() {
       )}
 
       {/* Dataset management table */}
-      <div className="data-table-shell bg-white rounded-xl border border-[var(--border)] overflow-hidden mb-6">
+      <div className="data-table-shell bg-[var(--bg-card)] rounded-xl border border-[var(--border)] overflow-hidden mb-6">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
           <h2 className="font-bold text-[var(--foreground)]">Published Datasets</h2>
           <span className="text-sm text-[var(--muted-foreground)]">{datasets.length} total</span>
@@ -222,7 +222,7 @@ export default function MyData() {
       </div>
 
       {/* Pending access requests */}
-      <div className="data-table-shell bg-white rounded-xl border border-[var(--border)] overflow-hidden">
+      <div className="data-table-shell bg-[var(--bg-card)] rounded-xl border border-[var(--border)] overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
           <div>
             <h2 className="font-bold text-[var(--foreground)]">Pending Access Requests</h2>

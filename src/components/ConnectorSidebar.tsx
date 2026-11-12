@@ -24,7 +24,7 @@ const provideNav = [
 
 export default function ConnectorSidebar() {
   return (
-    <aside className="connector-sidebar w-64 flex-shrink-0 bg-white border-r border-[var(--border)] flex flex-col overflow-y-auto">
+    <aside className="connector-sidebar w-64 flex-shrink-0 bg-[var(--bg-card)] border-r border-[var(--border)] flex flex-col overflow-y-auto">
       <div className="connector-sidebar-brand flex items-center gap-3 px-5 py-4 border-b border-[var(--border)]">
         <div className="w-8 h-8 flex-shrink-0">
           <RouteCheckLogo size={32} tone="light" decorative className="w-full h-full" />
