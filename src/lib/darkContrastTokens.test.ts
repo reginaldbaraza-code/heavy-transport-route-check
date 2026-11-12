@@ -159,3 +159,76 @@ test('light-mode verdict pills, Re-check, and badge meet WCAG AA contrast', () =
   )
   assert.ok(contrastRatio(badgeFg, badgeBg) >= 4.5, `notification badge ${badgeFg} on ${badgeBg}`)
 })
+
+/** Light page wash behind polished verdict banners (prod measured). */
+const lightPageBg = '#f2f2f7'
+const lightIconChip = '#ffffff'
+const lightBannerStops = {
+  hold: ['#fff7f6', '#fef2f2'],
+  verify: ['#fffbf3', '#fff7e8'],
+  ready: ['#f4fcf7', '#e8f8ef'],
+} as const
+
+test('light-mode verdict banner border and icon meet WCAG 1.4.11 (≥3:1)', () => {
+  const css = readFileSync(new URL('../index.css', import.meta.url), 'utf8')
+  const tokens = lightModeTokens(css)
+
+  const holdText = resolve(tokens, '--hold-text')
+  const verifyText = resolve(tokens, '--verify-text')
+  const readyText = resolve(tokens, '--ready-text')
+
+  // Polish block must wire borders to semantic text tokens (not translucent fills).
+  assert.match(
+    css,
+    /\.verdict-banner\.verdict-red\s*\{[^}]*border:\s*1px\s+solid\s+var\(--hold-text\)/s,
+    'HOLD banner border must use --hold-text',
+  )
+  assert.match(
+    css,
+    /\.verdict-banner\.verdict-amber\s*\{[^}]*border:\s*1px\s+solid\s+var\(--verify-text\)/s,
+    'VERIFY banner border must use --verify-text',
+  )
+  assert.match(
+    css,
+    /\.verdict-banner\.verdict-green\s*\{[^}]*border:\s*1px\s+solid\s+var\(--ready-text\)/s,
+    'READY banner border must use --ready-text',
+  )
+  assert.match(
+    css,
+    /\.verdict-banner\.verdict-red\s+\.verdict-icon\s*\{\s*color:\s*var\(--hold-text\)/s,
+    'HOLD icon must use --hold-text',
+  )
+  assert.match(
+    css,
+    /\.verdict-banner\.verdict-amber\s+\.verdict-icon\s*\{\s*color:\s*var\(--verify-text\)/s,
+    'VERIFY icon must use --verify-text',
+  )
+  assert.match(
+    css,
+    /\.verdict-banner\.verdict-green\s+\.verdict-icon\s*\{\s*color:\s*var\(--ready-text\)/s,
+    'READY icon must use --ready-text',
+  )
+
+  const cases = [
+    { name: 'HOLD', token: holdText, stops: lightBannerStops.hold },
+    { name: 'VERIFY', token: verifyText, stops: lightBannerStops.verify },
+    { name: 'READY', token: readyText, stops: lightBannerStops.ready },
+  ] as const
+
+  for (const { name, token, stops } of cases) {
+    assert.ok(
+      contrastRatio(token, lightPageBg) >= 3,
+      `${name} border ${token} vs page ${lightPageBg}`,
+    )
+    assert.ok(
+      contrastRatio(token, lightIconChip) >= 3,
+      `${name} icon ${token} vs chip ${lightIconChip}`,
+    )
+    for (const stop of stops) {
+      assert.ok(
+        contrastRatio(token, stop) >= 3,
+        `${name} border ${token} vs fill stop ${stop}`,
+      )
+    }
+  }
+})
