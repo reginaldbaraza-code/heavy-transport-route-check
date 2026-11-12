@@ -598,6 +598,33 @@ async function main() {
   await page.getByText(/Job saved and monitoring started/i).waitFor({ timeout: 10000 })
   record('Save as job after check', true)
 
+  const savedJobMeta = await page.evaluate(() => {
+    const job = window.__HT_TEST__?.getJobs()?.[0]
+    return job
+      ? {
+          corridor: job.corridor || '',
+          permittedRoads: job.permittedRoads || [],
+          validFrom: job.validFrom || '',
+          validUntil: job.validUntil || '',
+          travelFrom: job.travelFrom || '',
+          travelTo: job.travelTo || '',
+        }
+      : null
+  })
+  const corridorClean = Boolean(
+    savedJobMeta
+    && /^A\d{1,3}(, A\d{1,3})*$/i.test(String(savedJobMeta.corridor).trim())
+    && !/HOLD|VERIFY|±|km/i.test(savedJobMeta.corridor),
+  )
+  const roadsClean = Array.isArray(savedJobMeta?.permittedRoads)
+    && savedJobMeta.permittedRoads.length > 0
+    && savedJobMeta.permittedRoads.every(road => /^A\d{1,3}$/i.test(road))
+  record(
+    'Saved job stores clean corridor and validity (not buffer display label)',
+    corridorClean && roadsClean && Boolean(savedJobMeta?.validFrom && savedJobMeta?.validUntil),
+    JSON.stringify(savedJobMeta),
+  )
+
   const pdf = await downloadFile(page, 'Export PDF')
   record('Result PDF download is non-empty', pdf.size > 200, `${pdf.suggested} ${pdf.size} bytes`)
   const extracted = decodePdfStrings(pdf.buffer)
@@ -673,7 +700,47 @@ async function main() {
   const csv = await downloadFile(page, 'Export CSV')
   record('Result CSV download is non-empty', csv.size > 50, `${csv.suggested} ${csv.size} bytes`)
 
+  const historyBeforeRecheck = await page.evaluate(() => {
+    try {
+      return JSON.parse(localStorage.getItem('htr-route-check-history') || '[]').length
+    } catch {
+      return 0
+    }
+  })
+  const recheckRequest = page.waitForRequest(
+    req => req.url().includes('/api/check-route') && req.method() === 'POST',
+    { timeout: 30000 },
+  )
   await page.getByRole('button', { name: 'Re-check' }).click()
+  const recheckPost = await recheckRequest.catch(() => null)
+  await page.locator('.verdict-banner, .checking-state').first().waitFor({ timeout: 15000 })
+  if (await page.locator('.checking-state').count()) {
+    await page.locator('.verdict-banner').waitFor({ timeout: 120000 })
+  } else {
+    await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
+  }
+  const stillOnResult = await page.locator('.verdict-banner').count()
+  const importVisible = await page.getByRole('button', { name: /show sample permits/i }).count()
+  const historyAfterRecheck = await page.evaluate(() => {
+    try {
+      return JSON.parse(localStorage.getItem('htr-route-check-history') || '[]').length
+    } catch {
+      return 0
+    }
+  })
+  record(
+    'Re-check re-runs check and stays on result (does not reset to Import)',
+    Boolean(recheckPost) && stillOnResult > 0 && importVisible === 0 && historyAfterRecheck > historyBeforeRecheck,
+    JSON.stringify({
+      posted: Boolean(recheckPost),
+      stillOnResult,
+      importVisible,
+      historyBeforeRecheck,
+      historyAfterRecheck,
+    }),
+  )
+
+  await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded' })
   await page.getByRole('button', { name: /show sample permits/i }).click()
   await page.getByRole('button', { name: /Simulated HOLD — A3 residual width/ }).click()
   await page.locator('[data-testid="vehicle-width"]').waitFor({ timeout: 10000 })
@@ -795,8 +862,44 @@ async function main() {
   record('Jobs list shows saved job', jobVisible >= 1, `jobs=${jobVisible}`)
 
   const lastCheckedBefore = await page.evaluate(() => window.__HT_TEST__?.getJobs()?.[0]?.lastCheckedAt || '')
+  const jobVehicleBefore = await page.evaluate(() => {
+    const job = window.__HT_TEST__?.getJobs()?.[0]
+    return job?.vehicle || null
+  })
+  const jobRerunRequest = page.waitForRequest(
+    req => req.url().includes('/api/check-route') && req.method() === 'POST',
+    { timeout: 30000 },
+  )
   await page.getByRole('button', { name: /Re-run check/i }).click()
   await page.waitForURL(/route-checks\?.*job=/, { timeout: 15000 })
+  const jobRerunPost = await jobRerunRequest.catch(() => null)
+  let jobRerunBody = null
+  try {
+    jobRerunBody = jobRerunPost ? jobRerunPost.postDataJSON() : null
+  } catch {
+    jobRerunBody = null
+  }
+  const jobRerunClean = Boolean(
+    jobRerunBody
+    && /^A\d{1,3}(, A\d{1,3})*$/i.test(String(jobRerunBody.corridor || '').trim())
+    && !/HOLD|VERIFY|±/i.test(String(jobRerunBody.corridor || ''))
+    && Array.isArray(jobRerunBody.permittedRoads)
+    && jobRerunBody.permittedRoads.every(road => /^A\d{1,3}$/i.test(road))
+    && jobRerunBody.validFrom
+    && jobRerunBody.validUntil
+  )
+  record(
+    'Job re-run POST sends clean corridor, roads, and validity window',
+    jobRerunClean,
+    JSON.stringify({
+      corridor: jobRerunBody?.corridor,
+      permittedRoads: jobRerunBody?.permittedRoads,
+      validFrom: jobRerunBody?.validFrom,
+      validUntil: jobRerunBody?.validUntil,
+      travelFrom: jobRerunBody?.travelFrom,
+      travelTo: jobRerunBody?.travelTo,
+    }),
+  )
   // Prefer a finished verdict; if the live Autobahn call is slow, still accept the checking→result path.
   const rerunState = page.locator('.verdict-banner, .checking-state, [data-testid="gpx-upload-error"], .field-error')
   await rerunState.first().waitFor({ timeout: 15000 })
@@ -805,6 +908,36 @@ async function main() {
   } else {
     await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
   }
+  const rerunVehicleMatch = await page.evaluate(expected => {
+    let history = []
+    try {
+      history = JSON.parse(localStorage.getItem('htr-route-check-history') || '[]')
+    } catch {
+      history = []
+    }
+    const withJob = history.filter(item => item.jobId)
+    const latest = withJob[0] || history[0]
+    const vehicle = latest?.vehicle || null
+    const match = Boolean(
+      expected
+      && vehicle
+      && Number(vehicle.width) === Number(expected.width)
+      && Number(vehicle.height) === Number(expected.height)
+      && Number(vehicle.length) === Number(expected.length)
+      && Number(vehicle.grossWeight) === Number(expected.grossWeight),
+    )
+    const staleDefaults = vehicle
+      && Number(vehicle.width) === 3
+      && Number(vehicle.height) === 4
+      && Number(vehicle.length) === 25
+      && Number(vehicle.grossWeight) === 52
+    return { match, staleDefaults, expected, vehicle }
+  }, jobVehicleBefore)
+  record(
+    'Job re-run history vehicle matches saved job (not form defaults)',
+    Boolean(rerunVehicleMatch.match) && !rerunVehicleMatch.staleDefaults,
+    JSON.stringify(rerunVehicleMatch),
+  )
   await page.goto(base + '/jobs', { waitUntil: 'domcontentloaded' })
   await page.locator('[data-testid="job-last-check"]').waitFor({ timeout: 15000 })
   const lastCheckAfter = await page.evaluate(() => {
@@ -980,6 +1113,30 @@ async function main() {
     'Item 4: demo actions appear in check history',
     /Logged locally \(demo\), not sent/i.test(historyActions),
     historyActions.slice(0, 220),
+  )
+
+  await page.goto(base + '/route-checks?permit=hamburg-hannover&run=1', { waitUntil: 'domcontentloaded' })
+  await page.locator('#planned-departure').waitFor({ timeout: 15000 })
+  const permitAutorun = await page.evaluate(() => {
+    const departure = document.getElementById('planned-departure')
+    const fileError = document.querySelector('[data-testid="gpx-upload-error"]')
+    const width = document.querySelector('[data-testid="vehicle-width"]')
+    return {
+      departureVisible: Boolean(departure && departure.offsetParent !== null),
+      departureValue: departure?.value || '',
+      fileErrorVisible: Boolean(fileError),
+      fileErrorText: fileError?.textContent || '',
+      width: width?.value || '',
+      focused: document.activeElement?.id === 'planned-departure',
+    }
+  })
+  record(
+    'Permit ?run=1 without departure lands on vehicle step (no file error)',
+    permitAutorun.departureVisible
+      && !permitAutorun.fileErrorVisible
+      && permitAutorun.departureValue === ''
+      && permitAutorun.width === '3.2',
+    JSON.stringify(permitAutorun),
   )
 
   await page.goto(base + '/route-checks?debug=1', { waitUntil: 'networkidle', timeout: 60000 }).catch(() =>

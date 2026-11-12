@@ -5,8 +5,11 @@ import {
   applyCheckToJob,
   DEFAULT_MONITOR_PREFS,
   isFutureDeparture,
+  jobCheckOptions,
   jobDueForCheck,
   newJobId,
+  normalizeSavedJob,
+  sanitizeCorridor,
   shouldMonitorJob,
   type MonitorPrefs,
   type SavedJob,
@@ -50,7 +53,9 @@ function showBrowserNotification(title: string, body: string) {
 export function JobsProvider({ children }: { children: ReactNode }) {
   const { recordCheck, addAlert, alerts, markAlertEscalated } = useRouteMonitoring()
   const [jobs, setJobs] = useState<SavedJob[]>(() => (
-    typeof window === 'undefined' ? [] : readJson<SavedJob[]>(STORAGE_KEYS.savedJobs, [])
+    typeof window === 'undefined'
+      ? []
+      : readJson<SavedJob[]>(STORAGE_KEYS.savedJobs, []).map(normalizeSavedJob)
   ))
   const [prefs, setPrefsState] = useState<MonitorPrefs>(() => (
     typeof window === 'undefined' ? DEFAULT_MONITOR_PREFS : { ...DEFAULT_MONITOR_PREFS, ...readJson<Partial<MonitorPrefs>>(STORAGE_KEYS.monitorPrefs, {}) }
@@ -70,23 +75,27 @@ export function JobsProvider({ children }: { children: ReactNode }) {
   alertsRef.current = alerts
 
   const persistJobs = (next: SavedJob[]) => {
-    writeJson(STORAGE_KEYS.savedJobs, next)
-    setJobs(next)
+    const normalized = next.map(normalizeSavedJob)
+    writeJson(STORAGE_KEYS.savedJobs, normalized)
+    setJobs(normalized)
   }
 
   const saveJob = useCallback<JobsValue['saveJob']>((draft, id) => {
     const now = new Date().toISOString()
     const existing = id ? jobsRef.current.find(job => job.id === id) : undefined
-    const saved: SavedJob = {
+    const corridor = sanitizeCorridor(draft.corridor, draft.permittedRoads, existing?.corridor, existing?.permittedRoads)
+    const saved: SavedJob = normalizeSavedJob({
       ...existing,
       ...draft,
+      corridor: corridor || draft.corridor || existing?.corridor || '',
+      permittedRoads: draft.permittedRoads || existing?.permittedRoads,
       id: existing?.id || id || newJobId(),
       createdAt: existing?.createdAt || now,
       updatedAt: now,
       monitoringStoppedReason: draft.monitoringStoppedReason !== undefined 
         ? draft.monitoringStoppedReason 
         : (isFutureDeparture(draft) ? null : 'departed'),
-    }
+    })
     persistJobs([saved, ...jobsRef.current.filter(job => job.id !== saved.id)])
     return saved
   }, [])
@@ -94,7 +103,7 @@ export function JobsProvider({ children }: { children: ReactNode }) {
   const updateJob = useCallback<JobsValue['updateJob']>((id, patch) => {
     const current = jobsRef.current.find(job => job.id === id)
     if (!current) return null
-    const next = { ...current, ...patch, id, updatedAt: new Date().toISOString() }
+    const next = normalizeSavedJob({ ...current, ...patch, id, updatedAt: new Date().toISOString() })
     persistJobs(jobsRef.current.map(job => job.id === id ? next : job))
     return next
   }, [])
@@ -103,7 +112,10 @@ export function JobsProvider({ children }: { children: ReactNode }) {
     persistJobs(jobsRef.current.filter(job => job.id !== id))
   }, [])
 
-  const getJob = useCallback((id: string) => jobsRef.current.find(job => job.id === id), [])
+  const getJob = useCallback((id: string) => {
+    const job = jobsRef.current.find(job => job.id === id)
+    return job ? normalizeSavedJob(job) : undefined
+  }, [])
 
   const setPrefs = useCallback<JobsValue['setPrefs']>(patch => {
     setPrefsState(current => {
@@ -182,12 +194,8 @@ export function JobsProvider({ children }: { children: ReactNode }) {
     setCheckingJobId(id)
     try {
       const result = await checkRoute(job.gpxContent, job.vehicle, {
-        permitNumber: job.permitNumber,
-        corridor: job.corridor,
+        ...jobCheckOptions(job),
         departureStart: job.plannedDeparture,
-        bridgeClearanceConfirmed: job.bridgeClearanceConfirmed,
-        clearanceConfirmedBy: job.clearanceConfirmedBy,
-        confirmedAt: job.confirmedAt,
         acknowledgements: job.siteAcknowledgements,
       })
       applyResult(job, result, job.lastVerdict && job.lastVerdict !== result.verdict ? 'verdict-change' : 'check')
