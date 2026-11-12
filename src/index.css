@@ -3829,11 +3829,27 @@ select:focus-visible {
 .sidebar-htr {
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
   text-align: left;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: .04em;
   color: var(--sidebar-text);
+}
+.sidebar-htr svg {
+  display: block;
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+.rc-logo-auto .rc-logo-dark {
+  display: none;
+}
+@media (prefers-color-scheme: dark) {
+  .rc-logo-auto .rc-logo-light {
+    display: none;
+  }
+  .rc-logo-auto .rc-logo-dark {
+    display: inline;
+  }
 }
 .sidebar-collapse {
   width: 32px;

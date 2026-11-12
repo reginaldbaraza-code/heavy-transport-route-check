@@ -184,9 +184,12 @@ async function main() {
   const homeText = await page.locator('body').innerText()
   record('No user-facing MSD brand text', !/\bMSD\b/.test(homeText), (homeText.match(/\bMSD\b/) || [''])[0])
   await page.getByRole('button', { name: 'Collapse navigation' }).click()
+  const collapsedBrand = page.getByRole('button', { name: 'Heavy transport route check' }).first()
+  const collapsedMark = collapsedBrand.locator('svg[data-detail="small"], svg[data-detail="full"]').first()
   record(
     'Collapsed sidebar shows HTR',
-    await page.getByRole('button', { name: 'Heavy transport route check' }).filter({ hasText: 'HTR' }).first().isVisible(),
+    (await collapsedBrand.isVisible()) && (await collapsedMark.isVisible()),
+    `aria-label=${await collapsedBrand.getAttribute('aria-label')} detail=${await collapsedMark.getAttribute('data-detail')}`,
   )
   await page.getByRole('button', { name: 'Expand navigation' }).click()
 
