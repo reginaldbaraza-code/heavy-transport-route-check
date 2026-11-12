@@ -333,6 +333,34 @@ async function main() {
 
   await assertMobileNavChrome(390, 844)
   await assertMobileNavChrome(320, 720)
+
+  // Narrow phone (≤420px): meta/Switch user text is CSS-hidden — header avatar must still switch.
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(base + '/settings', { waitUntil: 'domcontentloaded', timeout: 60000 })
+  await ensureLoggedIn('Demo')
+  const mobileHeaderSwitch = page.locator('.mobile-user-chip').getByRole('button', { name: /Switch user \(Demo\)/i })
+  await mobileHeaderSwitch.waitFor({ state: 'visible', timeout: 15000 })
+  const mobileSwitchBox = await mobileHeaderSwitch.boundingBox()
+  record(
+    'Mobile header Switch user control is ≥36px at 390px',
+    Boolean(
+      mobileSwitchBox
+      && mobileSwitchBox.width >= 36
+      && mobileSwitchBox.height >= 36,
+    ),
+    JSON.stringify(mobileSwitchBox),
+  )
+  await mobileHeaderSwitch.click()
+  await page.getByRole('heading', { name: "Who's checking routes?" }).waitFor({ timeout: 15000 })
+  record(
+    'Narrow mobile header avatar opens the user picker',
+    await page.getByRole('heading', { name: "Who's checking routes?" }).isVisible(),
+  )
+  await page.getByRole('button', { name: 'Continue as Demo' }).click()
+  await page.waitForFunction(() => !document.querySelector('.login-screen'), null, { timeout: 30000 })
+  const skipAfterMobileSwitch = page.getByRole('button', { name: /skip/i })
+  if (await skipAfterMobileSwitch.count()) await skipAfterMobileSwitch.first().click().catch(() => {})
+
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto(base + '/', { waitUntil: 'domcontentloaded', timeout: 60000 })
   const skipAfterMobileNav = page.getByRole('button', { name: /skip/i })
