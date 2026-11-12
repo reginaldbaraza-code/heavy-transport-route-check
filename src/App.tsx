@@ -24,10 +24,11 @@ function PageFallback() {
 }
 
 function AuthenticatedApp({ userId }: { userId: string }) {
+  // key={userId} remounts every provider so no React state carries across accounts.
   return (
     <OrgSettingsProvider key={userId}>
-      <RouteMonitoringProvider>
-        <JobsProvider>
+      <RouteMonitoringProvider key={userId}>
+        <JobsProvider key={userId}>
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<Layout />}>
@@ -61,7 +62,7 @@ function AppShell() {
     return <Login />
   }
 
-  return <AuthenticatedApp userId={user.id} />
+  return <AuthenticatedApp key={user.id} userId={user.id} />
 }
 
 export default function App() {

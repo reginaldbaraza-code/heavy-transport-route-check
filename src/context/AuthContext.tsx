@@ -11,6 +11,7 @@ import { Toast } from '../components/Feedback'
 import {
   clearUserStore,
   flushPendingSaves,
+  getActiveUserId,
   getSyncStatus,
   hydrateUserStore,
   subscribeSyncStatus,
@@ -19,9 +20,10 @@ import {
 } from '../lib/browserStore'
 import {
   APP_USERS,
-  CURRENT_USER_STORAGE_KEY,
+  clearStoredUserId,
   getUserById,
-  isAppUserId,
+  readStoredUserId,
+  writeStoredUserId,
   type AppUser,
 } from '../lib/users'
 
@@ -38,23 +40,6 @@ type AuthValue = {
 }
 
 const AuthContext = createContext<AuthValue | null>(null)
-
-function readStoredUserId(): string | null {
-  try {
-    const raw = window.localStorage.getItem(CURRENT_USER_STORAGE_KEY)
-    return isAppUserId(raw) ? raw : null
-  } catch {
-    return null
-  }
-}
-
-function writeStoredUserId(id: string) {
-  try {
-    window.localStorage.setItem(CURRENT_USER_STORAGE_KEY, id)
-  } catch {
-    // Private mode — session still works without remembering last user.
-  }
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null)
@@ -133,13 +118,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const switchUser = useCallback(async () => {
-    await flushPendingSaves({ beacon: true })
+    const previousId = user?.id ?? getActiveUserId()
+    // Flush pending saves for the OLD user (each write carries its scheduled userId).
+    await flushPendingSaves({ beacon: true, userId: previousId ?? undefined })
     await clearUserStore({ flush: false })
-    setLastUsedId(readStoredUserId())
+    // Do not remember the previous account — reload of the login screen must not auto-sign in.
+    clearStoredUserId()
+    setLastUsedId(previousId)
     setUser(null)
     setSyncBackend(null)
     setSaveStatus('ok')
-  }, [])
+  }, [user])
 
   const value = useMemo<AuthValue>(() => ({
     users: APP_USERS,

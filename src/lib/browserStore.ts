@@ -67,12 +67,19 @@ const MAX_RETRIES = 3
 
 type SyncListener = () => void
 
+type PendingSave = {
+  userId: string
+  serialized: string
+}
+
 const cache = new Map<string, string>()
 const pendingTimers = new Map<string, number>()
-const pendingKeys = new Set<string>()
+/** Pending key → userId + body captured when the write was scheduled. */
+const pendingSaves = new Map<string, PendingSave>()
 const retryCounts = new Map<string, number>()
 const inflightControllers = new Map<string, AbortController>()
 const inflightSerialized = new Map<string, string>()
+const inflightUserIds = new Map<string, string>()
 const listeners = new Set<SyncListener>()
 
 let activeUserId: string | null = null
@@ -90,6 +97,10 @@ export function subscribeSyncStatus(listener: SyncListener) {
   return () => { listeners.delete(listener) }
 }
 
+export function getActiveUserId(): string | null {
+  return activeUserId
+}
+
 export function getSyncStatus(): {
   userId: string | null
   backend: SyncBackend
@@ -100,7 +111,7 @@ export function getSyncStatus(): {
     userId: activeUserId,
     backend: syncBackend,
     saveStatus,
-    hasPending: pendingKeys.size > 0,
+    hasPending: pendingSaves.size > 0,
   }
 }
 
@@ -146,18 +157,22 @@ export function readJson<T>(key: string, fallback: T): T {
   return parseCached(cache.get(key), fallback)
 }
 
-function prepareValueForPersist(key: string, value: unknown): { value: unknown; dropped?: number } {
+function prepareValueForPersist(
+  key: string,
+  value: unknown,
+  userId: string,
+): { value: unknown; dropped?: number } {
   if (key === STORAGE_KEYS.checkHistory && Array.isArray(value)) {
     return {
       value: prepareCheckHistoryForPersist(value as HistoryPersistInput[], {
-        userId: activeUserId || 'user',
+        userId,
         maxBodyBytes: STATE_BODY_MAX_BYTES,
       }),
     }
   }
   if (key === STORAGE_KEYS.savedJobs && Array.isArray(value)) {
     const prepared = prepareSavedJobsForPersist(value as SavedJob[], {
-      userId: activeUserId || 'user',
+      userId,
       maxBodyBytes: STATE_BODY_MAX_BYTES,
     })
     return { value: prepared.jobs, dropped: prepared.dropped }
@@ -165,17 +180,30 @@ function prepareValueForPersist(key: string, value: unknown): { value: unknown; 
   return { value }
 }
 
-export function writeJson(key: string, value: unknown, opts?: { immediate?: boolean }) {
-  const prepared = prepareValueForPersist(key, value)
+/**
+ * Persist `value` for `opts.userId` (or the active user when omitted).
+ * Stale writers whose userId ≠ the active session never touch the client cache
+ * and never schedule a save for the newly active account.
+ */
+export function writeJson(
+  key: string,
+  value: unknown,
+  opts?: { immediate?: boolean; userId?: string },
+) {
+  const forUser = opts?.userId ?? activeUserId
+  if (!forUser) return
+  // Drop any write that resolves for a user who is no longer active.
+  if (forUser !== activeUserId) return
+
+  const prepared = prepareValueForPersist(key, value, forUser)
   // Job-cap toasts are owned by JobsContext so the UI list and message stay in sync.
   const serialized = JSON.stringify(prepared.value)
   cache.set(key, serialized)
-  if (!activeUserId) return
   if (!(STATE_FIELD_KEYS as readonly string[]).includes(key)) return
   if (opts?.immediate) {
-    scheduleSaveImmediate(key, serialized)
+    scheduleSaveImmediate(key, serialized, forUser)
   } else {
-    scheduleSave(key, serialized)
+    scheduleSave(key, serialized, forUser)
   }
 }
 
@@ -193,25 +221,37 @@ function abortInflight(key: string) {
   controller.abort()
   inflightControllers.delete(key)
   inflightSerialized.delete(key)
+  inflightUserIds.delete(key)
 }
 
-function scheduleSave(key: string, serialized: string) {
-  pendingKeys.add(key)
+function markPending(key: string, userId: string, serialized: string) {
+  pendingSaves.set(key, { userId, serialized })
   setSaveStatus('pending')
+}
+
+function clearPendingIfMatch(key: string, userId: string, serialized: string) {
+  const pending = pendingSaves.get(key)
+  if (pending && pending.userId === userId && pending.serialized === serialized) {
+    pendingSaves.delete(key)
+  }
+  if (pendingSaves.size === 0 && saveStatus !== 'error') setSaveStatus('ok')
+}
+
+function scheduleSave(key: string, serialized: string, userId: string) {
+  markPending(key, userId, serialized)
   clearPendingTimer(key)
   const timer = window.setTimeout(() => {
     pendingTimers.delete(key)
-    void persistKey(key, serialized)
+    void persistKey(key, serialized, userId)
   }, DEBOUNCE_MS)
   pendingTimers.set(key, timer)
 }
 
 /** Skip debounce — used for job save and route-change flushes. */
-function scheduleSaveImmediate(key: string, serialized: string) {
-  pendingKeys.add(key)
-  setSaveStatus('pending')
+function scheduleSaveImmediate(key: string, serialized: string, userId: string) {
+  markPending(key, userId, serialized)
   clearPendingTimer(key)
-  void persistKey(key, serialized)
+  void persistKey(key, serialized, userId)
 }
 
 function isAbortError(error: unknown): boolean {
@@ -224,14 +264,18 @@ function isAbortError(error: unknown): boolean {
 async function persistKey(
   key: string,
   serialized: string,
+  userId: string,
   attempt = 0,
   opts?: { keepalive?: boolean },
 ): Promise<boolean> {
-  if (!activeUserId) return false
-  // Skip if a newer value replaced this one while we were waiting.
-  if (cache.get(key) !== serialized) {
-    pendingKeys.delete(key)
-    if (pendingKeys.size === 0 && saveStatus !== 'error') setSaveStatus('ok')
+  // Server write is always bound to the user captured at schedule time.
+  // Skip only when a newer value for the same user replaced this one in pending/cache.
+  const pending = pendingSaves.get(key)
+  if (pending && pending.userId === userId && pending.serialized !== serialized) {
+    return true
+  }
+  if (activeUserId === userId && cache.get(key) !== serialized) {
+    clearPendingIfMatch(key, userId, serialized)
     return true
   }
 
@@ -240,8 +284,8 @@ async function persistKey(
     inflightSerialized: inflightSerialized.get(key) ?? null,
     nextSerialized: serialized,
   })
-  if (startDecision === 'skip-same-inflight') {
-    // Same body already in flight — do not open a second PUT for this key.
+  // Same body already in flight for this key — but only skip if it's the same user.
+  if (startDecision === 'skip-same-inflight' && inflightUserIds.get(key) === userId) {
     return true
   }
 
@@ -249,7 +293,7 @@ async function persistKey(
   try {
     value = JSON.parse(serialized)
   } catch {
-    pendingKeys.delete(key)
+    clearPendingIfMatch(key, userId, serialized)
     setSaveStatus('error')
     return false
   }
@@ -257,36 +301,46 @@ async function persistKey(
   // History / jobs: last-chance trim if something still exceeds the server limit.
   if (key === STORAGE_KEYS.checkHistory && Array.isArray(value)) {
     const trimmed = prepareCheckHistoryForPersist(value as HistoryPersistInput[], {
-      userId: activeUserId,
+      userId,
       maxBodyBytes: STATE_BODY_MAX_BYTES,
     })
     const trimmedSerialized = JSON.stringify(trimmed)
     if (trimmedSerialized !== serialized) {
-      cache.set(key, trimmedSerialized)
+      if (activeUserId === userId && cache.get(key) === serialized) {
+        cache.set(key, trimmedSerialized)
+      }
+      if (pendingSaves.get(key)?.serialized === serialized && pendingSaves.get(key)?.userId === userId) {
+        pendingSaves.set(key, { userId, serialized: trimmedSerialized })
+      }
       serialized = trimmedSerialized
       value = trimmed
     }
   }
   if (key === STORAGE_KEYS.savedJobs && Array.isArray(value)) {
     const trimmed = prepareSavedJobsForPersist(value as SavedJob[], {
-      userId: activeUserId,
+      userId,
       maxBodyBytes: STATE_BODY_MAX_BYTES,
     })
     const trimmedSerialized = JSON.stringify(trimmed.jobs)
     if (trimmedSerialized !== serialized) {
-      cache.set(key, trimmedSerialized)
+      if (activeUserId === userId && cache.get(key) === serialized) {
+        cache.set(key, trimmedSerialized)
+      }
+      if (pendingSaves.get(key)?.serialized === serialized && pendingSaves.get(key)?.userId === userId) {
+        pendingSaves.set(key, { userId, serialized: trimmedSerialized })
+      }
       serialized = trimmedSerialized
       value = trimmed.jobs
     }
   }
 
-  const body = encodeStateWriteBody(activeUserId, key, value)
+  const body = encodeStateWriteBody(userId, key, value)
   const bodyBytes = utf8ByteLength(body)
   if (bodyBytes > STATE_BODY_MAX_BYTES) {
     // Never send a request the server will reject with 413.
-    pendingKeys.delete(key)
+    clearPendingIfMatch(key, userId, serialized)
     setSaveStatus('error')
-    if (!saveToastShown) {
+    if (!saveToastShown && activeUserId === userId) {
       saveToastShown = true
       window.dispatchEvent(new CustomEvent('htr-sync-error', {
         detail: { message: "Couldn't save to your account. Retrying…" },
@@ -295,10 +349,13 @@ async function persistKey(
     return false
   }
 
-  if (startDecision === 'abort-and-replace') abortInflight(key)
+  if (startDecision === 'abort-and-replace' || (inflightControllers.has(key) && inflightUserIds.get(key) !== userId)) {
+    abortInflight(key)
+  }
   const controller = new AbortController()
   inflightControllers.set(key, controller)
   inflightSerialized.set(key, serialized)
+  inflightUserIds.set(key, userId)
 
   const useKeepalive = opts?.keepalive === true
 
@@ -315,38 +372,43 @@ async function persistKey(
     if (inflightControllers.get(key) === controller) {
       inflightControllers.delete(key)
       inflightSerialized.delete(key)
+      inflightUserIds.delete(key)
     }
     if (!res.ok) throw new Error(`save failed ${res.status}`)
-    // Ignore success for a superseded body.
-    if (cache.get(key) !== serialized) {
-      pendingKeys.delete(key)
-      if (pendingKeys.size === 0 && saveStatus !== 'error') setSaveStatus('ok')
+    // Ignore success for a superseded body, or when this user is no longer active
+    // (server write for the scheduled user is fine; do not touch the new user's cache).
+    if (activeUserId !== userId || cache.get(key) !== serialized) {
+      clearPendingIfMatch(key, userId, serialized)
       return true
     }
-    pendingKeys.delete(key)
+    clearPendingIfMatch(key, userId, serialized)
     retryCounts.delete(key)
     saveToastShown = false
-    if (pendingKeys.size === 0) setSaveStatus('ok')
+    if (pendingSaves.size === 0) setSaveStatus('ok')
     return true
   } catch (error) {
     const stillMine = inflightControllers.get(key) === controller
     if (stillMine) {
       inflightControllers.delete(key)
       inflightSerialized.delete(key)
+      inflightUserIds.delete(key)
     }
-    // Superseded by a newer persist for this key — leave pendingKeys alone;
+    // Superseded by a newer persist for this key — leave pendingSaves alone;
     // the replacement owns the pending state.
     if (isAbortError(error)) {
       return true
     }
-    if (cache.get(key) !== serialized) {
-      pendingKeys.delete(key)
-      if (pendingKeys.size === 0 && saveStatus !== 'error') setSaveStatus('ok')
+    if (activeUserId !== userId || cache.get(key) !== serialized) {
+      clearPendingIfMatch(key, userId, serialized)
       return true
     }
     if (attempt + 1 < MAX_RETRIES) {
       const delay = 400 * (2 ** attempt)
       await new Promise(resolve => window.setTimeout(resolve, delay))
+      if (activeUserId !== userId) {
+        clearPendingIfMatch(key, userId, serialized)
+        return true
+      }
       if (!shouldScheduleRetry({
         hasInflight: inflightControllers.has(key),
         cacheSerialized: cache.get(key),
@@ -354,21 +416,24 @@ async function persistKey(
       })) {
         return true
       }
-      return persistKey(key, serialized, attempt + 1, opts)
+      return persistKey(key, serialized, userId, attempt + 1, opts)
     }
-    pendingKeys.delete(key)
+    clearPendingIfMatch(key, userId, serialized)
     retryCounts.set(key, attempt + 1)
     setSaveStatus('error')
-    if (!saveToastShown) {
+    if (!saveToastShown && activeUserId === userId) {
       saveToastShown = true
       window.dispatchEvent(new CustomEvent('htr-sync-error', {
         detail: { message: "Couldn't save to your account. Retrying…" },
       }))
     }
     // Keep retrying quietly in the background — never while a PUT is in flight.
+    // Capture userId so a later active-user change cannot redirect the retry.
+    const retryUserId = userId
     window.setTimeout(() => {
+      if (activeUserId !== retryUserId) return
       const current = cache.get(key)
-      if (current == null || !activeUserId) return
+      if (current == null) return
       if (!shouldScheduleRetry({
         hasInflight: inflightControllers.has(key),
         cacheSerialized: current,
@@ -376,7 +441,7 @@ async function persistKey(
       })) {
         return
       }
-      void persistKey(key, current, 0)
+      void persistKey(key, current, retryUserId, 0)
     }, 4000)
     return false
   }
@@ -421,67 +486,78 @@ function bodyBytesFor(userId: string, key: string, serialized: string): number {
   return utf8ByteLength(encodeStateWriteBody(userId, key, JSON.parse(serialized)))
 }
 
-export async function flushPendingSaves(opts?: { beacon?: boolean }): Promise<void> {
-  if (!activeUserId) return
-  const userId = activeUserId
-  for (const timer of pendingTimers.values()) window.clearTimeout(timer)
-  pendingTimers.clear()
+/**
+ * Flush pending saves. Each write uses the userId captured when it was scheduled —
+ * never the "current" user at flush time. When `opts.userId` is set, only that
+ * user's pending keys are flushed (used before Switch user).
+ */
+export async function flushPendingSaves(opts?: { beacon?: boolean; userId?: string }): Promise<void> {
+  const filterUser = opts?.userId
+  for (const [key, timer] of pendingTimers.entries()) {
+    const pending = pendingSaves.get(key)
+    if (filterUser && pending && pending.userId !== filterUser) continue
+    window.clearTimeout(timer)
+    pendingTimers.delete(key)
+  }
 
-  const keys = [...pendingKeys]
-  if (keys.length === 0) return
+  const entries = [...pendingSaves.entries()].filter(([, pending]) => (
+    !filterUser || pending.userId === filterUser
+  ))
+  if (entries.length === 0) return
 
   // Shared across this unload flush only — Chrome's keepalive quota is per-tab.
   const keepaliveBudget: KeepaliveBudget | null = opts?.beacon ? createKeepaliveBudget() : null
 
-  await Promise.all(keys.map(async key => {
-    const serialized = cache.get(key)
-    if (serialized == null) {
-      pendingKeys.delete(key)
-      return
-    }
+  await Promise.all(entries.map(async ([key, pending]) => {
+    const { userId, serialized } = pending
     if (opts?.beacon && keepaliveBudget) {
       let bodyBytes = 0
       try {
         bodyBytes = bodyBytesFor(userId, key, serialized)
       } catch {
-        await persistKey(key, serialized)
+        await persistKey(key, serialized, userId)
         return
       }
 
       if (reserveKeepaliveBytes(keepaliveBudget, bodyBytes)) {
         if (beaconSave(userId, key, serialized)) {
-          pendingKeys.delete(key)
+          pendingSaves.delete(key)
           return
         }
         // Beacon refused — try a single keepalive fetch against the reserved budget.
-        await persistKey(key, serialized, 0, { keepalive: true })
+        await persistKey(key, serialized, userId, 0, { keepalive: true })
         return
       }
 
       // Does not fit the shared keepalive budget: sync XHR best-effort.
       if (syncUnloadSave(userId, key, serialized)) {
-        pendingKeys.delete(key)
+        pendingSaves.delete(key)
         return
       }
     }
     // Normal flush (or unload fallback): never use keepalive.
-    await persistKey(key, serialized)
+    await persistKey(key, serialized, userId)
   }))
 }
 
 export async function hydrateUserStore(userId: string): Promise<SyncBackend> {
   installFlushHooks()
-  activeUserId = userId
+  // Clear under a null active user so late writers for any account cannot land
+  // in the cache during the transition, then activate the new user.
+  activeUserId = null
   cache.clear()
-  pendingKeys.clear()
+  pendingSaves.clear()
   retryCounts.clear()
   for (const controller of inflightControllers.values()) controller.abort()
   inflightControllers.clear()
   inflightSerialized.clear()
+  inflightUserIds.clear()
   for (const timer of pendingTimers.values()) window.clearTimeout(timer)
   pendingTimers.clear()
   saveToastShown = false
   setSaveStatus('ok')
+  setBackend(null)
+  activeUserId = userId
 
   const res = await fetch(`/api/state?user=${encodeURIComponent(userId)}`, {
     method: 'GET',
@@ -489,11 +565,14 @@ export async function hydrateUserStore(userId: string): Promise<SyncBackend> {
     cache: 'no-store',
   })
   if (!res.ok) throw new Error(`Failed to load account state (${res.status})`)
+  // Another hydrate/clear may have won while we awaited — do not apply stale payload.
+  if (activeUserId !== userId) return syncBackend
   const payload = await res.json() as {
     user: string
     data: Record<string, unknown>
     backend: 'redis' | 'memory'
   }
+  if (activeUserId !== userId) return syncBackend
   for (const [key, value] of Object.entries(payload.data || {})) {
     if (typeof value === 'string') cache.set(key, value)
     else cache.set(key, JSON.stringify(value))
@@ -504,14 +583,18 @@ export async function hydrateUserStore(userId: string): Promise<SyncBackend> {
 }
 
 export async function clearUserStore(opts?: { flush?: boolean }) {
-  if (opts?.flush !== false) await flushPendingSaves({ beacon: true })
+  const previousUserId = activeUserId
+  if (opts?.flush !== false) {
+    await flushPendingSaves({ beacon: true, userId: previousUserId ?? undefined })
+  }
   activeUserId = null
   cache.clear()
-  pendingKeys.clear()
+  pendingSaves.clear()
   retryCounts.clear()
   for (const controller of inflightControllers.values()) controller.abort()
   inflightControllers.clear()
   inflightSerialized.clear()
+  inflightUserIds.clear()
   for (const timer of pendingTimers.values()) window.clearTimeout(timer)
   pendingTimers.clear()
   setBackend(null)

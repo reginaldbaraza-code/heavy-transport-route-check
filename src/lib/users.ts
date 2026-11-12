@@ -21,6 +21,32 @@ export const APP_USER_IDS = APP_USERS.map(user => user.id)
 
 export const CURRENT_USER_STORAGE_KEY = 'htr-current-user'
 
+export function readStoredUserId(): string | null {
+  try {
+    const raw = window.localStorage.getItem(CURRENT_USER_STORAGE_KEY)
+    return isAppUserId(raw) ? raw : null
+  } catch {
+    return null
+  }
+}
+
+export function writeStoredUserId(id: string) {
+  try {
+    window.localStorage.setItem(CURRENT_USER_STORAGE_KEY, id)
+  } catch {
+    // Private mode — session still works without remembering last user.
+  }
+}
+
+/** Clear remembered login so Switch user / logout does not auto-sign back in on reload. */
+export function clearStoredUserId() {
+  try {
+    window.localStorage.removeItem(CURRENT_USER_STORAGE_KEY)
+  } catch {
+    // Private mode — nothing to clear.
+  }
+}
+
 export function getUserById(id: string | null | undefined): AppUser | null {
   if (!id) return null
   return APP_USERS.find(user => user.id === id) ?? null

@@ -1,6 +1,6 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { RouteEvidence, RouteVerdict } from '../data/routeChecks'
-import { readJson, STORAGE_KEYS, writeJson } from '../lib/browserStore'
+import { getActiveUserId, readJson, STORAGE_KEYS, writeJson } from '../lib/browserStore'
 import type { VehicleDims } from '../lib/jobs'
 
 export type AlertStatus = 'New' | 'Acknowledged' | 'Resolved'
@@ -121,6 +121,15 @@ type RouteMonitoringValue = {
 const RouteMonitoringContext = createContext<RouteMonitoringValue | null>(null)
 
 export function RouteMonitoringProvider({ children }: { children: ReactNode }) {
+  const sessionUserIdRef = useRef<string | null>(getActiveUserId())
+  sessionUserIdRef.current = getActiveUserId()
+
+  const writeForSession = (key: string, value: unknown) => {
+    const userId = sessionUserIdRef.current
+    if (!userId || getActiveUserId() !== userId) return
+    writeJson(key, value, { userId })
+  }
+
   const [history, setHistory] = useState<CheckHistoryRecord[]>(() => (
     typeof window === 'undefined' ? [] : readJson<CheckHistoryRecord[]>(STORAGE_KEYS.checkHistory, [])
   ))
@@ -142,7 +151,7 @@ export function RouteMonitoringProvider({ children }: { children: ReactNode }) {
     setHistory(current => {
       // Keep full records in memory for the current session; writeJson persists a compact copy.
       const next = [saved, ...current.filter(item => item.id !== saved.id)].slice(0, 50)
-      writeJson(STORAGE_KEYS.checkHistory, next)
+      writeForSession(STORAGE_KEYS.checkHistory, next)
       return next
     })
     return saved
@@ -151,7 +160,7 @@ export function RouteMonitoringProvider({ children }: { children: ReactNode }) {
   const patchHistory = useCallback<RouteMonitoringValue['patchHistory']>((id, patch) => {
     setHistory(current => {
       const next = current.map(item => item.id === id ? { ...item, ...patch } : item)
-      writeJson(STORAGE_KEYS.checkHistory, next)
+      writeForSession(STORAGE_KEYS.checkHistory, next)
       return next
     })
   }, [])
@@ -164,7 +173,7 @@ export function RouteMonitoringProvider({ children }: { children: ReactNode }) {
     }
     setExtraAlerts(current => {
       const next = [saved, ...current.filter(item => item.id !== saved.id)].slice(0, 100)
-      writeJson(STORAGE_KEYS.extraAlerts, next)
+      writeForSession(STORAGE_KEYS.extraAlerts, next)
       return next
     })
     return saved
@@ -174,7 +183,7 @@ export function RouteMonitoringProvider({ children }: { children: ReactNode }) {
     const at = new Date().toISOString()
     setExtraAlerts(current => {
       const next = current.map(alert => alert.id === id ? { ...alert, escalated: true, escalatedAt: alert.escalatedAt || at } : alert)
-      writeJson(STORAGE_KEYS.extraAlerts, next)
+      writeForSession(STORAGE_KEYS.extraAlerts, next)
       return next
     })
   }, [])
@@ -183,12 +192,12 @@ export function RouteMonitoringProvider({ children }: { children: ReactNode }) {
     setAlertState(current => {
       if (current.readIds.includes(id) || current.resolvedIds.includes(id)) return current
       const next = { ...current, readIds: [...current.readIds, id] }
-      writeJson(STORAGE_KEYS.alertState, next)
+      writeForSession(STORAGE_KEYS.alertState, next)
       return next
     })
     setExtraAlerts(current => {
       const next = current.map(alert => alert.id === id && alert.status === 'New' ? { ...alert, status: 'Acknowledged' as const } : alert)
-      writeJson(STORAGE_KEYS.extraAlerts, next)
+      writeForSession(STORAGE_KEYS.extraAlerts, next)
       return next
     })
   }, [])
@@ -199,12 +208,12 @@ export function RouteMonitoringProvider({ children }: { children: ReactNode }) {
         readIds: current.readIds.includes(id) ? current.readIds : [...current.readIds, id],
         resolvedIds: current.resolvedIds.includes(id) ? current.resolvedIds : [...current.resolvedIds, id],
       }
-      writeJson(STORAGE_KEYS.alertState, next)
+      writeForSession(STORAGE_KEYS.alertState, next)
       return next
     })
     setExtraAlerts(current => {
       const next = current.map(alert => alert.id === id ? { ...alert, status: 'Resolved' as const } : alert)
-      writeJson(STORAGE_KEYS.extraAlerts, next)
+      writeForSession(STORAGE_KEYS.extraAlerts, next)
       return next
     })
   }, [])

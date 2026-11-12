@@ -21,7 +21,7 @@ import {
   getOverviewFeatured,
   getOverviewMonitorPermits,
 } from '../lib/overviewTracks'
-import { readJson, STORAGE_KEYS, writeJson } from '../lib/browserStore'
+import { getActiveUserId, readJson, STORAGE_KEYS, writeJson } from '../lib/browserStore'
 import { formatVehicleDims, shouldMonitorJob } from '../lib/jobs'
 
 const DISPATCH_EXAMPLES: Array<{ routeId: string; permitId: string; daysAhead: number; hour: number }> = [
@@ -126,7 +126,8 @@ export default function MarketplaceOverview() {
 
   const setMode = (mode: SampleMode) => {
     setSampleMode(mode)
-    writeJson(STORAGE_KEYS.overviewSampleMode, mode)
+    const userId = getActiveUserId()
+    if (userId) writeJson(STORAGE_KEYS.overviewSampleMode, mode, { userId })
   }
 
   const [selectedPermitId, setSelectedPermitId] = useState(sampleTestPermits[0].id)
