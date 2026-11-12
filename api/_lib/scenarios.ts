@@ -140,7 +140,7 @@ export const SCENARIOS: Record<ScenarioId, ScenarioFixture> = {
     evidence: [
       {
         id: 'a3-width',
-        title: 'Width restriction 3 m – vehicle exceeds',
+        title: 'Width limit 3 m – vehicle exceeds',
         detail: 'Simulated residualRoadWidth 3.0 m on A3 mainline vs 3.8 m vehicle.',
         source: 'Simulated — not live data',
         confidence: 'high',
@@ -171,7 +171,7 @@ export const SCENARIOS: Record<ScenarioId, ScenarioFixture> = {
     evidence: [
       {
         id: 'a8-height',
-        title: 'Height restriction 4.00 m vs vehicle 4.30 m',
+        title: 'Height limit 4.00 m vs vehicle 4.30 m',
         detail: 'Simulated A8 mainline structure residual clearance 4.00 m vs 4.30 m vehicle.',
         source: 'Simulated — not live data',
         confidence: 'high',

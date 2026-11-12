@@ -10,6 +10,8 @@ import {
   determineVerdict,
   dimDecision,
   distanceToRouteKm,
+  extractHardHeightLimit,
+  extractHardWeightLimit,
   extractHardWidthLimit,
   inferPermittedRoads,
   isAcknowledgeable,
@@ -215,11 +217,111 @@ test('generic meter values in descriptions are not hard width limits', () => {
   assert.ok(extractHardWidthLimit('Restbreite 3.10 m'))
 })
 
+test('item 1: Maximale Durchfahrtsbreite 3.5 m vs 3.8 m vehicle is HOLD, not a ramp', () => {
+  const text = 'Garlstorfer Wald – Vorm Naturschutzpark, 11.08 km, Maximale Durchfahrtsbreite: 3.5 m'
+  assert.equal(classifyLocationKind(text), 'mainline')
+  assert.equal(extractHardWidthLimit(text), 3.5)
+  const wide = { ...baseCtx, vehicle: { ...baseCtx.vehicle, width: 3.8 } }
+  const item = classifyCandidate(candidate({
+    title: 'A7 Garlstorfer Wald – Vorm Naturschutzpark',
+    description: text,
+    startTimestamp: '2026-11-02T00:00:00Z',
+    endTimestamp: '2026-11-16T00:00:00Z',
+  }), wide)
+  assert.ok(item)
+  assert.equal(item.locationKind, 'mainline')
+  assert.equal(item.state, 'danger')
+  assert.equal(isAcknowledgeable(item), false)
+  assert.equal(determineVerdict([item], { clearanceConfirmed: true }).verdict, 'HOLD')
+})
+
+test('item 1: text height and weight limits HOLD when vehicle exceeds them', () => {
+  assert.equal(extractHardHeightLimit('Maximale Durchfahrtshöhe: 4.0 m'), 4)
+  assert.equal(extractHardWeightLimit('Gewichtsbeschränkung 40 t'), 40)
+  const heightHold = classifyCandidate(candidate({
+    title: 'A7 Bauwerk',
+    description: 'Maximale Durchfahrtshöhe: 4.0 m',
+  }), baseCtx)
+  assert.equal(heightHold?.state, 'danger')
+  const weightHold = classifyCandidate(candidate({
+    title: 'A7 Bauwerk',
+    description: 'Maximale Gewichtsbeschränkung 40 t',
+  }), baseCtx)
+  assert.equal(weightHold?.state, 'danger')
+})
+
+test('item 3: A1 ramp mentioning A7 cannot HOLD an A7 corridor', () => {
+  const item = classifyCandidate(candidate({
+    id: 'a1-maschen-ramp',
+    road: 'A1',
+    title: 'A1, AK Maschen Rampe 3 – Zubringer A7 zur A39',
+    description: 'Sperrung Rampe 3 Zubringer A7 zur A39',
+    category: 'closures',
+    isBlocked: true,
+  }), baseCtx)
+  assert.ok(item)
+  assert.equal(item.locationKind, 'ramp')
+  assert.notEqual(item.state, 'danger')
+  assert.match(item.reason, /Ramp|not the permitted|other road/i)
+})
+
+test('item 3: primary road mismatch is off-permit even when permitted road is mentioned', () => {
+  const item = classifyCandidate(candidate({
+    road: 'A1',
+    title: 'A1 Vollsperrung near A7 junction',
+    description: 'Vollsperrung beide Richtungen Richtung A7',
+    category: 'closures',
+    isBlocked: true,
+  }), baseCtx)
+  assert.ok(item)
+  assert.equal(item.state, 'warning')
+  assert.match(item.reason, /not the permitted/)
+})
+
+test('item 6: closure that ended before departure is dropped', () => {
+  const ctx: ClassifyContext = {
+    ...baseCtx,
+    windowStartMs: Date.parse('2026-11-14T21:00:00Z'),
+    windowEndMs: Date.parse('2026-11-15T21:00:00Z'),
+    nowMs: Date.parse('2026-11-14T12:00:00Z'),
+  }
+  const ended = classifyCandidate(candidate({
+    title: 'Vollsperrung A7',
+    description: 'Vollsperrung beide Richtungen',
+    category: 'closures',
+    isBlocked: true,
+    startTimestamp: '2026-11-12T00:00:00Z',
+    endTimestamp: '2026-11-13T13:00:00Z',
+  }), ctx)
+  assert.equal(ended, null)
+
+  const active = classifyCandidate(candidate({
+    title: 'Vollsperrung A7',
+    description: 'Vollsperrung beide Richtungen',
+    category: 'closures',
+    isBlocked: true,
+    startTimestamp: '2026-11-12T00:00:00Z',
+    endTimestamp: '2026-11-16T13:00:00Z',
+  }), ctx)
+  assert.equal(active?.state, 'danger')
+
+  const win = departureWindow({
+    departureStart: '2026-11-14T21:00:00Z',
+    departureEnd: '2026-11-15T05:00:00Z',
+  })
+  assert.equal(win.startMs, Date.parse('2026-11-14T21:00:00Z'))
+})
+
+test('zwischen AS X und AS Y stays mainline, Rampe is ramp', () => {
+  assert.equal(classifyLocationKind('Sperrung zwischen AS Soltau und AS Fallingbostel, 4.2 km'), 'mainline')
+  assert.equal(classifyLocationKind('A1 AK Maschen Rampe 3'), 'ramp')
+})
+
 test('dedupe by ~250 m + road + type keeps worst severity', () => {
   const a: ClassifiedEvidence = {
     id: 'a', title: 'warn', detail: '', source: 't', confidence: 'medium', state: 'warning',
     category: 'closures', lat: onRoute.lat, lng: onRoute.lng, distanceKm: 0.1, reason: 'x', locationKind: 'mainline',
-    road: 'A7', blocker: true,
+    road: 'A7', blocker: true, travelDirection: 'with',
   }
   const b: ClassifiedEvidence = {
     ...a, id: 'b', title: 'hold', state: 'danger', lat: onRoute.lat + 0.001, lng: onRoute.lng + 0.001, confidence: 'high',
@@ -227,6 +329,9 @@ test('dedupe by ~250 m + road + type keeps worst severity', () => {
   const out = dedupeClassified([a, b])
   assert.equal(out.length, 1)
   assert.equal(out[0].state, 'danger')
+  assert.equal(out[0].relatedRecords?.length, 1)
+  assert.equal(out[0].relatedRecords?.[0].id, 'a')
+  assert.match(out[0].reason, /\+1 related record/)
 })
 
 test('READY only with clearance confirmed and no VERIFY blockers', () => {
@@ -592,4 +697,248 @@ test('genuine A1 width restriction with MIA Ak code still HOLDs', () => {
   assert.ok(width)
   assert.equal(width.locationKind, 'mainline')
   assert.equal(width.state, 'danger', 'Hard width on permitted A1 mainline must HOLD')
+})
+
+/** Real MIA closure payload shape (RoadOrCarriagewayOrLaneManagement + management roadClosed). */
+function miaClosureCandidate(patch: Partial<CandidateInput> & { description: string }): CandidateInput {
+  return candidate({
+    id: patch.id || 'mia-closure-fixture',
+    title: patch.title || patch.description,
+    description: patch.description,
+    source: 'Autobahn GmbH MIA via Mobilithek/MobiData BW',
+    road: patch.road ?? 'A7',
+    lat: patch.lat ?? onRoute.lat,
+    lng: patch.lng ?? onRoute.lng,
+    startTimestamp: patch.startTimestamp ?? '2026-11-02T18:00:00.000Z',
+    endTimestamp: patch.endTimestamp ?? '2026-11-16T04:00:00.000Z',
+    management: 'roadClosed',
+    category: 'closures',
+    isBlocked: true,
+    ...patch,
+  })
+}
+
+test('round-3: MIA closure "Sperrung Abfahrt Evendorf RF Süd" is VERIFY ramp, not HOLD', () => {
+  const description =
+    'A7, AS Bispingen bis AS Garlstorf, km 44,5-37,0, Grundinstandsetzung - Bauphase 2.2 - Sperrung Abfahrt Evendorf RF Süd'
+  assert.equal(classifyLocationKind(description), 'ramp')
+  const hhHan: ClassifyContext = {
+    ...baseCtx,
+    travelFrom: 'Hamburg Port Terminal',
+    travelTo: 'Hannover Logistics Hub',
+    routeBearing: 180,
+  }
+  // Coordinates placed on the fixture corridor; field structure matches the live MIA closure record.
+  const asClosure = classifyCandidate(miaClosureCandidate({
+    id: '16407587-25369598-25470845-25470848',
+    description,
+  }), hhHan)
+  assert.ok(asClosure)
+  assert.equal(asClosure.locationKind, 'ramp')
+  assert.equal(asClosure.state, 'warning')
+  assert.notEqual(asClosure.state, 'danger')
+  assert.equal(determineVerdict([asClosure], { clearanceConfirmed: true }).verdict, 'VERIFY')
+
+  const asRoadworks = classifyCandidate(candidate({
+    id: '16407587-25369598-25470845-25470848#RW',
+    title: description,
+    description: `${description} · Short-term MIA record`,
+    road: 'A7',
+    startTimestamp: '2026-11-02T18:00:00.000Z',
+    endTimestamp: '2026-11-16T04:00:00.000Z',
+    category: 'roadworks',
+  }), hhHan)
+  assert.equal(asRoadworks?.locationKind, 'ramp')
+  assert.equal(asRoadworks?.state, asClosure.state, 'record type must not change the ramp verdict')
+})
+
+test('round-3: MIA "Vollsperrung AS Westenholz" closure is VERIFY ramp, not HOLD', () => {
+  const description =
+    'Erneuerung der Fahrbahn L191 - Vollsperrung AS Westenholz - Vollsperrung AS Westenholz - AS Westenholz - Ausfahrt FR Hannover'
+  assert.equal(classifyLocationKind(description), 'ramp')
+  const hhHan: ClassifyContext = {
+    ...baseCtx,
+    travelFrom: 'Hamburg',
+    travelTo: 'Hannover',
+    routeBearing: 180,
+  }
+  const item = classifyCandidate(miaClosureCandidate({
+    id: '24968442-24968444-24968447-24969204',
+    description,
+    startTimestamp: '2026-11-03T20:00:00.000Z',
+    endTimestamp: '2026-11-25T20:00:00.000Z',
+  }), hhHan)
+  assert.ok(item)
+  assert.equal(item.locationKind, 'ramp')
+  assert.equal(item.state, 'warning')
+  assert.equal(determineVerdict([item], { clearanceConfirmed: true }).verdict, 'VERIFY')
+})
+
+test('round-3: opposite-direction Westenholz ramp is visible Opposite direction info, not HOLD', () => {
+  const description =
+    'Von Auffahrt auf die A7: AS Westenholz Hannover -> Hamburg Vollsperrung AS Westenholz'
+  const hhHan: ClassifyContext = {
+    ...baseCtx,
+    travelFrom: 'Hamburg Port Terminal',
+    travelTo: 'Hannover Logistics Hub',
+    routeBearing: 180,
+  }
+  const opposite = classifyCandidate(miaClosureCandidate({
+    id: 'westenholz-opposite',
+    description,
+  }), hhHan)
+  assert.ok(opposite, 'must not drop opposite-direction ramps silently')
+  assert.equal(opposite.state, 'info')
+  assert.equal(opposite.blocker, false)
+  assert.match(opposite.title, /Opposite direction/i)
+  assert.match(opposite.reason, /Opposite direction/i)
+  assert.notEqual(opposite.state, 'danger')
+  assert.equal(determineVerdict([opposite], { clearanceConfirmed: true }).verdict, 'READY')
+})
+
+test('round-3: ambiguous-direction ramp stays VERIFY', () => {
+  const description =
+    'A7, AS Bispingen bis AS Garlstorf, Grundinstandsetzung - Sperrung Abfahrt Evendorf'
+  const hhHan: ClassifyContext = {
+    ...baseCtx,
+    travelFrom: 'Hamburg',
+    travelTo: 'Hannover',
+  }
+  const item = classifyCandidate(miaClosureCandidate({ description }), hhHan)
+  assert.ok(item)
+  assert.equal(item.locationKind, 'ramp')
+  assert.equal(item.state, 'warning')
+  assert.equal(determineVerdict([item], { clearanceConfirmed: true }).verdict, 'VERIFY')
+})
+
+test('round-3: mainline Vollsperrung in travel direction during departure window still HOLDs', () => {
+  const hhHan: ClassifyContext = {
+    ...baseCtx,
+    travelFrom: 'Hamburg',
+    travelTo: 'Hannover',
+    routeBearing: 180,
+  }
+  const mainline = classifyCandidate(miaClosureCandidate({
+    id: 'a7-mainline-vollsperrung',
+    title: 'A7 Vollsperrung',
+    description: 'Vollsperrung beide Richtungen A7 Fahrbahn zwischen Soltau und Fallingbostel',
+  }), hhHan)
+  assert.ok(mainline)
+  assert.equal(mainline.locationKind, 'mainline')
+  assert.equal(mainline.state, 'danger')
+  assert.equal(determineVerdict([mainline], { clearanceConfirmed: true }).verdict, 'HOLD')
+})
+
+test('round-3: same geometry sample vs custom GPX (track-derived travel) give the same ramp verdict', () => {
+  const description =
+    'Von Auffahrt auf die A7: AS Westenholz Hannover -> Hamburg Vollsperrung AS Westenholz'
+  const fromTrack: ClassifyContext = {
+    ...baseCtx,
+    // Custom GPX with no permit — only track endpoint names / bearing.
+    travelFrom: 'Hamburg Port Terminal',
+    travelTo: 'Hannover Logistics Hub',
+    routeBearing: 180,
+  }
+  const fromPermit: ClassifyContext = {
+    ...baseCtx,
+    travelFrom: 'Hamburg',
+    travelTo: 'Hannover',
+    routeBearing: 180,
+  }
+  const custom = classifyCandidate(miaClosureCandidate({ description }), fromTrack)
+  const sample = classifyCandidate(miaClosureCandidate({ description }), fromPermit)
+  assert.ok(custom && sample)
+  assert.equal(custom.state, sample.state)
+  assert.equal(custom.locationKind, sample.locationKind)
+  assert.equal(custom.state, 'info')
+})
+
+test('round-4: dedupe keeps opposite-direction Westenholz .de4 separate from with-direction neighbour', () => {
+  // Live Autobahn closures around AS Westenholz: .de4 is Hannover→Hamburg (against HH→HAN),
+  // .de1 is Hamburg→Hannover (with). Place them inside DEDUPE_KM so only the direction guard saves .de4.
+  const withDir: ClassifiedEvidence = {
+    id: '2026-042956--vi-fbm.2026-11-03_21-00-00-000.devi-zus.2026-10-19_00-00-00-000.de1',
+    title: 'Erneuerung der Fahrbahn L191 - Vollsperrung AS Westenholz',
+    detail: 'Von A7: Hamburg -> Hannover nach Abfahrt von der A7: AS Westenholz',
+    source: 'Autobahn',
+    confidence: 'medium',
+    state: 'warning',
+    category: 'closures',
+    lat: 52.7748,
+    lng: 9.6677,
+    distanceKm: 0.1,
+    reason: 'Ramp / AS / parking site — not a confirmed mainline carriageway block.',
+    locationKind: 'ramp',
+    road: 'A7',
+    blocker: true,
+    travelDirection: 'with',
+  }
+  const againstDir: ClassifiedEvidence = {
+    id: '2026-042956--vi-fbm.2026-11-03_21-00-00-000.devi-zus.2026-10-19_00-00-00-000.de4',
+    title: 'Von Auffahrt auf die A7: AS Westenholz (Opposite direction)',
+    detail: 'Von Auffahrt auf die A7: AS Westenholz nach A7: Hannover -> Hamburg',
+    source: 'Autobahn',
+    confidence: 'medium',
+    state: 'info',
+    category: 'closures',
+    lat: 52.7746,
+    lng: 9.6680,
+    distanceKm: 0.12,
+    reason: 'Opposite direction — junction ramp/AS is against the route travel direction.',
+    locationKind: 'ramp',
+    road: 'A7',
+    blocker: false,
+    travelDirection: 'against',
+  }
+  const out = dedupeClassified([withDir, againstDir])
+  assert.equal(out.length, 2, 'direction mismatch must not silently drop .de4')
+  assert.ok(out.some(item => item.id.endsWith('.de4')))
+  assert.ok(out.some(item => item.id.endsWith('.de1')))
+})
+
+test('round-4: dedupe keeps ramp and mainline distinct; same-kind merge leaves related-record trace', () => {
+  const ramp: ClassifiedEvidence = {
+    id: 'ramp-a',
+    title: 'AS Westenholz Auffahrt',
+    detail: '',
+    source: 't',
+    confidence: 'medium',
+    state: 'warning',
+    category: 'closures',
+    lat: onRoute.lat,
+    lng: onRoute.lng,
+    distanceKm: 0.05,
+    reason: 'Ramp',
+    locationKind: 'ramp',
+    road: 'A7',
+    blocker: true,
+    travelDirection: 'with',
+  }
+  const mainline: ClassifiedEvidence = {
+    ...ramp,
+    id: 'mainline-a',
+    title: 'A7 mainline works',
+    locationKind: 'mainline',
+    lat: onRoute.lat + 0.0005,
+    lng: onRoute.lng + 0.0005,
+  }
+  const kindSplit = dedupeClassified([ramp, mainline])
+  assert.equal(kindSplit.length, 2, 'ramp vs mainline must not merge')
+
+  const twin: ClassifiedEvidence = {
+    ...ramp,
+    id: 'ramp-b',
+    title: 'AS Westenholz twin sub-record',
+    state: 'info',
+    blocker: false,
+    lat: onRoute.lat + 0.0008,
+    lng: onRoute.lng + 0.0008,
+  }
+  const merged = dedupeClassified([ramp, twin])
+  assert.equal(merged.length, 1)
+  assert.equal(merged[0].id, 'ramp-a')
+  assert.equal(merged[0].relatedRecords?.length, 1)
+  assert.equal(merged[0].relatedRecords?.[0].id, 'ramp-b')
+  assert.equal(merged[0].relatedRecords?.[0].title, 'AS Westenholz twin sub-record')
+  assert.match(merged[0].reason, /\+1 related record/)
 })

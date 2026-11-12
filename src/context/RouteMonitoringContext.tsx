@@ -30,6 +30,8 @@ export type CheckHistoryRecord = {
     acknowledgedBy: string
     acknowledgedAt: string
   }>
+  /** Demo take-action lines (escalate / hold / on-site). Nothing was sent. */
+  actionsLog?: string[]
 }
 
 export type MonitoringAlert = {

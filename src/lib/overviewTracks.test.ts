@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { downsampleTrack, parseGpxTrack } from './gpxTrack.ts'
 import {
+  OVERVIEW_FEATURED_COPY,
   OVERVIEW_FEATURED_PERMIT_ID,
   OVERVIEW_MONITOR_ROUTES,
   SAMPLE_ROUTE_COLOR,
@@ -12,15 +13,20 @@ import {
   getOverviewMonitorPermits,
   overviewVerdictForPermit,
 } from './overviewTracks.ts'
-import { sampleTestPermits } from './routeCheck.ts'
+import { sampleTestPermits, scenarioTestPermits } from './routeCheck.ts'
 
 test('overview hero uses four real test-permit GPX tracks with mixed verdicts', () => {
   const overview = getOverviewMonitorPermits()
   assert.equal(overview.length, 4)
-  const verdicts = new Set(overview.map(item => item.verdict))
-  assert.ok(verdicts.has('READY'))
-  assert.ok(verdicts.has('VERIFY'))
-  assert.ok(verdicts.has('HOLD'))
+  const overviewVerdicts = new Set(overview.map(item => item.verdict))
+  assert.ok(overviewVerdicts.has('VERIFY'))
+  assert.ok(overviewVerdicts.has('HOLD'))
+  // READY lives on scenario samples; live overview tracks mirror post-#27 outcomes.
+  const labelled = [...sampleTestPermits, ...scenarioTestPermits]
+  const allSampleVerdicts = new Set(labelled.map(permit => overviewVerdictForPermit(permit)))
+  assert.ok(allSampleVerdicts.has('READY'))
+  assert.ok(allSampleVerdicts.has('VERIFY'))
+  assert.ok(allSampleVerdicts.has('HOLD'))
 
   for (const item of overview) {
     const configured = OVERVIEW_MONITOR_ROUTES.find(route => route.id === item.permit.id)
@@ -55,8 +61,11 @@ test('overview verdicts prefer the labelled sample outcome', () => {
   const lubeck = sampleTestPermits.find(permit => permit.id === 'lubeck-rostock')
   const munich = sampleTestPermits.find(permit => permit.id === 'munchen-stuttgart')
   assert.equal(overviewVerdictForPermit(hamburg!), 'VERIFY')
-  assert.equal(overviewVerdictForPermit(lubeck!), 'READY')
+  assert.equal(overviewVerdictForPermit(lubeck!), 'VERIFY')
+  // München omits a hardcoded expectedVerdict (live HOLD depends on Restbreite); overview still demos HOLD.
+  assert.equal(munich!.expectedVerdict, undefined)
   assert.equal(overviewVerdictForPermit(munich!), 'HOLD')
+  assert.match(munich!.liveLabel || '', /Restbreite|width|not height/i)
 })
 
 test('overview line colours match the Ready / Verify / Hold legend', () => {
@@ -71,6 +80,8 @@ test('featured hero transport is a route drawn on the overview map', () => {
   assert.equal(OVERVIEW_FEATURED_PERMIT_ID, 'munchen-stuttgart')
   assert.equal(featured.permit.id, 'munchen-stuttgart')
   assert.equal(featured.verdict, 'HOLD')
+  assert.match(OVERVIEW_FEATURED_COPY.title, /width/i)
+  assert.doesNotMatch(OVERVIEW_FEATURED_COPY.title, /height/i)
   assert.ok(OVERVIEW_MONITOR_ROUTES.some(route => route.id === featured.permit.id))
   const overview = readFileSync('src/pages/MarketplaceOverview.tsx', 'utf8')
   assert.equal(overview.includes("getPermittedRoute('duisburg-munich')"), false)

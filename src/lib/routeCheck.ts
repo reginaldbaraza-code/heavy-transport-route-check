@@ -36,6 +36,8 @@ export type RouteCheckOptions = {
   clearanceConfirmedBy?: string;
   confirmedAt?: string;
   scenario?: string;
+  travelFrom?: string;
+  travelTo?: string;
   acknowledgements?: Array<{
     evidenceId: string;
     acknowledgedBy: string;
@@ -115,6 +117,7 @@ export const testPermits: TestPermit[] = [
     vehicle: { width: 3.5, height: 4.2, length: 32.0, grossWeight: 72 },
     routeDescription: 'A1 motorway from Bremen via Münster to Dortmund. Weekend transport allowed.',
     kind: 'live',
+    expectedVerdict: 'HOLD',
     liveMayDiffer: true,
     liveLabel: 'Sample — expected outcome, live data may differ',
   },
@@ -156,6 +159,7 @@ export const testPermits: TestPermit[] = [
     vehicle: { width: 3.8, height: 4.5, length: 35.0, grossWeight: 80 },
     routeDescription: 'A3 motorway from Duisburg to Köln. High-capacity transport, daytime allowed with escort.',
     kind: 'live',
+    expectedVerdict: 'VERIFY',
     liveMayDiffer: true,
     liveLabel: 'Sample — expected outcome, live data may differ',
   },
@@ -176,8 +180,10 @@ export const testPermits: TestPermit[] = [
     vehicle: { width: 3.3, height: 4.3, length: 30.0, grossWeight: 65 },
     routeDescription: 'A8 motorway from München via Augsburg and Ulm to Stuttgart. Night transport 22:00–06:00 only.',
     kind: 'live',
+    // No hardcoded expectedVerdict: live HOLD depends on A8 Restbreite being present in the feed.
+    // Overview still demos HOLD via OVERVIEW_MONITOR_ROUTES; Simulated HOLD height covers height.
     liveMayDiffer: true,
-    liveLabel: 'Sample — expected outcome, live data may differ',
+    liveLabel: 'Sample — HOLD only when live A8 Restbreite is present (not height); otherwise VERIFY',
   },
   {
     id: 'lubeck-rostock',
@@ -196,7 +202,7 @@ export const testPermits: TestPermit[] = [
     vehicle: { width: 2.55, height: 4.0, length: 18.0, grossWeight: 40 },
     routeDescription: 'A20 motorway from Lübeck to Rostock, about 121 km.',
     kind: 'live',
-    expectedVerdict: 'READY',
+    expectedVerdict: 'VERIFY',
     liveMayDiffer: true,
     bridgeClearanceConfirmed: true,
     clearanceConfirmedBy: 'Sample dispatcher',
@@ -220,7 +226,7 @@ export const testPermits: TestPermit[] = [
     vehicle: { width: 2.55, height: 4.0, length: 18.0, grossWeight: 40 },
     routeDescription: 'A9 motorway from Hof to Bayreuth, about 56 km.',
     kind: 'live',
-    expectedVerdict: 'READY',
+    expectedVerdict: 'VERIFY',
     liveMayDiffer: true,
     bridgeClearanceConfirmed: true,
     clearanceConfirmedBy: 'Sample dispatcher',
@@ -406,6 +412,15 @@ export function permitVehicleDims(
     return parseVehicleDims(permit.vehicle) || parseVehicleDims(metadata?.vehicle)
   }
   return parseVehicleDims(metadata?.vehicle) || parseVehicleDims(permit?.vehicle)
+}
+
+/** Dimensions used for a route check: on-screen form wins over sample metadata. */
+export function resolveCheckVehicle(
+  form: VehicleDimsInput | null | undefined,
+  permit?: Pick<TestPermit, 'kind' | 'vehicle'> | null,
+  metadata?: { vehicle?: VehicleDimsInput } | null,
+) {
+  return parseVehicleDims(form) || permitVehicleDims(permit, metadata)
 }
 
 const OVERSIZE_MESSAGE = 'This file is larger than 4 MB. Export a smaller GPX from VEMAGS and try again.'

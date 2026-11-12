@@ -96,7 +96,7 @@ export default function MarketplaceActivity() {
                 evidenceCount: 2,
                 retrievedAt: new Date(now.getTime() - 45 * 60000).toISOString(),
                 source: 'Autobahn GmbH MIA',
-                summary: 'Width restriction requires verification',
+                summary: 'Width limit requires verification',
                 alertEligible: true,
               })
               
@@ -196,6 +196,9 @@ export default function MarketplaceActivity() {
                   </span>
                   <strong>{record.verdict} · {record.routeLabel}</strong>
                   <p>{record.summary} · {record.evidenceCount} evidence · retrieved {formatBerlinDateTime(record.retrievedAt)}</p>
+                  {record.actionsLog?.length ? (
+                    <p data-testid="history-actions-log">{record.actionsLog.join(' · ')}</p>
+                  ) : null}
                 </div>
                 <span className="route-alert-badges">
                   <span className={`alert-status ${record.verdict.toLowerCase()}`}>{record.verdict}</span>

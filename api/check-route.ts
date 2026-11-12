@@ -25,6 +25,7 @@ import {
   departureWindow,
   determineVerdict,
   inferPermittedRoads,
+  routeBearingDegrees,
   routeLineFromPoints,
   verdictCopy,
   type CandidateInput,
@@ -69,6 +70,8 @@ type RouteEvidence = {
   reason?: string;
   locationKind?: string;
   blocker?: boolean;
+  travelDirection?: string;
+  relatedRecords?: Array<{ id: string; title: string }>;
 };
 
 type RouteCheckResult = {
@@ -100,6 +103,31 @@ function waypointLabel(point?: GPXPoint): string {
     return `${point.lat.toFixed(4)}, ${point.lng.toFixed(4)}`
   }
   return name
+}
+
+/** Prefer GPX track endpoint / metadata names so custom uploads match sample-permit direction. */
+function inferTravelFromTrack(
+  points: GPXPoint[],
+  gpxContent: string,
+): { from?: string; to?: string } {
+  const startName = String(points[0]?.name || '').trim()
+  const endName = String(points[points.length - 1]?.name || '').trim()
+  if (startName && endName && !/^(starts?|end|ende|ziel)$/i.test(startName) && !/^(starts?|end|ende|ziel)$/i.test(endName)) {
+    return { from: startName, to: endName }
+  }
+  const arrow = gpxContent.match(
+    /<name>\s*([A-Za-zÄÖÜäöüß][^<]*?)\s*(?:→|->|⇒)\s*([A-Za-zÄÖÜäöüß][^<]*?)\s*<\/name>/i,
+  )
+  if (arrow) {
+    return {
+      from: arrow[1].replace(/\s+A\d+\s*$/i, '').trim(),
+      to: arrow[2].replace(/\s+A\d+\s*$/i, '').trim(),
+    }
+  }
+  return {
+    from: startName || undefined,
+    to: endName || undefined,
+  }
 }
 
 function uniqueRoads(roads: string[]): string[] {
@@ -221,12 +249,13 @@ async function fetchAutobahnEventsForRoute(roads: string[], retrievedAt: string)
       })
     );
     
-    const processedRoadworks = allEvents.flatMap(({ roadworks }) =>
+    const processedRoadworks = allEvents.flatMap(({ road, roadworks }) =>
       roadworks.map((item: any) => {
         const processed = processAutobahnItem(item, 'Roadworks', 'Roadworks in progress', retrievedAt);
         const isBlocked = processed.isBlocked;
         return {
           ...processed,
+          road,
           type: 'roadworks' as const,
           severity: isBlocked ? 'warning' as const : 'info' as const,
           isBlocked,
@@ -234,26 +263,29 @@ async function fetchAutobahnEventsForRoute(roads: string[], retrievedAt: string)
       })
     ).filter(isUsableEvent);
 
-    const processedClosures = allEvents.flatMap(({ closures }) =>
+    const processedClosures = allEvents.flatMap(({ road, closures }) =>
       closures.map((item: any) => ({
         ...processAutobahnItem(item, 'Closure', 'Road closure in effect', retrievedAt),
+        road,
         type: 'closures' as const,
         severity: 'danger' as const,
       }))
     ).filter(isUsableEvent);
 
-    const processedWarnings = allEvents.flatMap(({ warnings }) =>
+    const processedWarnings = allEvents.flatMap(({ road, warnings }) =>
       warnings.map((item: any) => ({
         ...processAutobahnItem(item, 'Warning', 'Traffic warning', retrievedAt),
+        road,
         type: 'warnings' as const,
         severity: 'warning' as const,
         confidence: 'medium' as const,
       }))
     ).filter(isUsableEvent);
 
-    const processedParking = allEvents.flatMap(({ parking }) =>
+    const processedParking = allEvents.flatMap(({ road, parking }) =>
       parking.map((item: any) => ({
         ...processAutobahnItem(item, 'Lorry parking', 'HGV parking on this Autobahn', retrievedAt),
+        road,
         type: 'parking' as const,
         severity: String(item.isBlocked) === 'true' ? 'warning' as const : 'info' as const,
         isBlocked: String(item.isBlocked) === 'true',
@@ -320,6 +352,8 @@ function toRouteEvidence(item: ClassifiedEvidence, age: string): RouteEvidence {
     reason: item.reason,
     locationKind: item.locationKind,
     blocker: item.blocker,
+    travelDirection: item.travelDirection,
+    relatedRecords: item.relatedRecords,
   };
 }
 
@@ -369,6 +403,8 @@ export default async function handler(
       confirmedAt,
       scenario,
       acknowledgements,
+      travelFrom,
+      travelTo,
     } = req.body;
 
     const gpxBytes = typeof gpxContent === 'string' ? Buffer.byteLength(gpxContent, 'utf8') : 0
@@ -412,20 +448,27 @@ export default async function handler(
       Array.isArray(requestedRoads) ? requestedRoads : [],
     );
     const affectedRoads = permittedRoads.length ? uniqueRoads(permittedRoads) : uniqueRoads(determineAffectedRoads(geometry.matchPoints));
+    // GPX uploads without a corridor must still classify against the inferred Autobahn set so the same geometry matches sample-permit verdicts.
+    const classifyRoads = permittedRoads.length ? uniqueRoads(permittedRoads) : affectedRoads;
     const window = departureWindow({
       departureStart,
       departureEnd,
       validFrom,
       validUntil,
     });
+    const trackTravel = inferTravelFromTrack(parsedPoints, gpxContent)
     const classifyCtx = {
       routeLine,
       corridor: geometry.corridor,
-      permittedRoads,
+      permittedRoads: classifyRoads,
       vehicle,
       windowStartMs: window.startMs,
       windowEndMs: window.endMs,
       nowMs: Date.now(),
+      // Track geometry/names first so sample permit and bare custom GPX agree.
+      travelFrom: trackTravel.from || (typeof travelFrom === 'string' ? travelFrom : undefined),
+      travelTo: trackTravel.to || (typeof travelTo === 'string' ? travelTo : undefined),
+      routeBearing: routeBearingDegrees(routeLine),
     };
     const clearanceConfirmed = Boolean(bridgeClearanceConfirmed);
     const siteAcknowledgements = parseAcknowledgements(acknowledgements);
@@ -492,6 +535,7 @@ export default async function handler(
           source: src,
           lat: event.lat,
           lng: event.lng,
+          road: event.road,
           startTimestamp: event.startTimestamp,
           endTimestamp: event.endTimestamp,
           retrievedAt: event.retrievedAt,
@@ -508,6 +552,7 @@ export default async function handler(
           source: src,
           lat: event.lat,
           lng: event.lng,
+          road: event.road,
           startTimestamp: event.startTimestamp,
           endTimestamp: event.endTimestamp,
           retrievedAt: event.retrievedAt,
@@ -524,6 +569,7 @@ export default async function handler(
           source: src,
           lat: event.lat,
           lng: event.lng,
+          road: event.road,
           startTimestamp: event.startTimestamp,
           endTimestamp: event.endTimestamp,
           retrievedAt: event.retrievedAt,
@@ -542,6 +588,7 @@ export default async function handler(
           source: `Autobahn GmbH parking_lorry · ${affectedRoads.join(', ')}`,
           lat: event.lat,
           lng: event.lng,
+          road: event.road,
           startTimestamp: event.startTimestamp,
           endTimestamp: event.endTimestamp,
           retrievedAt: event.retrievedAt,

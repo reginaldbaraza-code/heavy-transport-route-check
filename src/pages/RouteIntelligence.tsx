@@ -21,6 +21,7 @@ import {
   loadTestPermit,
   permitVehicleDims,
   readFileAsText,
+  resolveCheckVehicle,
   sampleTestPermits,
   scenarioTestPermits,
   testPermits,
@@ -46,6 +47,7 @@ import {
   isAcknowledgeable,
   isHoldItem,
   isNearbyOffRoute,
+  isOppositeDirectionNote,
   type SiteAcknowledgement,
 } from '../lib/siteAcknowledgements'
 import { displayEvidenceTitle, evidenceOriginalGerman, looksGerman, looksTechnical, splitConcatenatedPlaces } from '../lib/evidenceSummary'
@@ -82,10 +84,12 @@ export default function RouteIntelligencePolished() {
   const mapRef = useRef<RouteMapHandle>(null)
   const loadedPermit = useRef<string | null>(null)
   const [searchParams] = useSearchParams()
-  const { recordCheck, patchHistory, addAlert } = useRouteMonitoring()
+  const { recordCheck, patchHistory, addAlert, history } = useRouteMonitoring()
+  const debugTools = searchParams.has('debug')
   const { saveJob, getJob, updateJob, prefs, requestNotifications } = useJobs()
   const { savedProfile } = useOrgSettings()
-  const [plannedDeparture, setPlannedDeparture] = useState(toLocalInput(defaultDepartureIso(8)))
+  const [plannedDeparture, setPlannedDeparture] = useState('')
+  const [departureExpiryError, setDepartureExpiryError] = useState('')
   const [jobName, setJobName] = useState('')
   const [jobInterval, setJobInterval] = useState(prefs.intervalMinutes)
   const [showSaveJob, setShowSaveJob] = useState(false)
@@ -123,6 +127,19 @@ export default function RouteIntelligencePolished() {
   }
 
   const vehicleValid = vehicle.width > 0 && vehicle.height > 0 && vehicle.length > 0 && vehicle.grossWeight > 0
+  const departureValid = Boolean(plannedDeparture && fromLocalInput(plannedDeparture))
+  const confirmerName = clearanceBy.trim()
+  const DEMO_NOT_SENT = 'Logged locally (demo), not sent'
+
+  const logDemoAction = (label: string) => {
+    const line = `${label}: ${DEMO_NOT_SENT}`
+    setToast(DEMO_NOT_SENT)
+    const id = lastHistoryId.current
+    if (!id) return
+    const record = history.find(item => item.id === id)
+    const prior = record?.actionsLog || []
+    patchHistory(id, { actionsLog: [...prior, line] })
+  }
 
   const applyPermitClearance = (permit?: TestPermit | null, metadata?: any) => {
     const confirmed = Boolean(permit?.bridgeClearanceConfirmed ?? metadata?.bridgeClearanceConfirmed)
@@ -146,13 +163,38 @@ export default function RouteIntelligencePolished() {
     metadata?: any,
     permitOverride?: TestPermit,
     acks: SiteAcknowledgement[] = acknowledgements,
+    /** ISO or datetime-local; used when state has not flushed yet (e.g. job ?run=1). */
+    departureOverride?: string,
   ) => {
     const activePermit = permitOverride || testPermits.find(item => item.id === activePermitId)
-    const dims = permitVehicleDims(activePermit, metadata) || vehicle
+    // Prefer the dimensions currently typed into the form so sample permits honour on-screen edits.
+    const dims = resolveCheckVehicle(vehicle, activePermit, metadata) || vehicle
     const permit = (activePermit?.kind === 'scenario' ? activePermit.permitNumber : null)
       || metadata?.permitNumber
       || permitNumber
     if (!(dims.width > 0 && dims.height > 0 && dims.length > 0 && dims.grossWeight > 0) || checking) return
+    const departureLocal = departureOverride
+      ? (departureOverride.includes('T') && departureOverride.length > 16 ? toLocalInput(departureOverride) : departureOverride)
+      : plannedDeparture
+    if (!departureLocal || !fromLocalInput(departureLocal)) {
+      setError('Planned departure is required so restrictions are judged against the trip window.')
+      setToast('Enter a planned departure before checking the route.')
+      return
+    }
+    const departureIso = fromLocalInput(departureLocal)
+    const permitExpiry = metadata?.validUntil || activePermit?.validUntil
+    if (permitExpiry) {
+      const expiryMs = Date.parse(permitExpiry)
+      const departureMs = Date.parse(departureIso)
+      if (Number.isFinite(expiryMs) && Number.isFinite(departureMs) && departureMs > expiryMs) {
+        const message = `Planned departure is after the permit expiry (${formatBerlinDateTime(permitExpiry)}). Choose an earlier departure.`
+        setDepartureExpiryError(message)
+        setError(message)
+        setToast(message)
+        return
+      }
+    }
+    setDepartureExpiryError('')
 
     setChecking(true)
     setError('')
@@ -161,17 +203,20 @@ export default function RouteIntelligencePolished() {
     try {
       if (metadata || activePermit) {
         setPermitNumber(activePermit?.kind === 'scenario' ? (activePermit.permitNumber || permit) : (metadata?.permitNumber || activePermit?.permitNumber || ''))
-        applyPermitVehicle(activePermit, metadata)
       }
 
+      const departureStart = departureIso
       const checkResult = await checkRoute(content, dims, {
         permitNumber: permit,
         corridor: metadata?.corridor || activePermit?.corridor,
         permittedRoads: (metadata?.corridor || activePermit?.corridor)
           ? [String(metadata?.corridor || activePermit?.corridor).replace(/\s+/g, '')]
           : undefined,
+        departureStart,
         validFrom: metadata?.validFrom || activePermit?.validFrom,
         validUntil: metadata?.validUntil || activePermit?.validUntil,
+        travelFrom: activePermit?.originShort || activePermit?.origin || metadata?.origin,
+        travelTo: activePermit?.destinationShort || activePermit?.destination || metadata?.destination,
         bridgeClearanceConfirmed: permitOverride
           ? Boolean(metadata?.bridgeClearanceConfirmed ?? permitOverride.bridgeClearanceConfirmed)
           : Boolean(metadata?.bridgeClearanceConfirmed ?? clearanceConfirmed),
@@ -338,9 +383,21 @@ export default function RouteIntelligencePolished() {
   }
 
   const handleCheckRoute = () => {
-    if (gpxContent && vehicleValid) {
-      runCheck(gpxContent)
+    if (!departureValid) {
+      setError('Planned departure is required so restrictions are judged against the trip window.')
+      setToast('Enter a planned departure before checking the route.')
+      return
     }
+    if (!vehicleValid) {
+      setError('Enter valid vehicle dimensions before checking the route.')
+      return
+    }
+    if (!gpxContent) {
+      setError('Route file is still loading. Wait a moment and try again.')
+      setToast('Route file is still loading.')
+      return
+    }
+    runCheck(gpxContent)
   }
 
   useEffect(() => {
@@ -352,7 +409,9 @@ export default function RouteIntelligencePolished() {
   useEffect(() => {
     const jobId = searchParams.get('job')
     if (jobId) {
-      if (loadedJob.current === jobId) return
+      const autoRun = searchParams.get('run') === '1'
+      // Always honour ?run=1 even if this job is already loaded (e.g. after Save as job).
+      if (loadedJob.current === jobId && !autoRun) return
       const job = getJob(jobId)
       if (!job) {
         setError('That saved job was not found in this browser.')
@@ -368,7 +427,11 @@ export default function RouteIntelligencePolished() {
       setVehicleHeight(String(job.vehicle.height))
       setVehicleLength(String(job.vehicle.length))
       setVehicleWeight(String(job.vehicle.grossWeight))
-      setPlannedDeparture(toLocalInput(job.plannedDeparture || defaultDepartureIso(8)))
+      const jobDeparture = job.plannedDeparture && fromLocalInput(toLocalInput(job.plannedDeparture))
+        ? job.plannedDeparture
+        : defaultDepartureIso(8)
+      setPlannedDeparture(toLocalInput(jobDeparture))
+      setDepartureExpiryError('')
       setJobName(job.name)
       setJobInterval(job.monitorIntervalMinutes || prefs.intervalMinutes)
       setShowTestPermits(false)
@@ -378,7 +441,7 @@ export default function RouteIntelligencePolished() {
       setClearanceBy(job.clearanceConfirmedBy || '')
       setConfirmedAt(job.confirmedAt || '')
       setAcknowledgements(job.siteAcknowledgements || [])
-      if (searchParams.get('run') === '1') {
+      if (autoRun) {
         void runCheck(job.gpxContent, {
           permitNumber: job.permitNumber,
           vehicle: job.vehicle,
@@ -386,7 +449,7 @@ export default function RouteIntelligencePolished() {
           bridgeClearanceConfirmed: job.bridgeClearanceConfirmed,
           clearanceConfirmedBy: job.clearanceConfirmedBy,
           confirmedAt: job.confirmedAt,
-        }, undefined, job.siteAcknowledgements || [])
+        }, undefined, job.siteAcknowledgements || [], jobDeparture)
       } else {
         setStep('vehicle')
       }
@@ -530,13 +593,36 @@ export default function RouteIntelligencePolished() {
     persistOverlay(acknowledgements, next, by, at)
   }
 
-  const confirmOnSite = (ids: string[]) => {
+  const openBulkConfirm = (ids: string[]) => {
     if (!result) return
-    const name = clearanceByRef.current.trim() || clearanceBy.trim() || 'Dispatcher'
-    if (!clearanceByRef.current.trim()) {
-      clearanceByRef.current = name
-      setClearanceBy(name)
+    const verifyIds = ids.filter(id => {
+      const item = result.evidence.find(entry => entry.id === id)
+      return item && !isHoldItem(item) && isAcknowledgeable(item)
+    })
+    if (!verifyIds.length) {
+      setToast(displayed?.verdict === 'HOLD' ? 'HOLD items cannot be acknowledged away.' : 'No VERIFY items left to confirm.')
+      return
     }
+    if (!confirmerName) {
+      setToast('Enter a confirmer name before bulk confirming VERIFY items.')
+      return
+    }
+    setPendingConfirmIds(verifyIds)
+    setConfirmLocation(verifyIds.length === 1
+      ? (result.evidence.find(item => item.id === verifyIds[0])?.title || undefined)
+      : `${verifyIds.length} VERIFY items`)
+    setShowOnSiteConfirm(true)
+  }
+
+  const confirmOnSite = (ids: string[], confirmedBy?: string) => {
+    if (!result) return
+    const name = (confirmedBy || clearanceByRef.current || clearanceBy).trim()
+    if (!name) {
+      setToast('Enter a confirmer name before confirming VERIFY items.')
+      return
+    }
+    clearanceByRef.current = name
+    setClearanceBy(name)
     const at = new Date().toISOString()
     const next = [...acknowledgements]
     let skippedHold = 0
@@ -599,6 +685,7 @@ export default function RouteIntelligencePolished() {
   const currentVerdict = displayed ? verdictConfig[displayed.verdict] : null
   const primaryEvidence = displayed?.evidence.filter(item => !isNearbyOffRoute(item)) || []
   const nearbyOffRoute = displayed?.evidence.filter(isNearbyOffRoute) || []
+  const oppositeDirectionNotes = primaryEvidence.filter(isOppositeDirectionNote)
   const pendingVerify = primaryEvidence.filter(item => isAcknowledgeable(item) && !item.acknowledgedAt)
 
   return (
@@ -844,15 +931,27 @@ export default function RouteIntelligencePolished() {
 
             <div className="form-group">
               <label htmlFor="planned-departure">
-                <span>Planned departure</span>
+                <span>Planned departure (required)</span>
                 <input
                   id="planned-departure"
                   type="datetime-local"
                   value={plannedDeparture}
-                  onChange={event => setPlannedDeparture(event.target.value)}
+                  onChange={event => {
+                    setPlannedDeparture(event.target.value)
+                    setDepartureExpiryError('')
+                  }}
+                  required
+                  aria-required="true"
+                  aria-invalid={Boolean(departureExpiryError) || undefined}
+                  aria-describedby={departureExpiryError ? 'planned-departure-error' : 'planned-departure-hint'}
                 />
               </label>
-              <p className="storage-note">Used if you save this as a job. Monitoring only runs while the tab is open and stops after this time.</p>
+              <p id="planned-departure-hint" className="storage-note">No default is filled in — enter the real planned departure. Each restriction is judged against this window. Also used when you save a job. Monitoring only runs while the tab is open and stops after this time.</p>
+              {departureExpiryError && (
+                <p id="planned-departure-error" className="field-error" role="alert" data-testid="departure-expiry-error">
+                  {departureExpiryError}
+                </p>
+              )}
             </div>
 
             <label className="clearance-tick">
@@ -895,7 +994,7 @@ export default function RouteIntelligencePolished() {
                 type="button" 
                 className="btn-primary" 
                 onClick={handleCheckRoute}
-                disabled={!vehicleValid}
+                disabled={!vehicleValid || !departureValid}
               >
                 Check route
               </button>
@@ -947,7 +1046,7 @@ export default function RouteIntelligencePolished() {
               </div>
               {/* Dynamic CTA based on verdict */}
               {displayed.verdict === 'READY' && (
-                <button type="button" className="btn-primary verdict-cta" onClick={() => setToast('Proceed with departure')}>
+                <button type="button" className="btn-primary verdict-cta" onClick={() => logDemoAction('Proceed with departure')}>
                   <CheckCircle2 size={16} />
                   Proceed with departure
                 </button>
@@ -1092,8 +1191,14 @@ export default function RouteIntelligencePolished() {
                             setClearanceBy(event.target.value)
                           }}
                           placeholder="Name stored with each confirmation"
+                          data-testid="confirmer-name"
                         />
                     </label>
+                    {!confirmerName && pendingVerify.length > 0 && (
+                      <p id="bulk-confirm-disabled-hint" className="field-hint" data-testid="bulk-confirm-disabled-hint">
+                        Enter a confirmer name to enable bulk confirmation. HOLD / restriction items can never be bulk-confirmed.
+                      </p>
+                    )}
                     <label className="clearance-tick">
                       <input
                         type="checkbox"
@@ -1109,12 +1214,26 @@ export default function RouteIntelligencePolished() {
                       <button
                         type="button"
                         className="btn-primary"
-                        onClick={() => confirmOnSite(pendingVerify.map(item => item.id))}
+                        disabled={!confirmerName}
+                        title={!confirmerName ? 'Enter a confirmer name first' : undefined}
+                        aria-describedby={!confirmerName ? 'bulk-confirm-disabled-hint' : undefined}
+                        onClick={() => openBulkConfirm(pendingVerify.map(item => item.id))}
                       >
                         Confirm remaining VERIFY on site ({pendingVerify.length})
                       </button>
                     )}
                   </div>
+                  {oppositeDirectionNotes.length > 0 && (
+                    <p
+                      className="opposite-direction-summary"
+                      data-testid="opposite-direction-summary"
+                    >
+                      {oppositeDirectionNotes.length === 1
+                        ? '1 opposite-direction ramp note'
+                        : `${oppositeDirectionNotes.length} opposite-direction ramp notes`}
+                      {' '}(info only — not on your travel direction)
+                    </p>
+                  )}
                   <div className="evidence-list">
                     {primaryEvidence.map(item => (
                       <EvidenceCard
@@ -1158,15 +1277,8 @@ export default function RouteIntelligencePolished() {
               <button
                 type="button"
                 className="btn-primary"
-                onClick={() => {
-                  if (!pendingVerify.length) {
-                    setToast(displayed.verdict === 'HOLD' ? 'HOLD items cannot be acknowledged away.' : 'No VERIFY items left to confirm.')
-                    return
-                  }
-                  setPendingConfirmIds(pendingVerify.map(item => item.id))
-                  setConfirmLocation(pendingVerify[0]?.title || undefined)
-                  setShowOnSiteConfirm(true)
-                }}
+                disabled={pendingVerify.length > 0 && !confirmerName}
+                onClick={() => openBulkConfirm(pendingVerify.map(item => item.id))}
               >
                 Confirm on site
               </button>
@@ -1206,7 +1318,7 @@ export default function RouteIntelligencePolished() {
         onClose={() => setShowEscalate(false)}
         onConfirm={() => {
           setShowEscalate(false)
-          setToast('Escalation sent to transport manager')
+          logDemoAction('Escalate')
         }}
         routeName={result ? `${result.route.origin} → ${result.route.destination}` : undefined}
       />
@@ -1216,7 +1328,7 @@ export default function RouteIntelligencePolished() {
         onClose={() => setShowHoldDeparture(false)}
         onConfirm={() => {
           setShowHoldDeparture(false)
-          setToast('Departure placed on hold')
+          logDemoAction('Hold departure')
         }}
         routeName={result ? `${result.route.origin} → ${result.route.destination}` : undefined}
       />
@@ -1224,8 +1336,9 @@ export default function RouteIntelligencePolished() {
       <RequestOnSiteCheckDialog
         open={showRequestOnSite}
         onClose={() => setShowRequestOnSite(false)}
-        onConfirm={(note) => {
-          setToast(`On-site check requested${note ? ': ' + note : ''}`)
+        onConfirm={() => {
+          setShowRequestOnSite(false)
+          logDemoAction('On-site check')
         }}
       />
 
@@ -1237,148 +1350,77 @@ export default function RouteIntelligencePolished() {
           setConfirmLocation(undefined)
         }}
         location={confirmLocation}
-        onConfirm={(outcome, note, photo) => {
+        confirmerName={clearanceBy}
+        requireConfirmerName
+        items={pendingConfirmIds.map(id => {
+          const item = result?.evidence.find(entry => entry.id === id)
+          return { id, title: item ? displayEvidenceTitle(item) : id }
+        })}
+        onConfirm={(outcome, note, _photo, confirmedBy) => {
           if (!result) return
-          
-          const name = clearanceByRef.current.trim() || clearanceBy.trim() || 'Dispatcher'
-          if (!clearanceByRef.current.trim()) {
-            clearanceByRef.current = name
-            setClearanceBy(name)
+
+          const name = confirmedBy.trim()
+          if (!name) {
+            setToast('Enter a confirmer name before confirming VERIFY items.')
+            return
           }
-          const at = new Date().toISOString()
-          const next = [...acknowledgements]
-          let added = 0
-          
-          for (const id of pendingConfirmIds) {
-            const item = result.evidence.find(entry => entry.id === id)
-            if (!item) continue
-            
-            // "closed" on a HOLD or verified closure means cannot proceed
-            if (outcome === 'closed' && isHoldItem(item)) {
+          clearanceByRef.current = name
+          setClearanceBy(name)
+
+          if (outcome === 'closed') {
+            const holdLocked = pendingConfirmIds.some(id => {
+              const item = result.evidence.find(entry => entry.id === id)
+              return item && isHoldItem(item)
+            })
+            if (holdLocked) {
               setToast('Confirmed closed — HOLD remains.')
-              continue
+            } else {
+              setToast(`Status recorded as closed${note ? ': ' + note : ''}`)
             }
-            
-            // "open" or "partly" can acknowledge VERIFY items
-            if ((outcome === 'open' || outcome === 'partly') && !isHoldItem(item) && isAcknowledgeable(item)) {
-              if (!next.some(ack => ack.evidenceId === id)) {
-                next.push({ 
-                  evidenceId: id, 
-                  acknowledgedBy: name, 
-                  acknowledgedAt: at,
-                })
-                added += 1
-              }
-            }
+            setShowOnSiteConfirm(false)
+            setPendingConfirmIds([])
+            setConfirmLocation(undefined)
+            return
           }
-          
-          if (added > 0) {
-            setAcknowledgements(next)
-            setToast(`${added} item${added === 1 ? '' : 's'} confirmed on site as ${outcome}`)
-          } else {
-            setToast(`Status recorded as ${outcome}${note ? ': ' + note : ''}`)
-          }
-          
+
+          confirmOnSite(pendingConfirmIds, name)
           setShowOnSiteConfirm(false)
           setPendingConfirmIds([])
           setConfirmLocation(undefined)
         }}
       />
 
-      <TestScenariosDrawer
-        open={showTestScenarios}
-        onClose={() => setShowTestScenarios(false)}
-        onSimulateClosure={() => {
-          if (!result) return
-          // Simulate a closure on the route
-          const mockClosure: RouteEvidence = {
-            id: 'sim-closure-' + Date.now(),
-            title: 'A5 Karlsruhe → Basel, near AS Baden-Baden',
-            detail: 'Test closure scenario: Full carriageway closure for bridge maintenance',
-            source: 'MIA DATEX II (simulated)',
-            age: 'Just now',
-            confidence: 'high',
-            state: 'danger',
-            category: 'closures',
-            lat: 48.7758,
-            lng: 8.2396,
-            blocker: true,
-          }
-          const newEvidence = [mockClosure, ...result.evidence]
-          const hasDanger = newEvidence.some(e => e.state === 'danger')
-          const hasWarning = newEvidence.some(e => e.state === 'warning')
-          const newVerdict = hasDanger ? 'HOLD' : hasWarning ? 'VERIFY' : 'READY'
-          setResult({
-            ...result,
-            verdict: newVerdict,
-            evidence: newEvidence,
-            title: newVerdict === 'HOLD' ? 'HOLD DEPARTURE' : newVerdict === 'VERIFY' ? 'VERIFY BEFORE DEPARTURE' : 'READY TO DEPART',
-            summary: newVerdict === 'HOLD' 
-              ? 'Simulated closure — route blocked' 
-              : result.summary,
-          })
-          setToast('Closure simulated — check verdict')
-        }}
-        onSimulateRoadwork={() => {
-          if (!result) return
-          // Simulate roadworks with width restriction
-          const mockRoadwork: RouteEvidence = {
-            id: 'sim-roadwork-' + Date.now(),
-            title: 'A5 near AS Offenburg',
-            detail: 'Test roadworks scenario: Lane narrowing with 3.2m width limit',
-            source: 'Open Roadworks (simulated)',
-            age: 'Just now',
-            confidence: 'medium',
-            state: 'warning',
-            category: 'roadworks',
-            lat: 48.4734,
-            lng: 7.9403,
-            reason: 'Width 3.2m',
-          }
-          const newEvidence = [mockRoadwork, ...result.evidence]
-          const hasDanger = newEvidence.some(e => e.state === 'danger')
-          const hasWarning = newEvidence.some(e => e.state === 'warning')
-          const newVerdict = hasDanger ? 'HOLD' : hasWarning ? 'VERIFY' : 'READY'
-          setResult({
-            ...result,
-            verdict: newVerdict,
-            evidence: newEvidence,
-            title: newVerdict === 'VERIFY' ? 'VERIFY BEFORE DEPARTURE' : result.title,
-            summary: newVerdict === 'VERIFY' 
-              ? 'Simulated roadworks — verify before departure' 
-              : result.summary,
-          })
-          setToast('Roadworks simulated — check verdict')
-        }}
-        onClearSimulations={() => {
-          if (!result) return
-          const newEvidence = result.evidence.filter(item => !item.id.startsWith('sim-'))
-          const hasDanger = newEvidence.some(e => e.state === 'danger')
-          const hasWarning = newEvidence.some(e => e.state === 'warning')
-          const newVerdict = hasDanger ? 'HOLD' : hasWarning ? 'VERIFY' : 'READY'
-          setResult({
-            ...result,
-            verdict: newVerdict,
-            evidence: newEvidence,
-            title: newVerdict === 'READY' ? 'READY TO DEPART' : newVerdict === 'VERIFY' ? 'VERIFY BEFORE DEPARTURE' : 'HOLD DEPARTURE',
-            summary: newVerdict === 'READY' 
-              ? 'Simulations cleared — route ready' 
-              : result.summary,
-          })
-          setToast('Simulations cleared')
-        }}
-      />
-
-      {/* Floating test scenarios trigger (discreet, visible on hover) */}
-      <button
-        type="button"
-        className="test-scenarios-trigger"
-        onClick={() => setShowTestScenarios(true)}
-        title="Test scenarios"
-        aria-label="Open test scenarios"
-      >
-        🧪
-      </button>
+      {/* Debug-only: never mutate live results; scenario permits remain the demo path. */}
+      {debugTools && (
+        <TestScenariosDrawer
+          open={showTestScenarios}
+          onClose={() => setShowTestScenarios(false)}
+          onSimulateClosure={() => {
+            setShowTestScenarios(false)
+            setToast('Live simulate is disabled. Use a Simulated HOLD sample permit instead.')
+          }}
+          onSimulateRoadwork={() => {
+            setShowTestScenarios(false)
+            setToast('Live simulate is disabled. Use a Simulated VERIFY sample permit instead.')
+          }}
+          onClearSimulations={() => {
+            setShowTestScenarios(false)
+            setToast('Live simulate is disabled.')
+          }}
+        />
+      )}
+      {debugTools ? (
+        <button
+          type="button"
+          className="test-scenarios-trigger"
+          data-testid="debug-scenarios-trigger"
+          onClick={() => setShowTestScenarios(true)}
+          title="Debug test scenarios"
+          aria-label="Open debug test scenarios"
+        >
+          🧪
+        </button>
+      ) : null}
     </div>
   )
 }
@@ -1432,6 +1474,20 @@ function EvidenceCard({
           )}
           {item.reason}
         </p>
+      )}
+      {item.relatedRecords && item.relatedRecords.length > 0 && (
+        <details className="evidence-related" data-testid="evidence-related">
+          <summary>
+            {item.relatedRecords.length === 1
+              ? '+1 related record'
+              : `+${item.relatedRecords.length} related records`}
+          </summary>
+          <ul>
+            {item.relatedRecords.map(related => (
+              <li key={related.id}>{related.title || related.id}</li>
+            ))}
+          </ul>
+        </details>
       )}
       <div className="evidence-meta">
         <span>{item.source}</span>
