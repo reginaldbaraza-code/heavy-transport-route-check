@@ -25,6 +25,11 @@ export type SiteAcknowledgement = {
 export type LocationKind = 'mainline' | 'ramp' | 'parking' | 'unknown'
 export type TravelDirection = 'with' | 'against' | 'unknown' | 'both'
 
+export type RelatedRecord = {
+  id: string
+  title: string
+}
+
 export type ClassifiedEvidence = {
   id: string
   title: string
@@ -45,6 +50,10 @@ export type ClassifiedEvidence = {
   locationKind: LocationKind
   road?: string
   blocker: boolean
+  /** Travel direction relative to the permitted route, used to keep opposite-direction records distinct in dedupe. */
+  travelDirection?: TravelDirection
+  /** Records absorbed by proximity dedupe — surfaced on the surviving card. */
+  relatedRecords?: RelatedRecord[]
 }
 
 export type CandidateInput = {
@@ -475,6 +484,7 @@ export function classifyCandidate(input: CandidateInput, ctx: ClassifyContext): 
       locationKind: kind,
       road,
       blocker: false,
+      travelDirection: direction,
     }
   }
 
@@ -580,10 +590,32 @@ export function classifyCandidate(input: CandidateInput, ctx: ClassifyContext): 
     locationKind: kind,
     road,
     blocker: state === 'danger' || (state === 'warning' && blocker),
+    travelDirection: direction,
   }
 }
 
 const SEVERITY_RANK: Record<EvidenceState, number> = { danger: 4, warning: 3, info: 2, clear: 1 }
+
+function relatedNote(count: number): string {
+  return count === 1 ? '+1 related record' : `+${count} related records`
+}
+
+function withRelatedTrace(survivor: ClassifiedEvidence, absorbed: ClassifiedEvidence): ClassifiedEvidence {
+  const related = [
+    ...(survivor.relatedRecords || []),
+    ...(absorbed.relatedRecords || []),
+    { id: absorbed.id, title: absorbed.title },
+  ]
+  const note = relatedNote(related.length)
+  const reason = /\+\d+ related records?/.test(survivor.reason)
+    ? survivor.reason.replace(/\+\d+ related records?/g, note)
+    : `${survivor.reason} (${note})`
+  return { ...survivor, relatedRecords: related, reason }
+}
+
+function directionsMatch(a?: TravelDirection, b?: TravelDirection): boolean {
+  return (a ?? 'unknown') === (b ?? 'unknown')
+}
 
 export function dedupeClassified(items: ClassifiedEvidence[], maxKm = DEDUPE_KM): ClassifiedEvidence[] {
   const kept: ClassifiedEvidence[] = []
@@ -604,7 +636,10 @@ export function dedupeClassified(items: ClassifiedEvidence[], maxKm = DEDUPE_KM)
       if (item.id && existing.id && item.id === existing.id) return true
       const sameRoad = (existing.road || '') === (item.road || '')
       const sameType = existing.category === item.category
-      if (!sameRoad || !sameType) return false
+      const sameKind = existing.locationKind === item.locationKind
+      const sameDirection = directionsMatch(existing.travelDirection, item.travelDirection)
+      // Never absorb a record that differs in ramp/mainline kind or travel direction.
+      if (!sameRoad || !sameType || !sameKind || !sameDirection) return false
       if (item.lat == null || item.lng == null || existing.lat == null || existing.lng == null) return false
       const km = turf.distance([item.lng, item.lat], [existing.lng, existing.lat], { units: 'kilometers' })
       return km <= maxKm
@@ -614,10 +649,17 @@ export function dedupeClassified(items: ClassifiedEvidence[], maxKm = DEDUPE_KM)
       if (item.id) bySourceId.set(item.id, item)
       continue
     }
+    const index = kept.indexOf(match)
     if (SEVERITY_RANK[item.state] > SEVERITY_RANK[match.state]) {
-      const index = kept.indexOf(match)
-      kept[index] = item
-      if (item.id) bySourceId.set(item.id, item)
+      const merged = withRelatedTrace(item, match)
+      kept[index] = merged
+      if (item.id) bySourceId.set(item.id, merged)
+      if (match.id) bySourceId.set(match.id, merged)
+    } else {
+      const merged = withRelatedTrace(match, item)
+      kept[index] = merged
+      if (match.id) bySourceId.set(match.id, merged)
+      if (item.id) bySourceId.set(item.id, merged)
     }
   }
   return kept

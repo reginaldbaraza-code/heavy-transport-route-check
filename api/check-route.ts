@@ -70,6 +70,8 @@ type RouteEvidence = {
   reason?: string;
   locationKind?: string;
   blocker?: boolean;
+  travelDirection?: string;
+  relatedRecords?: Array<{ id: string; title: string }>;
 };
 
 type RouteCheckResult = {
@@ -350,6 +352,8 @@ function toRouteEvidence(item: ClassifiedEvidence, age: string): RouteEvidence {
     reason: item.reason,
     locationKind: item.locationKind,
     blocker: item.blocker,
+    travelDirection: item.travelDirection,
+    relatedRecords: item.relatedRecords,
   };
 }
 

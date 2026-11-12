@@ -62,6 +62,8 @@ test('overview verdicts prefer the labelled sample outcome', () => {
   const munich = sampleTestPermits.find(permit => permit.id === 'munchen-stuttgart')
   assert.equal(overviewVerdictForPermit(hamburg!), 'VERIFY')
   assert.equal(overviewVerdictForPermit(lubeck!), 'VERIFY')
+  // München omits a hardcoded expectedVerdict (live HOLD depends on Restbreite); overview still demos HOLD.
+  assert.equal(munich!.expectedVerdict, undefined)
   assert.equal(overviewVerdictForPermit(munich!), 'HOLD')
   assert.match(munich!.liveLabel || '', /Restbreite|width|not height/i)
 })

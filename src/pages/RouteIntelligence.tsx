@@ -47,6 +47,7 @@ import {
   isAcknowledgeable,
   isHoldItem,
   isNearbyOffRoute,
+  isOppositeDirectionNote,
   type SiteAcknowledgement,
 } from '../lib/siteAcknowledgements'
 import { displayEvidenceTitle, evidenceOriginalGerman, looksGerman, looksTechnical, splitConcatenatedPlaces } from '../lib/evidenceSummary'
@@ -684,6 +685,7 @@ export default function RouteIntelligencePolished() {
   const currentVerdict = displayed ? verdictConfig[displayed.verdict] : null
   const primaryEvidence = displayed?.evidence.filter(item => !isNearbyOffRoute(item)) || []
   const nearbyOffRoute = displayed?.evidence.filter(isNearbyOffRoute) || []
+  const oppositeDirectionNotes = primaryEvidence.filter(isOppositeDirectionNote)
   const pendingVerify = primaryEvidence.filter(item => isAcknowledgeable(item) && !item.acknowledgedAt)
 
   return (
@@ -1221,6 +1223,17 @@ export default function RouteIntelligencePolished() {
                       </button>
                     )}
                   </div>
+                  {oppositeDirectionNotes.length > 0 && (
+                    <p
+                      className="opposite-direction-summary"
+                      data-testid="opposite-direction-summary"
+                    >
+                      {oppositeDirectionNotes.length === 1
+                        ? '1 opposite-direction ramp note'
+                        : `${oppositeDirectionNotes.length} opposite-direction ramp notes`}
+                      {' '}(info only — not on your travel direction)
+                    </p>
+                  )}
                   <div className="evidence-list">
                     {primaryEvidence.map(item => (
                       <EvidenceCard
@@ -1461,6 +1474,20 @@ function EvidenceCard({
           )}
           {item.reason}
         </p>
+      )}
+      {item.relatedRecords && item.relatedRecords.length > 0 && (
+        <details className="evidence-related" data-testid="evidence-related">
+          <summary>
+            {item.relatedRecords.length === 1
+              ? '+1 related record'
+              : `+${item.relatedRecords.length} related records`}
+          </summary>
+          <ul>
+            {item.relatedRecords.map(related => (
+              <li key={related.id}>{related.title || related.id}</li>
+            ))}
+          </ul>
+        </details>
       )}
       <div className="evidence-meta">
         <span>{item.source}</span>

@@ -321,7 +321,7 @@ test('dedupe by ~250 m + road + type keeps worst severity', () => {
   const a: ClassifiedEvidence = {
     id: 'a', title: 'warn', detail: '', source: 't', confidence: 'medium', state: 'warning',
     category: 'closures', lat: onRoute.lat, lng: onRoute.lng, distanceKm: 0.1, reason: 'x', locationKind: 'mainline',
-    road: 'A7', blocker: true,
+    road: 'A7', blocker: true, travelDirection: 'with',
   }
   const b: ClassifiedEvidence = {
     ...a, id: 'b', title: 'hold', state: 'danger', lat: onRoute.lat + 0.001, lng: onRoute.lng + 0.001, confidence: 'high',
@@ -329,6 +329,9 @@ test('dedupe by ~250 m + road + type keeps worst severity', () => {
   const out = dedupeClassified([a, b])
   assert.equal(out.length, 1)
   assert.equal(out[0].state, 'danger')
+  assert.equal(out[0].relatedRecords?.length, 1)
+  assert.equal(out[0].relatedRecords?.[0].id, 'a')
+  assert.match(out[0].reason, /\+1 related record/)
 })
 
 test('READY only with clearance confirmed and no VERIFY blockers', () => {
@@ -848,4 +851,94 @@ test('round-3: same geometry sample vs custom GPX (track-derived travel) give th
   assert.equal(custom.state, sample.state)
   assert.equal(custom.locationKind, sample.locationKind)
   assert.equal(custom.state, 'info')
+})
+
+test('round-4: dedupe keeps opposite-direction Westenholz .de4 separate from with-direction neighbour', () => {
+  // Live Autobahn closures around AS Westenholz: .de4 is Hannover→Hamburg (against HH→HAN),
+  // .de1 is Hamburg→Hannover (with). Place them inside DEDUPE_KM so only the direction guard saves .de4.
+  const withDir: ClassifiedEvidence = {
+    id: '2026-042956--vi-fbm.2026-11-03_21-00-00-000.devi-zus.2026-10-19_00-00-00-000.de1',
+    title: 'Erneuerung der Fahrbahn L191 - Vollsperrung AS Westenholz',
+    detail: 'Von A7: Hamburg -> Hannover nach Abfahrt von der A7: AS Westenholz',
+    source: 'Autobahn',
+    confidence: 'medium',
+    state: 'warning',
+    category: 'closures',
+    lat: 52.7748,
+    lng: 9.6677,
+    distanceKm: 0.1,
+    reason: 'Ramp / AS / parking site — not a confirmed mainline carriageway block.',
+    locationKind: 'ramp',
+    road: 'A7',
+    blocker: true,
+    travelDirection: 'with',
+  }
+  const againstDir: ClassifiedEvidence = {
+    id: '2026-042956--vi-fbm.2026-11-03_21-00-00-000.devi-zus.2026-10-19_00-00-00-000.de4',
+    title: 'Von Auffahrt auf die A7: AS Westenholz (Opposite direction)',
+    detail: 'Von Auffahrt auf die A7: AS Westenholz nach A7: Hannover -> Hamburg',
+    source: 'Autobahn',
+    confidence: 'medium',
+    state: 'info',
+    category: 'closures',
+    lat: 52.7746,
+    lng: 9.6680,
+    distanceKm: 0.12,
+    reason: 'Opposite direction — junction ramp/AS is against the route travel direction.',
+    locationKind: 'ramp',
+    road: 'A7',
+    blocker: false,
+    travelDirection: 'against',
+  }
+  const out = dedupeClassified([withDir, againstDir])
+  assert.equal(out.length, 2, 'direction mismatch must not silently drop .de4')
+  assert.ok(out.some(item => item.id.endsWith('.de4')))
+  assert.ok(out.some(item => item.id.endsWith('.de1')))
+})
+
+test('round-4: dedupe keeps ramp and mainline distinct; same-kind merge leaves related-record trace', () => {
+  const ramp: ClassifiedEvidence = {
+    id: 'ramp-a',
+    title: 'AS Westenholz Auffahrt',
+    detail: '',
+    source: 't',
+    confidence: 'medium',
+    state: 'warning',
+    category: 'closures',
+    lat: onRoute.lat,
+    lng: onRoute.lng,
+    distanceKm: 0.05,
+    reason: 'Ramp',
+    locationKind: 'ramp',
+    road: 'A7',
+    blocker: true,
+    travelDirection: 'with',
+  }
+  const mainline: ClassifiedEvidence = {
+    ...ramp,
+    id: 'mainline-a',
+    title: 'A7 mainline works',
+    locationKind: 'mainline',
+    lat: onRoute.lat + 0.0005,
+    lng: onRoute.lng + 0.0005,
+  }
+  const kindSplit = dedupeClassified([ramp, mainline])
+  assert.equal(kindSplit.length, 2, 'ramp vs mainline must not merge')
+
+  const twin: ClassifiedEvidence = {
+    ...ramp,
+    id: 'ramp-b',
+    title: 'AS Westenholz twin sub-record',
+    state: 'info',
+    blocker: false,
+    lat: onRoute.lat + 0.0008,
+    lng: onRoute.lng + 0.0008,
+  }
+  const merged = dedupeClassified([ramp, twin])
+  assert.equal(merged.length, 1)
+  assert.equal(merged[0].id, 'ramp-a')
+  assert.equal(merged[0].relatedRecords?.length, 1)
+  assert.equal(merged[0].relatedRecords?.[0].id, 'ramp-b')
+  assert.equal(merged[0].relatedRecords?.[0].title, 'AS Westenholz twin sub-record')
+  assert.match(merged[0].reason, /\+1 related record/)
 })
