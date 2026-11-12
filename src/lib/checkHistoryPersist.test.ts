@@ -7,8 +7,12 @@ import {
   KEEPALIVE_BODY_MAX_BYTES,
   STATE_BODY_MAX_BYTES,
   compactCheckHistoryRecord,
+  createKeepaliveBudget,
+  decidePersistStart,
   encodeStateWriteBody,
   prepareCheckHistoryForPersist,
+  reserveKeepaliveBytes,
+  shouldScheduleRetry,
   shouldUseKeepalive,
   utf8ByteLength,
 } from './checkHistoryPersist.ts'
@@ -82,6 +86,74 @@ test('keepalive is used only for bodies ≤ 60 KB', () => {
   )
   assert.ok(utf8ByteLength(bulky) > KEEPALIVE_BODY_MAX_BYTES)
   assert.equal(shouldUseKeepalive(utf8ByteLength(bulky)), false)
+})
+
+test('shared keepalive budget rejects concurrent bodies that exceed 60 KB total', () => {
+  const budget = createKeepaliveBudget()
+  assert.equal(reserveKeepaliveBytes(budget, 30 * 1024), true)
+  assert.equal(reserveKeepaliveBytes(budget, 30 * 1024), true)
+  // 30 + 30 already filled the shared 60 KB — a third request must fall back.
+  assert.equal(reserveKeepaliveBytes(budget, 1), false)
+
+  const tight = createKeepaliveBudget()
+  assert.equal(reserveKeepaliveBytes(tight, 51 * 1024), true)
+  // 51 KB + 15 KB would exceed Chrome's shared keepalive quota.
+  assert.equal(reserveKeepaliveBytes(tight, 15 * 1024), false)
+  assert.equal(tight.used, 51 * 1024)
+
+  const oversized = createKeepaliveBudget()
+  assert.equal(reserveKeepaliveBytes(oversized, KEEPALIVE_BODY_MAX_BYTES + 1), false)
+  assert.equal(oversized.used, 0)
+})
+
+test('persist dedupe starts once per key and skips same-body inflight', () => {
+  assert.equal(
+    decidePersistStart({ hasInflight: false, inflightSerialized: null, nextSerialized: 'a' }),
+    'start',
+  )
+  assert.equal(
+    decidePersistStart({ hasInflight: true, inflightSerialized: 'a', nextSerialized: 'a' }),
+    'skip-same-inflight',
+  )
+  assert.equal(
+    decidePersistStart({ hasInflight: true, inflightSerialized: 'a', nextSerialized: 'b' }),
+    'abort-and-replace',
+  )
+})
+
+test('retries are blocked while a PUT for the same key is still in flight', () => {
+  assert.equal(
+    shouldScheduleRetry({
+      hasInflight: true,
+      cacheSerialized: 'a',
+      attemptedSerialized: 'a',
+    }),
+    false,
+  )
+  assert.equal(
+    shouldScheduleRetry({
+      hasInflight: false,
+      cacheSerialized: 'b',
+      attemptedSerialized: 'a',
+    }),
+    false,
+  )
+  assert.equal(
+    shouldScheduleRetry({
+      hasInflight: false,
+      cacheSerialized: undefined,
+      attemptedSerialized: 'a',
+    }),
+    false,
+  )
+  assert.equal(
+    shouldScheduleRetry({
+      hasInflight: false,
+      cacheSerialized: 'a',
+      attemptedSerialized: 'a',
+    }),
+    true,
+  )
 })
 
 test('50 realistic Bremen-shaped history records compact to under 200 KB', () => {

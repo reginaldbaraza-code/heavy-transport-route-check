@@ -3766,6 +3766,14 @@ select:focus-visible {
   overflow-y: auto;
   overflow-x: hidden;
 }
+/* Collapsed icon rail: let tooltips escape; nav is short so scroll is unused. */
+.app-sidebar.is-collapsed-rail {
+  overflow: visible;
+}
+.app-sidebar.is-collapsed-rail .sidebar-nav,
+.app-sidebar.is-collapsed-rail .sidebar-footer {
+  overflow: visible;
+}
 .sidebar-section-label {
   font-size: 11px;
   font-weight: 600;
@@ -3817,10 +3825,17 @@ select:focus-visible {
 .has-tooltip[data-tooltip]:focus-visible::after {
   opacity: 1;
 }
+/* Icon-only collapsed rail: any focus (not only :focus-visible) must reveal the label. */
+.app-sidebar.is-collapsed-rail .has-tooltip[data-tooltip]:focus::after {
+  opacity: 1;
+}
 
 @media (hover: none) {
   .has-tooltip[data-tooltip]:hover::after {
     opacity: 0;
+  }
+  .app-sidebar.is-collapsed-rail .has-tooltip[data-tooltip]:focus::after {
+    opacity: 1;
   }
 }
 .sidebar-link-row {
@@ -5388,6 +5403,13 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 88%, var(--navy) 12%) 0%, var(--bg-base) 280px, var(--bg-base) 100%);
   overflow-x: clip;
+}
+/* Short viewports (e.g. 390×844): keep the footnote above the fold. */
+@media (max-height: 900px) {
+  .login-screen {
+    padding-top: calc(12px + var(--safe-area-inset-top));
+    padding-bottom: calc(16px + var(--safe-area-inset-bottom));
+  }
 }
 
 .login-shell {

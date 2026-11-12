@@ -214,6 +214,31 @@ async function main() {
   const loginTileCount = await loginTiles.count()
   record('Login screen renders 7 user tiles', loginTileCount === 7, `count=${loginTileCount}`)
 
+  // Short phone viewport: footnote must stay in the first screen (padding clamp).
+  await page.setViewportSize({ width: 390, height: 844 })
+  const loginFit = await page.evaluate(() => {
+    const screen = document.querySelector('.login-screen')
+    const footnote = document.querySelector('.login-footnote')
+    if (!screen || !footnote) return { ok: false, reason: 'missing' }
+    const screenRect = screen.getBoundingClientRect()
+    const noteRect = footnote.getBoundingClientRect()
+    const style = getComputedStyle(screen)
+    return {
+      ok: noteRect.bottom <= screenRect.bottom + 1 && noteRect.bottom <= window.innerHeight + 1,
+      screenHeight: Math.round(screenRect.height),
+      noteBottom: Math.round(noteRect.bottom),
+      viewport: window.innerHeight,
+      paddingTop: style.paddingTop,
+      paddingBottom: style.paddingBottom,
+    }
+  })
+  record(
+    'Login footnote fits in 390×844 viewport',
+    Boolean(loginFit.ok),
+    JSON.stringify(loginFit),
+  )
+  await page.setViewportSize({ width: 1440, height: 900 })
+
   await page.getByRole('button', { name: 'Continue as Demo' }).click()
   await page.waitForFunction(() => !document.querySelector('.login-screen'), null, { timeout: 30000 })
   const skipOnboarding = page.getByRole('button', { name: /skip/i })
@@ -1895,12 +1920,192 @@ async function main() {
     return contrast
   }
 
-  // Per-user isolation: Anna's job must not appear for Paul.
+  // Multi-job account sync: ≥15 realistic jobs must all persist (keepalive quota).
   await page.setViewportSize({ width: 1440, height: 900 })
+  await page.getByRole('button', { name: 'Switch user' }).first().click()
+  await page.getByRole('heading', { name: "Who's checking routes?" }).waitFor({ timeout: 15000 })
+  await page.getByRole('button', { name: 'Continue as Luis' }).click()
+  await page.waitForFunction(() => !document.querySelector('.login-screen'), null, { timeout: 30000 })
+  const skipLuis = page.getByRole('button', { name: /skip/i })
+  if (await skipLuis.count()) await skipLuis.first().click().catch(() => {})
+  if (!(await page.getByRole('heading', { name: /Saved jobs|Jobs/i }).count())) {
+    await page.getByRole('link', { name: 'Jobs' }).first().click().catch(() => {})
+  }
+  await page.waitForFunction(() => Boolean(window.__HT_TEST__?.setStore), null, { timeout: 20000 })
+  const multiJob = await page.evaluate(async () => {
+    const gpx = await fetch('/test-permits/bremen-dortmund-a1.gpx').then(r => r.text())
+    const jobs = []
+    let sawNotSaved = false
+    const prefix = `Luis multi ${Date.now()}`
+    for (let i = 0; i < 15; i++) {
+      const now = new Date().toISOString()
+      jobs.unshift({
+        id: `job-luis-multi-${Date.now()}-${i}`,
+        name: `${prefix} #${i + 1}`,
+        permitNumber: `DE-HB-LUIS-${70000 + i}`,
+        routeFileName: 'bremen-dortmund-a1.gpx',
+        gpxContent: gpx,
+        origin: 'Bremen Heavy Cargo Terminal',
+        destination: 'Dortmund',
+        corridor: 'A1',
+        permittedRoads: ['A1'],
+        vehicle: { width: 3.5, height: 4.2, length: 32, grossWeight: 72 },
+        plannedDeparture: now,
+        monitorIntervalMinutes: 15,
+        createdAt: now,
+        updatedAt: now,
+        lastCheckedAt: now,
+        lastVerdict: i % 3 === 0 ? 'HOLD' : i % 3 === 1 ? 'VERIFY' : 'READY',
+        lastSummary: 'Residual width conflict on the permitted A1 corridor — confirm before departure.',
+        lastRetrievedAt: now,
+        lastSource: 'Autobahn GmbH MIA, Open Roadworks',
+        monitoringStoppedReason: null,
+      })
+      window.__HT_TEST__?.setStore?.('htr-saved-jobs', jobs.slice())
+      await window.__HT_TEST__?.flushStore?.()
+      // Give the PUT a moment; chip must never stick on "Not saved".
+      await new Promise(resolve => setTimeout(resolve, 120))
+      if (document.querySelector('.user-chip-badge.is-error')) sawNotSaved = true
+    }
+    // Wait until the error badge is gone (final save settled).
+    for (let t = 0; t < 80; t++) {
+      if (!document.querySelector('.user-chip-badge.is-error')) break
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    await window.__HT_TEST__?.flushStore?.()
+    await new Promise(resolve => setTimeout(resolve, 400))
+    const res = await fetch('/api/state?user=luis')
+    const payload = await res.json()
+    const raw = payload?.data?.['htr-saved-jobs']
+    const parsed = typeof raw === 'string' ? JSON.parse(raw || '[]') : (raw || [])
+    const matched = Array.isArray(parsed) ? parsed.filter(item => String(item?.name || '').startsWith(prefix)) : []
+    const bodyProbe = JSON.stringify({ user: 'luis', key: 'htr-saved-jobs', value: parsed })
+    return {
+      apiCount: matched.length,
+      totalApi: Array.isArray(parsed) ? parsed.length : -1,
+      sawNotSaved,
+      notSavedNow: Boolean(document.querySelector('.user-chip-badge.is-error')),
+      approxBytes: new TextEncoder().encode(bodyProbe).length,
+      prefix,
+    }
+  })
+  record(
+    'Luis can save ≥15 jobs without Not saved / data loss',
+    multiJob.apiCount >= 15 && !multiJob.sawNotSaved && !multiJob.notSavedNow,
+    JSON.stringify(multiJob),
+  )
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 })
+  await page.waitForFunction(() => !document.querySelector('.login-screen'), null, { timeout: 30000 }).catch(() => {})
+  const multiJobAfterReload = await page.evaluate(async (prefix) => {
+    const res = await fetch('/api/state?user=luis')
+    const payload = await res.json()
+    const raw = payload?.data?.['htr-saved-jobs']
+    const parsed = typeof raw === 'string' ? JSON.parse(raw || '[]') : (raw || [])
+    const matched = Array.isArray(parsed) ? parsed.filter(item => String(item?.name || '').startsWith(prefix)) : []
+    return {
+      apiCount: matched.length,
+      notSaved: Boolean(document.querySelector('.user-chip-badge.is-error')),
+    }
+  }, multiJob.prefix)
+  record(
+    'Luis ≥15 jobs still present in GET /api/state after reload',
+    multiJobAfterReload.apiCount >= 15 && !multiJobAfterReload.notSaved,
+    JSON.stringify(multiJobAfterReload),
+  )
+
+  // Per-user isolation: Anna's job must not appear for Paul.
   await page.getByRole('button', { name: 'Switch user' }).first().click()
   await page.getByRole('heading', { name: "Who's checking routes?" }).waitFor({ timeout: 15000 })
   await page.getByRole('button', { name: 'Continue as Anna' }).click()
   await page.waitForFunction(() => !document.querySelector('.login-screen'), null, { timeout: 30000 })
+  // Collapsed-rail tooltips must escape overflow clipping (hover + focus-visible).
+  await page.setViewportSize({ width: 1440, height: 900 })
+  // Headless defaults to hover:none which suppresses :hover tooltips — emulate a mouse.
+  try {
+    const cdp = await page.context().newCDPSession(page)
+    await cdp.send('Emulation.setEmulatedMedia', {
+      features: [
+        { name: 'hover', value: 'hover' },
+        { name: 'any-hover', value: 'hover' },
+        { name: 'pointer', value: 'fine' },
+        { name: 'any-pointer', value: 'fine' },
+      ],
+    })
+  } catch {
+    // CDP optional — focus-visible path below still covers keyboard users.
+  }
+  const collapseBtn = page.getByRole('button', { name: 'Collapse navigation' })
+  if (await collapseBtn.count()) await collapseBtn.click().catch(() => {})
+  const railOverflow = await page.evaluate(() => {
+    const aside = document.querySelector('.app-sidebar')
+    const nav = document.querySelector('.sidebar-nav')
+    if (!aside || !nav) return { ok: false }
+    const asideStyle = getComputedStyle(aside)
+    const navStyle = getComputedStyle(nav)
+    return {
+      ok: aside.classList.contains('is-collapsed-rail')
+        && asideStyle.overflow === 'visible'
+        && navStyle.overflow === 'visible',
+      asideOverflow: asideStyle.overflow,
+      navOverflow: navStyle.overflow,
+      collapsed: aside.classList.contains('is-collapsed-rail'),
+    }
+  })
+  record(
+    'Collapsed rail overflow is visible for tooltips',
+    Boolean(railOverflow.ok),
+    JSON.stringify(railOverflow),
+  )
+  const routeChecksLink = page.getByRole('link', { name: 'Route checks' }).first()
+  await routeChecksLink.hover()
+  await page.waitForTimeout(80)
+  let routeTip = await routeChecksLink.evaluate(el => {
+    const after = getComputedStyle(el, '::after')
+    return { content: after.content, opacity: after.opacity }
+  })
+  // Focus path (works even when headless reports hover:none).
+  if (!(Number(routeTip.opacity) > 0.9)) {
+    await routeChecksLink.focus()
+    await page.waitForTimeout(40)
+    routeTip = await routeChecksLink.evaluate(el => {
+      const after = getComputedStyle(el, '::after')
+      return { content: after.content, opacity: after.opacity, active: document.activeElement === el }
+    })
+  }
+  record(
+    'Collapsed Route checks tooltip is visible beside the rail',
+    routeTip.content.includes('Route checks') && Number(routeTip.opacity) > 0.9,
+    JSON.stringify(routeTip),
+  )
+  const annaChip = page.getByRole('button', { name: /Switch user \(Anna\)/i }).first()
+  await annaChip.hover()
+  await page.waitForTimeout(80)
+  let annaTip = await annaChip.evaluate(el => {
+    const after = getComputedStyle(el, '::after')
+    return { content: after.content, opacity: after.opacity }
+  })
+  if (!(Number(annaTip.opacity) > 0.9)) {
+    await annaChip.focus()
+    await page.waitForTimeout(40)
+    annaTip = await annaChip.evaluate(el => {
+      const after = getComputedStyle(el, '::after')
+      return { content: after.content, opacity: after.opacity, active: document.activeElement === el }
+    })
+  }
+  record(
+    'Collapsed Anna chip tooltip shows Anna · Switch user',
+    /Anna/i.test(annaTip.content) && /Switch user/i.test(annaTip.content) && Number(annaTip.opacity) > 0.9,
+    JSON.stringify(annaTip),
+  )
+  try {
+    const { mkdirSync } = await import('node:fs')
+    mkdirSync('/tmp/htr-qa', { recursive: true })
+    await page.screenshot({ path: '/tmp/htr-qa/collapsed-rail-tooltips.png', fullPage: false })
+  } catch {
+    // Screenshot is diagnostic only.
+  }
+  const expandBtn = page.getByRole('button', { name: 'Expand navigation' })
+  if (await expandBtn.count()) await expandBtn.click().catch(() => {})
   // Client-side: Router remounts on the current URL (likely /jobs or /). Prefer Jobs nav.
   if (!(await page.getByRole('heading', { name: /Saved jobs|Jobs/i }).count())) {
     await page.getByRole('link', { name: 'Jobs' }).first().click()

@@ -157,14 +157,15 @@ export default function Layout() {
 
       {/* ── Sidebar ───────────────────────────────────────────────── */}
       <aside
-        className={`app-sidebar ${mobileOpen ? 'mobile-open' : ''}`}
+        className={`app-sidebar${mobileOpen ? ' mobile-open' : ''}${sidebarCollapsed ? ' is-collapsed-rail' : ''}`}
         style={{
           width: sidebarCollapsed ? 72 : 232,
           transition: 'width 220ms var(--ease-out)',
           display: 'flex',
           flexDirection: 'column',
           flexShrink: 0,
-          overflow: 'hidden',
+          // Collapsed rail tooltips sit outside the aside — do not clip them.
+          overflow: sidebarCollapsed ? 'visible' : 'hidden',
         }}
       >
         {/* Logo row */}

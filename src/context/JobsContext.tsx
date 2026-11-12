@@ -331,7 +331,8 @@ export function JobsProvider({ children }: { children: ReactNode }) {
         }
       },
       setStore: (key: string, value: unknown) => {
-        writeJson(key, value)
+        // Immediate so QA multi-job saves mirror real job-save flushes (no debounce pile-up).
+        writeJson(key, value, { immediate: true })
       },
       flushStore: () => flushPendingSaves(),
       simulateVerdictChange: (jobId, verdict) => simulateVerdictChange(jobId, verdict),

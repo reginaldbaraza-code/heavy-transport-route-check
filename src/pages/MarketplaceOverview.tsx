@@ -184,7 +184,7 @@ export default function MarketplaceOverview() {
         <section className="saved-checks-section" aria-label="Saved route checks">
           <div className="market-section-header compact">
             <div>
-              <span className="market-eyebrow">This browser</span>
+              <span className="market-eyebrow">Your account</span>
               <h2>Your saved route checks</h2>
             </div>
             <Link to="/activity">Alerts & history <ArrowRight size={16} /></Link>
