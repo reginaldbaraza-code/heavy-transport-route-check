@@ -696,54 +696,156 @@ test('genuine A1 width restriction with MIA Ak code still HOLDs', () => {
   assert.equal(width.state, 'danger', 'Hard width on permitted A1 mainline must HOLD')
 })
 
-test('item 3 follow-up: HH→HAN junction-ramp closures are VERIFY in travel direction, never HOLD', () => {
-  const hhHan = { ...baseCtx, travelFrom: 'Hamburg', travelTo: 'Hannover' }
-
-  const evendorf = classifyCandidate(candidate({
-    title: 'Sperrung Abfahrt Evendorf',
-    description: 'Sperrung Abfahrt Evendorf',
+/** Real MIA closure payload shape (RoadOrCarriagewayOrLaneManagement + management roadClosed). */
+function miaClosureCandidate(patch: Partial<CandidateInput> & { description: string }): CandidateInput {
+  return candidate({
+    id: patch.id || 'mia-closure-fixture',
+    title: patch.title || patch.description,
+    description: patch.description,
+    source: 'Autobahn GmbH MIA via Mobilithek/MobiData BW',
+    road: patch.road ?? 'A7',
+    lat: patch.lat ?? onRoute.lat,
+    lng: patch.lng ?? onRoute.lng,
+    startTimestamp: patch.startTimestamp ?? '2026-11-02T18:00:00.000Z',
+    endTimestamp: patch.endTimestamp ?? '2026-11-16T04:00:00.000Z',
+    management: 'roadClosed',
     category: 'closures',
     isBlocked: true,
-  }), hhHan)
-  assert.ok(evendorf)
-  assert.equal(evendorf.locationKind, 'ramp')
-  assert.equal(evendorf.state, 'warning')
-  assert.notEqual(evendorf.state, 'danger')
-  assert.equal(determineVerdict([evendorf], { clearanceConfirmed: true }).verdict, 'VERIFY')
+    ...patch,
+  })
+}
 
-  const westenholzExit = classifyCandidate(candidate({
-    title: 'nach Abfahrt von der A7: AS Westenholz',
-    description: 'nach Abfahrt von der A7: AS Westenholz',
-    category: 'closures',
-    isBlocked: true,
+test('round-3: MIA closure "Sperrung Abfahrt Evendorf RF Süd" is VERIFY ramp, not HOLD', () => {
+  const description =
+    'A7, AS Bispingen bis AS Garlstorf, km 44,5-37,0, Grundinstandsetzung - Bauphase 2.2 - Sperrung Abfahrt Evendorf RF Süd'
+  assert.equal(classifyLocationKind(description), 'ramp')
+  const hhHan: ClassifyContext = {
+    ...baseCtx,
+    travelFrom: 'Hamburg Port Terminal',
+    travelTo: 'Hannover Logistics Hub',
+    routeBearing: 180,
+  }
+  // Coordinates placed on the fixture corridor; field structure matches the live MIA closure record.
+  const asClosure = classifyCandidate(miaClosureCandidate({
+    id: '16407587-25369598-25470845-25470848',
+    description,
   }), hhHan)
-  assert.ok(westenholzExit)
-  assert.equal(westenholzExit.locationKind, 'ramp')
-  assert.equal(westenholzExit.state, 'warning')
-  assert.notEqual(westenholzExit.state, 'danger')
+  assert.ok(asClosure)
+  assert.equal(asClosure.locationKind, 'ramp')
+  assert.equal(asClosure.state, 'warning')
+  assert.notEqual(asClosure.state, 'danger')
+  assert.equal(determineVerdict([asClosure], { clearanceConfirmed: true }).verdict, 'VERIFY')
+
+  const asRoadworks = classifyCandidate(candidate({
+    id: '16407587-25369598-25470845-25470848#RW',
+    title: description,
+    description: `${description} · Short-term MIA record`,
+    road: 'A7',
+    startTimestamp: '2026-11-02T18:00:00.000Z',
+    endTimestamp: '2026-11-16T04:00:00.000Z',
+    category: 'roadworks',
+  }), hhHan)
+  assert.equal(asRoadworks?.locationKind, 'ramp')
+  assert.equal(asRoadworks?.state, asClosure.state, 'record type must not change the ramp verdict')
 })
 
-test('item 3 follow-up: opposite-direction ramp closure must not count on HH→HAN', () => {
-  const hhHan = { ...baseCtx, travelFrom: 'Hamburg', travelTo: 'Hannover' }
-  const opposite = classifyCandidate(candidate({
-    title: 'Von Auffahrt auf die A7: AS Westenholz',
-    description: 'Von Auffahrt auf die A7: AS Westenholz Hannover -> Hamburg Vollsperrung AS Westenholz',
-    category: 'closures',
-    isBlocked: true,
+test('round-3: MIA "Vollsperrung AS Westenholz" closure is VERIFY ramp, not HOLD', () => {
+  const description =
+    'Erneuerung der Fahrbahn L191 - Vollsperrung AS Westenholz - Vollsperrung AS Westenholz - AS Westenholz - Ausfahrt FR Hannover'
+  assert.equal(classifyLocationKind(description), 'ramp')
+  const hhHan: ClassifyContext = {
+    ...baseCtx,
+    travelFrom: 'Hamburg',
+    travelTo: 'Hannover',
+    routeBearing: 180,
+  }
+  const item = classifyCandidate(miaClosureCandidate({
+    id: '24968442-24968444-24968447-24969204',
+    description,
+    startTimestamp: '2026-11-03T20:00:00.000Z',
+    endTimestamp: '2026-11-25T20:00:00.000Z',
   }), hhHan)
-  assert.equal(opposite, null, 'Opposite-direction junction ramp must not count')
+  assert.ok(item)
+  assert.equal(item.locationKind, 'ramp')
+  assert.equal(item.state, 'warning')
+  assert.equal(determineVerdict([item], { clearanceConfirmed: true }).verdict, 'VERIFY')
 })
 
-test('item 3 follow-up control: genuine full mainline closure on permitted road still HOLDs', () => {
-  const hhHan = { ...baseCtx, travelFrom: 'Hamburg', travelTo: 'Hannover' }
-  const mainline = classifyCandidate(candidate({
+test('round-3: opposite-direction Westenholz ramp is visible Opposite direction info, not HOLD', () => {
+  const description =
+    'Von Auffahrt auf die A7: AS Westenholz Hannover -> Hamburg Vollsperrung AS Westenholz'
+  const hhHan: ClassifyContext = {
+    ...baseCtx,
+    travelFrom: 'Hamburg Port Terminal',
+    travelTo: 'Hannover Logistics Hub',
+    routeBearing: 180,
+  }
+  const opposite = classifyCandidate(miaClosureCandidate({
+    id: 'westenholz-opposite',
+    description,
+  }), hhHan)
+  assert.ok(opposite, 'must not drop opposite-direction ramps silently')
+  assert.equal(opposite.state, 'info')
+  assert.equal(opposite.blocker, false)
+  assert.match(opposite.title, /Opposite direction/i)
+  assert.match(opposite.reason, /Opposite direction/i)
+  assert.notEqual(opposite.state, 'danger')
+  assert.equal(determineVerdict([opposite], { clearanceConfirmed: true }).verdict, 'READY')
+})
+
+test('round-3: ambiguous-direction ramp stays VERIFY', () => {
+  const description =
+    'A7, AS Bispingen bis AS Garlstorf, Grundinstandsetzung - Sperrung Abfahrt Evendorf'
+  const hhHan: ClassifyContext = {
+    ...baseCtx,
+    travelFrom: 'Hamburg',
+    travelTo: 'Hannover',
+  }
+  const item = classifyCandidate(miaClosureCandidate({ description }), hhHan)
+  assert.ok(item)
+  assert.equal(item.locationKind, 'ramp')
+  assert.equal(item.state, 'warning')
+  assert.equal(determineVerdict([item], { clearanceConfirmed: true }).verdict, 'VERIFY')
+})
+
+test('round-3: mainline Vollsperrung in travel direction during departure window still HOLDs', () => {
+  const hhHan: ClassifyContext = {
+    ...baseCtx,
+    travelFrom: 'Hamburg',
+    travelTo: 'Hannover',
+    routeBearing: 180,
+  }
+  const mainline = classifyCandidate(miaClosureCandidate({
+    id: 'a7-mainline-vollsperrung',
     title: 'A7 Vollsperrung',
-    description: 'Vollsperrung beide Richtungen A7 Fahrbahn',
-    category: 'closures',
-    isBlocked: true,
+    description: 'Vollsperrung beide Richtungen A7 Fahrbahn zwischen Soltau und Fallingbostel',
   }), hhHan)
   assert.ok(mainline)
   assert.equal(mainline.locationKind, 'mainline')
   assert.equal(mainline.state, 'danger')
   assert.equal(determineVerdict([mainline], { clearanceConfirmed: true }).verdict, 'HOLD')
+})
+
+test('round-3: same geometry sample vs custom GPX (track-derived travel) give the same ramp verdict', () => {
+  const description =
+    'Von Auffahrt auf die A7: AS Westenholz Hannover -> Hamburg Vollsperrung AS Westenholz'
+  const fromTrack: ClassifyContext = {
+    ...baseCtx,
+    // Custom GPX with no permit — only track endpoint names / bearing.
+    travelFrom: 'Hamburg Port Terminal',
+    travelTo: 'Hannover Logistics Hub',
+    routeBearing: 180,
+  }
+  const fromPermit: ClassifyContext = {
+    ...baseCtx,
+    travelFrom: 'Hamburg',
+    travelTo: 'Hannover',
+    routeBearing: 180,
+  }
+  const custom = classifyCandidate(miaClosureCandidate({ description }), fromTrack)
+  const sample = classifyCandidate(miaClosureCandidate({ description }), fromPermit)
+  assert.ok(custom && sample)
+  assert.equal(custom.state, sample.state)
+  assert.equal(custom.locationKind, sample.locationKind)
+  assert.equal(custom.state, 'info')
 })

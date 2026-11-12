@@ -180,9 +180,11 @@ export const testPermits: TestPermit[] = [
     vehicle: { width: 3.3, height: 4.3, length: 30.0, grossWeight: 65 },
     routeDescription: 'A8 motorway from München via Augsburg and Ulm to Stuttgart. Night transport 22:00–06:00 only.',
     kind: 'live',
+    // Honest for current live/snapshot data: HOLD comes from A8 mainline Restbreite when present.
+    // There is no live A8 height item — use the Simulated HOLD height scenario to demo height.
     expectedVerdict: 'HOLD',
     liveMayDiffer: true,
-    liveLabel: 'Sample — expected outcome, live data may differ',
+    liveLabel: 'Sample — expected HOLD from live A8 Restbreite when present (not height); else VERIFY',
   },
   {
     id: 'lubeck-rostock',

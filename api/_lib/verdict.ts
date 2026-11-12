@@ -77,9 +77,15 @@ export type ClassifyContext = {
   windowStartMs: number
   windowEndMs: number
   nowMs: number
-  /** Route travel endpoints used to detect opposite-direction feed text (e.g. "Hannover -> Hamburg"). */
+  /**
+   * Route travel endpoints from the track (GPX start/end names or heading),
+   * used to detect opposite-direction feed text (e.g. "Hannover -> Hamburg").
+   * Prefer track-derived values over permit metadata so custom GPX matches samples.
+   */
   travelFrom?: string
   travelTo?: string
+  /** Overall route bearing in degrees (-180..180), start→end of the GPX line. */
+  routeBearing?: number
 }
 
 export const HOLD_DISTANCE_KM = 0.5
@@ -87,14 +93,34 @@ export const VERIFY_DISTANCE_KM = 1.5
 export const DEDUPE_KM = 0.25
 
 const PARKING_RE = /\b(Parkplatz|Rastanlage|Rastplatz|Raststätte|\bPWC\b)/i
-const RAMP_EXPLICIT_RE = /\b(Rampe|Auffahrt|Abfahrt|Anschlussstelle)\b/i
+const RAMP_EXPLICIT_RE = /\b(Rampe|Auffahrt|Abfahrt|Ausfahrt|Anschlussstelle)\b/i
 const MAINLINE_SPAN_RE = /\b(zwischen|between)\b[\s\S]{0,100}\b(AS|Anschlussstelle)\b|\bAS\b[\s\S]{0,60}\b(und|and|bis|–|-)\s*(AS\b|Anschlussstelle)/i
 const LONG_SECTION_RE = /\b\d{1,3}[.,]\d+\s*km\b/i
+/**
+ * Shared junction-ramp detector for every source (MIA closures, roadworks, warnings, samples, GPX).
+ * Explicit ramp language wins over "AS X bis AS Y" section naming so record type cannot flip the verdict.
+ * Bare "AS <name>" alone is handled later via RAMP_RE after mainline-span checks.
+ */
+const JUNCTION_RAMP_EXPLICIT_RE = new RegExp(
+  [
+    String.raw`Sperrung\s+(?:der\s+)?(?:Abfahrt|Auffahrt|Ausfahrt)`,
+    String.raw`(?:Abfahrt|Auffahrt|Ausfahrt)\s+[A-Za-zÄÖÜäöüß]`,
+    String.raw`nach\s+Abfahrt\s+von\s+der\s+A\s?\d+`,
+    String.raw`Von\s+Auffahrt\s+auf\s+die\s+A\s?\d+`,
+    String.raw`Vollsperrung\s+AS\b`,
+    String.raw`\bAnschlussstelle\b`,
+    String.raw`\b(?:Rampe|Zubringer|Überfahrt|Tangente|Ohr|Verf(?:le|el)chtung|Knotenpunkt|Betriebsumfahrung)\b`,
+    String.raw`Sperrung\s+im\s+Knotenpunkt`,
+  ].join('|'),
+  'i',
+)
 // Junction abbreviations AK/AD must be uppercase — lowercase "Ak – D …" is a MIA work-code, not Autobahnkreuz.
-const RAMP_RE = /(?:^|\s|,|-|\()(?:AS\b|Auffahrt|Abfahrt|Anschlussstelle|Parkplatz|Rastanlage|Rastplatz|Raststätte|PWC\b|Rampe|Zubringer|Überfahrt|Tangente|Ohr|Verf(?:le|el)chtung|Knotenpunkt|Betriebsumfahrung|Sperrung\s+im\s+Knotenpunkt)(?:\b|$|\s|,|-)/i
+const RAMP_RE = /(?:^|\s|,|-|\()(?:AS\b|Auffahrt|Abfahrt|Ausfahrt|Anschlussstelle|Parkplatz|Rastanlage|Rastplatz|Raststätte|PWC\b|Rampe|Zubringer|Überfahrt|Tangente|Ohr|Verf(?:le|el)chtung|Knotenpunkt|Betriebsumfahrung|Sperrung\s+im\s+Knotenpunkt)(?:\b|$|\s|,|-)/i
 const JUNCTION_RE = /(?:^|[\s,(/-])(?:AK|AD)(?=[\s,)/-]|$)/
 const FULL_CLOSURE_RE = /\b(Vollsperrung|volle?\s+Sperrung|carriagewayClosed|roadClosed|both directions|beide Richtungen|gesamt(e)? Fahrbahn)\b/i
 const OPPOSITE_RE = /\b(Gegenrichtung|entgegen|opposite direction|Gegenfahrbahn)\b/i
+const CARDINAL_RE = /\b(?:RF|FR|Richtung)\s+(Nord|Süd|Sud|Ost|West|N|S|O|W)\b/i
+const FR_PLACE_RE = /\b(?:FR|RF|Rifa|Fahrtrichtung|Richtung)\s+([A-Za-zÄÖÜäöüß][\w\-ÄÖÜäöüß]*)/gi
 const NIGHT_RE = /(?:von\s+)?(\d{1,2}):(\d{2})\s*(?:Uhr\s*)?(?:–|-|bis)\s*(\d{1,2}):(\d{2})/gi
 const ROAD_RE = /\bA\s?(\d{1,3})\b/gi
 const HARD_WIDTH_RE = /(?:Restbreite|residual(?:\s*road)?\s*width|(?:maximale\s+)?Durchfahrtsbreite|max(?:imale)?\s*(?:Fahrbahn)?breite|lichte\s*Breite|Fahrbahnbreite(?:\s*max)?)\s*[:=]?\s*(\d+[.,]\d+)\s*m/i
@@ -122,13 +148,20 @@ export function distanceToRouteKm(routeLine: Feature<LineString>, lat: number, l
   return distanceToCorridorKm(buildCorridorIndex(points, 50), lat, lng)
 }
 
+/** True when the text names a junction ramp / AS exit-entry, shared across all feed types. */
+export function isJunctionRampText(text: string): boolean {
+  return JUNCTION_RAMP_EXPLICIT_RE.test(text) || JUNCTION_RE.test(text)
+}
+
 export function classifyLocationKind(text: string): LocationKind {
   if (PARKING_RE.test(text) && !MAINLINE_SPAN_RE.test(text) && !LONG_SECTION_RE.test(text)) return 'parking'
+  // Explicit junction-ramp language wins over "AS X bis AS Y" section naming in the same sentence.
+  if (isJunctionRampText(text)) return 'ramp'
   // Multi-km mainline sections often name endpoint junctions ("zwischen AS X und AS Y") — not ramps.
   if (MAINLINE_SPAN_RE.test(text) || (LONG_SECTION_RE.test(text) && !RAMP_EXPLICIT_RE.test(text) && !JUNCTION_RE.test(text))) {
     return 'mainline'
   }
-  if (RAMP_RE.test(text) || JUNCTION_RE.test(text)) return 'ramp'
+  if (RAMP_RE.test(text)) return 'ramp'
   return 'mainline'
 }
 
@@ -141,9 +174,40 @@ function placeToken(value?: string | null): string {
     .replace(/[\u0300-\u036f]/g, '')
 }
 
+const CARDINAL_BEARING: Record<string, number> = {
+  nord: 0,
+  n: 0,
+  ost: 90,
+  o: 90,
+  sud: 180,
+  süd: 180,
+  s: 180,
+  west: 270,
+  w: 270,
+}
+
+export function routeBearingDegrees(routeLine: Feature<LineString>): number {
+  const coords = routeLine.geometry.coordinates
+  if (coords.length < 2) return 0
+  const start = coords[0]
+  const end = coords[coords.length - 1]
+  return turf.bearing(turf.point(start), turf.point(end))
+}
+
+function cardinalVsBearing(cardinal: string, bearing: number): TravelDirection {
+  const target = CARDINAL_BEARING[cardinal.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')]
+  if (target == null) return 'unknown'
+  const normalized = ((bearing % 360) + 360) % 360
+  const diff = Math.min(Math.abs(normalized - target), 360 - Math.abs(normalized - target))
+  if (diff <= 55) return 'with'
+  if (diff >= 125) return 'against'
+  return 'unknown'
+}
+
 export function parseTravelDirection(
   text: string,
   travel?: { from?: string; to?: string },
+  routeBearing?: number,
 ): TravelDirection {
   if (OPPOSITE_RE.test(text)) return 'against'
   if (/\b(beide Richtungen|both directions|beide Fahrtrichtungen)\b/i.test(text)) return 'both'
@@ -161,13 +225,20 @@ export function parseTravelDirection(
         if (a === from && b === to) return 'with'
       }
     }
-    const toward = text.match(/\bRichtung\s+([A-Za-zÄÖÜäöüß][\w\-ÄÖÜäöüß]*)/i)
-    if (toward) {
-      const dest = placeToken(toward[1])
-      if (dest === from) return 'against'
-      if (dest === to) return 'with'
+    const frRe = new RegExp(FR_PLACE_RE.source, 'gi')
+    while ((match = frRe.exec(text))) {
+      const place = placeToken(match[1])
+      if (!place || CARDINAL_BEARING[place] != null) continue
+      if (place === from || place.startsWith(from) || from.startsWith(place)) return 'against'
+      if (place === to || place.startsWith(to) || to.startsWith(place)) return 'with'
     }
   }
+
+  if (routeBearing != null && Number.isFinite(routeBearing)) {
+    const cardinal = text.match(CARDINAL_RE)
+    if (cardinal) return cardinalVsBearing(cardinal[1], routeBearing)
+  }
+
   return 'unknown'
 }
 
@@ -344,9 +415,11 @@ export function classifyCandidate(input: CandidateInput, ctx: ClassifyContext): 
   }
 
   const kind = classifyLocationKind(text)
-  const direction = parseTravelDirection(text, { from: ctx.travelFrom, to: ctx.travelTo })
-  // Junction-ramp closures opposite the travel direction must not count (not even VERIFY).
-  if ((kind === 'ramp' || kind === 'parking') && direction === 'against') return null
+  const direction = parseTravelDirection(
+    text,
+    { from: ctx.travelFrom, to: ctx.travelTo },
+    ctx.routeBearing ?? routeBearingDegrees(ctx.routeLine),
+  )
   const { road, offPermit } = roadMatchesPermit(input, ctx.permittedRoads)
   const nearby = distanceKm != null && distanceKm > HOLD_DISTANCE_KM
   const unclearGeometry = distanceKm == null
@@ -374,6 +447,36 @@ export function classifyCandidate(input: CandidateInput, ctx: ClassifyContext): 
   let category: ClassifiedEvidence['category'] = input.category === 'closures' ? 'closures' : input.category === 'parking' ? 'observations' : 'roadworks'
   let title = input.title
   let blocker = true
+
+  // Opposite-direction ramp/AS stays visible as info — never HOLD/VERIFY, never dropped silently.
+  if ((kind === 'ramp' || kind === 'parking') && direction === 'against') {
+    state = 'info'
+    blocker = false
+    reason = 'Opposite direction — junction ramp/AS is against the route travel direction.'
+    title = `${input.title} (Opposite direction)`
+    category = input.category === 'closures' ? 'closures' : input.category === 'parking' ? 'observations' : 'roadworks'
+    const detail = splitConcatenatedPlaces([input.description, reason].filter(Boolean).join(' · '))
+    return {
+      id: input.id,
+      title: splitConcatenatedPlaces(title),
+      detail,
+      source: input.source,
+      confidence: 'medium',
+      state,
+      category,
+      lat: input.lat,
+      lng: input.lng,
+      startTimestamp: input.startTimestamp ?? null,
+      endTimestamp: input.endTimestamp ?? null,
+      retrievedAt: input.retrievedAt,
+      longRunning,
+      distanceKm: distanceKm != null && Number.isFinite(distanceKm) ? Math.round(distanceKm * 1000) / 1000 : null,
+      reason,
+      locationKind: kind,
+      road,
+      blocker: false,
+    }
+  }
 
   if (input.category === 'parking') {
     state = input.isBlocked ? 'warning' : 'clear'

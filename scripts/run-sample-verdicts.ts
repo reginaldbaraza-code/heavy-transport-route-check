@@ -63,6 +63,7 @@ async function main() {
       : {}
     const req = {
       method: 'POST',
+      headers: { host: 'localhost', origin: 'http://localhost' },
       body: {
         gpxContent,
         vehicle: meta.vehicle,

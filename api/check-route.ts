@@ -25,6 +25,7 @@ import {
   departureWindow,
   determineVerdict,
   inferPermittedRoads,
+  routeBearingDegrees,
   routeLineFromPoints,
   verdictCopy,
   type CandidateInput,
@@ -100,6 +101,31 @@ function waypointLabel(point?: GPXPoint): string {
     return `${point.lat.toFixed(4)}, ${point.lng.toFixed(4)}`
   }
   return name
+}
+
+/** Prefer GPX track endpoint / metadata names so custom uploads match sample-permit direction. */
+function inferTravelFromTrack(
+  points: GPXPoint[],
+  gpxContent: string,
+): { from?: string; to?: string } {
+  const startName = String(points[0]?.name || '').trim()
+  const endName = String(points[points.length - 1]?.name || '').trim()
+  if (startName && endName && !/^(starts?|end|ende|ziel)$/i.test(startName) && !/^(starts?|end|ende|ziel)$/i.test(endName)) {
+    return { from: startName, to: endName }
+  }
+  const arrow = gpxContent.match(
+    /<name>\s*([A-Za-zÄÖÜäöüß][^<]*?)\s*(?:→|->|⇒)\s*([A-Za-zÄÖÜäöüß][^<]*?)\s*<\/name>/i,
+  )
+  if (arrow) {
+    return {
+      from: arrow[1].replace(/\s+A\d+\s*$/i, '').trim(),
+      to: arrow[2].replace(/\s+A\d+\s*$/i, '').trim(),
+    }
+  }
+  return {
+    from: startName || undefined,
+    to: endName || undefined,
+  }
 }
 
 function uniqueRoads(roads: string[]): string[] {
@@ -426,6 +452,7 @@ export default async function handler(
       validFrom,
       validUntil,
     });
+    const trackTravel = inferTravelFromTrack(parsedPoints, gpxContent)
     const classifyCtx = {
       routeLine,
       corridor: geometry.corridor,
@@ -434,8 +461,10 @@ export default async function handler(
       windowStartMs: window.startMs,
       windowEndMs: window.endMs,
       nowMs: Date.now(),
-      travelFrom: typeof travelFrom === 'string' ? travelFrom : undefined,
-      travelTo: typeof travelTo === 'string' ? travelTo : undefined,
+      // Track geometry/names first so sample permit and bare custom GPX agree.
+      travelFrom: trackTravel.from || (typeof travelFrom === 'string' ? travelFrom : undefined),
+      travelTo: trackTravel.to || (typeof travelTo === 'string' ? travelTo : undefined),
+      routeBearing: routeBearingDegrees(routeLine),
     };
     const clearanceConfirmed = Boolean(bridgeClearanceConfirmed);
     const siteAcknowledgements = parseAcknowledgements(acknowledgements);
