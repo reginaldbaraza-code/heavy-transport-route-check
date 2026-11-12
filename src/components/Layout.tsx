@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import RouteCheckLogo from './RouteCheckLogo'
 import MobileTabBar from './MobileTabBar'
+import UserChip from './UserChip'
 import { useRouteMonitoring } from '../context/RouteMonitoringContext'
 import { useJobs } from '../context/JobsContext'
 import { useOrgSettings } from '../context/OrgSettingsContext'
@@ -260,7 +261,7 @@ export default function Layout() {
           ))}
         </nav>
 
-        {/* Settings */}
+        {/* Settings + signed-in user */}
         <div className="sidebar-footer">
           <NavLink to="/settings" title={sidebarCollapsed ? 'Settings' : undefined} className="sidebar-link" onClick={() => setMobileOpen(false)}>
             {({ isActive }) => (
@@ -270,6 +271,9 @@ export default function Layout() {
               </div>
             )}
           </NavLink>
+          <div className={`sidebar-user${sidebarCollapsed ? ' is-collapsed' : ''}`}>
+            <UserChip collapsed={sidebarCollapsed} />
+          </div>
         </div>
       </aside>
       {mobileOpen && <button type="button" className="mobile-nav-backdrop" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}
@@ -295,6 +299,9 @@ export default function Layout() {
           <button type="button" className="mobile-nav-trigger" aria-label="Open navigation" onClick={onOpenMobileNav}>
             <Menu size={18} />
           </button>
+          <div className="mobile-user-chip">
+            <UserChip compact />
+          </div>
           {/* Search */}
           <div className="topbar-search" ref={searchRef} style={{
             flex: 1,

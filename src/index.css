@@ -5327,3 +5327,336 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
     place-items: center;
   }
 }
+
+/* ── Dummy login ───────────────────────────────────────────────── */
+.login-boot {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+}
+
+.login-screen {
+  min-height: 100dvh;
+  min-height: 100svh;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: calc(24px + var(--safe-area-inset-top)) 20px calc(28px + var(--safe-area-inset-bottom));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 88%, var(--navy) 12%) 0%, var(--bg-base) 280px, var(--bg-base) 100%);
+  overflow-x: clip;
+}
+
+.login-shell {
+  width: min(100%, 720px);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.login-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding-top: 12px;
+}
+
+.login-brand h1 {
+  margin: 0;
+  font-size: var(--text-title1);
+  letter-spacing: var(--tracking-display);
+  line-height: 1.15;
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.login-brand p {
+  margin: 0;
+  max-width: 36rem;
+  color: var(--text-secondary);
+  font-size: var(--text-callout);
+  line-height: 1.45;
+}
+
+.login-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (min-width: 768px) {
+  .login-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.login-user-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 120px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.login-user-tile:hover:not(:disabled) {
+  background: var(--bg-elevated);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border-strong));
+}
+
+.login-user-tile:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.login-user-tile.is-loading {
+  cursor: progress;
+  opacity: 0.92;
+}
+
+.login-user-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  flex-shrink: 0;
+}
+
+.login-user-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  width: 100%;
+}
+
+.login-user-name {
+  font-size: var(--text-headline);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.login-user-caption,
+.login-user-loading {
+  font-size: var(--text-footnote);
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
+.login-last-used {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text-secondary);
+  background: var(--bg-fill);
+  border-radius: 6px;
+  padding: 3px 7px;
+}
+
+.login-demo-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-tertiary);
+  font-size: var(--text-footnote);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.login-demo-divider::before,
+.login-demo-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.login-demo-row {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 768px) {
+  .login-demo-row {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .login-demo-row .login-user-tile {
+    grid-column: 1 / span 2;
+  }
+}
+
+.login-user-tile.is-demo {
+  border-style: dashed;
+}
+
+.login-footnote {
+  margin: 4px 0 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-footnote);
+  line-height: 1.4;
+}
+
+/* ── Signed-in user chip ───────────────────────────────────────── */
+.sidebar-user {
+  margin-top: 8px;
+  padding: 4px 2px 2px;
+}
+
+.sidebar-user.is-collapsed {
+  display: flex;
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  width: 100%;
+  padding: 8px 8px;
+  border-radius: var(--r-md);
+  background: var(--bg-fill);
+  border: 0;
+  color: var(--sidebar-text);
+  text-align: left;
+}
+
+.user-chip.is-collapsed {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.user-chip.is-collapsed:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.user-chip-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.user-chip-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.user-chip-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.user-chip-name {
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--sidebar-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-chip-badge {
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  border-radius: 5px;
+  padding: 2px 5px;
+  white-space: nowrap;
+}
+
+.user-chip-badge.is-error {
+  color: var(--hold-text);
+  background: var(--hold-bg);
+}
+
+.user-chip-badge.is-dev {
+  color: var(--verify-text);
+  background: var(--verify-bg);
+}
+
+.user-chip-switch {
+  align-self: flex-start;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 0;
+  min-height: 28px;
+  cursor: pointer;
+}
+
+.user-chip-switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.mobile-user-chip {
+  display: none;
+  flex-shrink: 0;
+  max-width: 42vw;
+}
+
+.mobile-user-chip .user-chip {
+  background: var(--bg-fill);
+  padding: 4px 8px 4px 4px;
+}
+
+.mobile-user-chip .user-chip-avatar {
+  width: 28px;
+  height: 28px;
+  font-size: 11px;
+}
+
+.mobile-user-chip .user-chip-name {
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.mobile-user-chip .user-chip-switch {
+  min-height: 24px;
+  font-size: 11px;
+}
+
+@media (max-width: 1024px) {
+  .mobile-user-chip {
+    display: block;
+  }
+}

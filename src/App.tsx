@@ -2,10 +2,12 @@ import { lazy, Suspense } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import Layout from './components/Layout'
 import AppErrorBoundary from './components/AppErrorBoundary'
+import { AuthProvider, useAuth } from './context/AuthContext'
 import { RouteMonitoringProvider } from './context/RouteMonitoringContext'
 import { JobsProvider } from './context/JobsContext'
 import { OrgSettingsProvider } from './context/OrgSettingsContext'
 import { importWithChunkRecovery } from './lib/chunkLoadRecovery'
+import Login from './pages/Login'
 import NotFound from './pages/NotFound'
 
 const MarketplaceOverview = lazy(() => importWithChunkRecovery(() => import('./pages/MarketplaceOverview')))
@@ -21,31 +23,53 @@ function PageFallback() {
   return <div className="page-fallback" role="status">Loading…</div>
 }
 
+function AuthenticatedApp({ userId }: { userId: string }) {
+  return (
+    <OrgSettingsProvider key={userId}>
+      <RouteMonitoringProvider>
+        <JobsProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/" element={<Layout />}>
+                <Route index element={<Suspense fallback={<PageFallback />}><MarketplaceOverview /></Suspense>} />
+                <Route path="jobs" element={<Suspense fallback={<PageFallback />}><SavedJobs /></Suspense>} />
+                <Route path="search" element={<Suspense fallback={<PageFallback />}><SearchResults /></Suspense>} />
+                <Route path="route-checks" element={<Suspense fallback={<PageFallback />}><RouteIntelligence /></Suspense>} />
+                <Route path="data-partners" element={<Suspense fallback={<PageFallback />}><DataPartners /></Suspense>} />
+                <Route path="map-explorer" element={<Suspense fallback={<PageFallback />}><LiveMap /></Suspense>} />
+                <Route path="live-map" element={<Navigate to="/map-explorer" replace />} />
+                <Route path="activity" element={<Suspense fallback={<PageFallback />}><MarketplaceActivity /></Suspense>} />
+                <Route path="settings" element={<Suspense fallback={<PageFallback />}><Settings /></Suspense>} />
+                <Route path="*" element={<NotFound />} />
+              </Route>
+            </Routes>
+          </BrowserRouter>
+        </JobsProvider>
+      </RouteMonitoringProvider>
+    </OrgSettingsProvider>
+  )
+}
+
+function AppShell() {
+  const { user, bootstrapping } = useAuth()
+
+  if (bootstrapping) {
+    return <div className="page-fallback login-boot" role="status">Loading…</div>
+  }
+
+  if (!user) {
+    return <Login />
+  }
+
+  return <AuthenticatedApp userId={user.id} />
+}
+
 export default function App() {
   return (
     <AppErrorBoundary>
-      <OrgSettingsProvider>
-        <RouteMonitoringProvider>
-        <JobsProvider>
-          <BrowserRouter>
-          <Routes>
-          <Route path="/" element={<Layout />}>
-          <Route index element={<Suspense fallback={<PageFallback />}><MarketplaceOverview /></Suspense>} />
-          <Route path="jobs" element={<Suspense fallback={<PageFallback />}><SavedJobs /></Suspense>} />
-          <Route path="search" element={<Suspense fallback={<PageFallback />}><SearchResults /></Suspense>} />
-          <Route path="route-checks" element={<Suspense fallback={<PageFallback />}><RouteIntelligence /></Suspense>} />
-          <Route path="data-partners" element={<Suspense fallback={<PageFallback />}><DataPartners /></Suspense>} />
-          <Route path="map-explorer" element={<Suspense fallback={<PageFallback />}><LiveMap /></Suspense>} />
-          <Route path="live-map" element={<Navigate to="/map-explorer" replace />} />
-          <Route path="activity" element={<Suspense fallback={<PageFallback />}><MarketplaceActivity /></Suspense>} />
-          <Route path="settings" element={<Suspense fallback={<PageFallback />}><Settings /></Suspense>} />
-          <Route path="*" element={<NotFound />} />
-          </Route>
-          </Routes>
-          </BrowserRouter>
-        </JobsProvider>
-        </RouteMonitoringProvider>
-      </OrgSettingsProvider>
+      <AuthProvider>
+        <AppShell />
+      </AuthProvider>
     </AppErrorBoundary>
   )
 }

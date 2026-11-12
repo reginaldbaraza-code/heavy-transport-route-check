@@ -73,7 +73,7 @@ export default function SavedJobs() {
       monitorIntervalMinutes: Number(draft.monitorIntervalMinutes) || prefs.intervalMinutes,
     }, editing.id)
     setEditing(null)
-    setToast('Job updated. Stored in this browser only.')
+    setToast('Job updated. Saved to your account.')
   }
 
   const monitored = useMemo(() => jobs.filter(job => shouldMonitorJob(job)), [jobs])
@@ -83,12 +83,12 @@ export default function SavedJobs() {
       <PageHeader
         eyebrow="Dispatch jobs"
         title="Saved jobs"
-        description="Save a permit, vehicle, and planned departure in this browser, then re-run the check until departure."
+        description="Save a permit, vehicle, and planned departure to your account, then re-run the check until departure."
         actions={
           <Link to="/route-checks" className="market-button primary">New route check</Link>
         }
       />
-      <p className="storage-note activity-storage-note">Jobs are stored in this browser only. They are not synced to a server.</p>
+      <p className="storage-note activity-storage-note">Jobs are saved to your account and stay with you when you switch devices (same login).</p>
 
       <section className="jobs-monitor-banner" role="note">
         <Clock3 size={18} />

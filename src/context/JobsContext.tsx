@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { RouteVerdict } from '../data/routeChecks'
-import { readJson, STORAGE_KEYS, writeJson } from '../lib/browserStore'
+import { flushPendingSaves, getCachedRaw, readJson, STORAGE_KEYS, writeJson } from '../lib/browserStore'
 import {
   applyCheckToJob,
   DEFAULT_MONITOR_PREFS,
@@ -299,6 +299,26 @@ export function JobsProvider({ children }: { children: ReactNode }) {
     window.__HT_TEST__ = {
       getJobs: () => jobsRef.current,
       getAlerts: () => alertsRef.current,
+      getHistory: () => {
+        try {
+          return JSON.parse(getCachedRaw(STORAGE_KEYS.checkHistory) || '[]')
+        } catch {
+          return []
+        }
+      },
+      getStore: (key: string) => {
+        const raw = getCachedRaw(key)
+        if (raw == null) return null
+        try {
+          return JSON.parse(raw)
+        } catch {
+          return null
+        }
+      },
+      setStore: (key: string, value: unknown) => {
+        writeJson(key, value)
+      },
+      flushStore: () => flushPendingSaves(),
       simulateVerdictChange: (jobId, verdict) => simulateVerdictChange(jobId, verdict),
       tickMs: window.__HT_TEST__?.tickMs,
       pdfBytesFromSnapshot: window.__HT_TEST__?.pdfBytesFromSnapshot ?? (() => {

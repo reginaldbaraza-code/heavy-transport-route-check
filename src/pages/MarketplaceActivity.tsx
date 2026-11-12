@@ -34,7 +34,7 @@ export default function MarketplaceActivity() {
         title="Alerts & history"
         description="Alerts and history come only from route checks you actually ran in this browser, plus their Autobahn GmbH results."
       />
-      <p className="storage-note activity-storage-note">History is stored only in this browser. It is not synced to a server.</p>
+      <p className="storage-note activity-storage-note">History is saved to your account.</p>
 
       <div className="route-alert-filters">
         <div className="activity-filters" role="group" aria-label="Alert severity">
