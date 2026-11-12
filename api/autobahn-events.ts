@@ -4,6 +4,10 @@ import {
   evidenceAgeLabel,
   isoNow,
 } from './_lib/autobahnTimes.js';
+import {
+  fetchAutobahnRoadFeeds,
+  summarizeAutobahnFetchHealth,
+} from './_lib/autobahnFetch.js';
 import { guardApi } from './_lib/httpGuard.js';
 import { PARKING_EVENT_CAP, selectBalancedByGroups } from './_lib/parkingSelect.js';
 
@@ -37,9 +41,10 @@ type AutobahnEventsResponse = {
   retrievedAt: string;
   source: string;
   roads?: string[];
+  degraded?: boolean;
+  degradedPartial?: boolean;
 };
 
-const AUTOBAHN_API_BASE = 'https://verkehr.autobahn.de/o/autobahn';
 const CACHE_DURATION_MS = 5 * 60 * 1000;
 
 let cachedResponse: { data: AutobahnEventsResponse; timestamp: number } | null = null;
@@ -105,30 +110,6 @@ function mapAutobahnEvent(
   };
 }
 
-async function fetchRoadEvents(road: string, type: 'roadworks' | 'closure' | 'warning' | 'parking_lorry'): Promise<any[]> {
-  try {
-    const response = await fetch(
-      `${AUTOBAHN_API_BASE}/${road}/services/${type}`,
-      {
-        headers: { 'Accept': 'application/json' },
-        signal: AbortSignal.timeout(5000),
-      }
-    );
-    
-    if (!response.ok) return [];
-    
-    const data = await response.json();
-    const key = type === 'roadworks' ? 'roadworks'
-      : type === 'closure' ? 'closure'
-      : type === 'warning' ? 'warning'
-      : 'parking_lorry';
-    return data[key] || [];
-  } catch (error) {
-    console.error(`Error fetching ${type} for ${road}:`, error);
-    return [];
-  }
-}
-
 function isUsableEvent(item: AutobahnEvent & { expired?: boolean }) {
   return !Number.isNaN(item.lat) && !Number.isNaN(item.lng) && !item.expired;
 }
@@ -147,17 +128,9 @@ async function fetchAutobahnEvents(roads?: string[]): Promise<AutobahnEventsResp
     const roadsToFetch = roads || ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9', 'A10'];
     
     const allEvents = await Promise.all(
-      roadsToFetch.slice(0, 15).map(async (road) => {
-        const [roadworks, closures, warnings, parking] = await Promise.all([
-          fetchRoadEvents(road, 'roadworks'),
-          fetchRoadEvents(road, 'closure'),
-          fetchRoadEvents(road, 'warning'),
-          fetchRoadEvents(road, 'parking_lorry'),
-        ]);
-        
-        return { road, roadworks, closures, warnings, parking };
-      })
+      roadsToFetch.slice(0, 15).map(road => fetchAutobahnRoadFeeds(road)),
     );
+    const health = summarizeAutobahnFetchHealth(allEvents);
 
     const processedRoadworks: AutobahnEvent[] = allEvents.flatMap(({ roadworks }) =>
       roadworks.map((item: any) => {
@@ -205,12 +178,18 @@ async function fetchAutobahnEvents(roads?: string[]): Promise<AutobahnEventsResp
       parking: processedParking,
       cachedAt: retrievedAt,
       retrievedAt,
-      source: 'Autobahn GmbH (verkehr.autobahn.de)',
+      source: health.degraded
+        ? (health.partial
+          ? 'Autobahn GmbH (verkehr.autobahn.de) – partial outage'
+          : 'Autobahn GmbH (verkehr.autobahn.de) – Service unavailable')
+        : 'Autobahn GmbH (verkehr.autobahn.de)',
       roads: roadsToFetch,
+      degraded: health.degraded,
+      degradedPartial: health.partial,
     };
 
-    // Cache the response only for full queries
-    if (!roads) {
+    // Cache healthy full queries only — never cache a degraded snapshot as fresh.
+    if (!roads && !health.degraded) {
       cachedResponse = {
         data: response,
         timestamp: now,
@@ -222,7 +201,7 @@ async function fetchAutobahnEvents(roads?: string[]): Promise<AutobahnEventsResp
     console.error('Error fetching Autobahn events:', error);
     
     if (cachedResponse) {
-      return cachedResponse.data;
+      return { ...cachedResponse.data, degraded: true, degradedPartial: false };
     }
     
     return {
@@ -233,6 +212,8 @@ async function fetchAutobahnEvents(roads?: string[]): Promise<AutobahnEventsResp
       cachedAt: isoNow(),
       retrievedAt: isoNow(),
       source: 'Autobahn GmbH (verkehr.autobahn.de) - Service unavailable',
+      degraded: true,
+      degradedPartial: false,
     };
   }
 }
