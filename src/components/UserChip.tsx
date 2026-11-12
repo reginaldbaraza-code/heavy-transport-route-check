@@ -21,6 +21,41 @@ export default function UserChip({
   ].filter(Boolean)
   const tooltip = titleBits.join(' · ')
   const switchLabel = `Switch user (${user.name})`
+  const onSwitch = () => { void switchUser() }
+
+  const avatar = (
+    <span
+      className="user-chip-avatar"
+      aria-hidden="true"
+      style={{ background: user.avatarBg, color: user.avatarFg }}
+    >
+      {userInitials(user.name)}
+    </span>
+  )
+
+  const meta = (
+    <div className="user-chip-meta">
+      <div className="user-chip-name-row">
+        <span className="user-chip-name">{user.name}</span>
+        {notSaved && <span className="user-chip-badge is-error">Not saved</span>}
+        {memoryBadge && !notSaved && (
+          <span className="user-chip-badge is-dev">Not saved online (dev)</span>
+        )}
+      </div>
+      {/* Compact chip is itself the switch control; keep the label visual-only. */}
+      {compact ? (
+        <span className="user-chip-switch" aria-hidden="true">Switch user</span>
+      ) : (
+        <button
+          type="button"
+          className="user-chip-switch"
+          onClick={onSwitch}
+        >
+          Switch user
+        </button>
+      )}
+    </div>
+  )
 
   if (collapsed) {
     return (
@@ -29,44 +64,33 @@ export default function UserChip({
         className="user-chip is-collapsed has-tooltip"
         data-tooltip={tooltip}
         aria-label={switchLabel}
-        onClick={() => { void switchUser() }}
+        onClick={onSwitch}
       >
-        <span
-          className="user-chip-avatar"
-          aria-hidden="true"
-          style={{ background: user.avatarBg, color: user.avatarFg }}
-        >
-          {userInitials(user.name)}
-        </span>
+        {avatar}
+      </button>
+    )
+  }
+
+  // Mobile header: one focusable control so ≤420px (meta hidden) still switches.
+  if (compact) {
+    return (
+      <button
+        type="button"
+        className="user-chip is-compact"
+        aria-label={switchLabel}
+        title={tooltip}
+        onClick={onSwitch}
+      >
+        {avatar}
+        {meta}
       </button>
     )
   }
 
   return (
-    <div className={`user-chip${compact ? ' is-compact' : ''}`}>
-      <span
-        className="user-chip-avatar"
-        aria-hidden="true"
-        style={{ background: user.avatarBg, color: user.avatarFg }}
-      >
-        {userInitials(user.name)}
-      </span>
-      <div className="user-chip-meta">
-        <div className="user-chip-name-row">
-          <span className="user-chip-name">{user.name}</span>
-          {notSaved && <span className="user-chip-badge is-error">Not saved</span>}
-          {memoryBadge && !notSaved && (
-            <span className="user-chip-badge is-dev">Not saved online (dev)</span>
-          )}
-        </div>
-        <button
-          type="button"
-          className="user-chip-switch"
-          onClick={() => { void switchUser() }}
-        >
-          Switch user
-        </button>
-      </div>
+    <div className="user-chip">
+      {avatar}
+      {meta}
     </div>
   )
 }

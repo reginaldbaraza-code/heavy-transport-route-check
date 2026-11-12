@@ -5649,15 +5649,21 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   text-align: left;
 }
 
+.user-chip.is-collapsed,
+.user-chip.is-compact {
+  font: inherit;
+  cursor: pointer;
+}
+
 .user-chip.is-collapsed {
   width: 44px;
   height: 44px;
   padding: 0;
   justify-content: center;
-  cursor: pointer;
 }
 
-.user-chip.is-collapsed:focus-visible {
+.user-chip.is-collapsed:focus-visible,
+.user-chip.is-compact:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -5785,10 +5791,13 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
     max-width: none;
   }
 
+  /* Avatar-only control: ≥36px tap target, meta (name + Switch user text) hidden. */
   .mobile-user-chip .user-chip {
     padding: 0;
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
     justify-content: center;
   }
 
