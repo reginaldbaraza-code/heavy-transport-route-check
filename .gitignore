@@ -22,4 +22,4 @@ package-lock.json
 /.plugins/
 /.opencode-skills/
 
-.impeccable/hook.cache.json
+.impeccable/

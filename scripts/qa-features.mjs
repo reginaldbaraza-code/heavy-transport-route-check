@@ -214,12 +214,26 @@ async function main() {
   const loginTileCount = await loginTiles.count()
   record('Login screen renders 7 user tiles', loginTileCount === 7, `count=${loginTileCount}`)
 
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const headlineDesktop = await page.locator('.login-headline').evaluate(
+    el => parseFloat(getComputedStyle(el).fontSize),
+  )
+  record(
+    'Login headline ≥ 64px at 1440×900',
+    headlineDesktop >= 64,
+    `fontSize=${headlineDesktop}`,
+  )
+
   // Short phone viewport: footnote must stay in the first screen (no +24px tolerance).
   await page.setViewportSize({ width: 390, height: 844 })
-  const loginFit = await page.evaluate(() => {
+  const loginPhoneMetrics = await page.evaluate(() => {
     const screen = document.querySelector('.login-screen')
     const footnote = document.querySelector('.login-footnote')
-    if (!screen || !footnote) return { ok: false, reason: 'missing' }
+    const headline = document.querySelector('.login-headline')
+    const tile = document.querySelector('button.login-user-tile:not(.is-demo)')
+    if (!screen || !footnote || !headline || !tile) {
+      return { ok: false, reason: 'missing' }
+    }
     const screenRect = screen.getBoundingClientRect()
     const noteRect = footnote.getBoundingClientRect()
     const style = getComputedStyle(screen)
@@ -234,12 +248,24 @@ async function main() {
       viewport,
       paddingTop: style.paddingTop,
       paddingBottom: style.paddingBottom,
+      headlinePx: parseFloat(getComputedStyle(headline).fontSize),
+      rowPx: tile.getBoundingClientRect().height,
     }
   })
   record(
     'Login footnote fits in 390×844 viewport',
-    Boolean(loginFit.ok),
-    JSON.stringify(loginFit),
+    Boolean(loginPhoneMetrics.ok),
+    JSON.stringify(loginPhoneMetrics),
+  )
+  record(
+    'Login headline ≥ 40px at 390×844',
+    Number(loginPhoneMetrics.headlinePx) >= 40,
+    `fontSize=${loginPhoneMetrics.headlinePx}`,
+  )
+  record(
+    'Login name rows ≥ 44px at 390×844',
+    Number(loginPhoneMetrics.rowPx) >= 44,
+    `rowHeight=${loginPhoneMetrics.rowPx}`,
   )
   await page.setViewportSize({ width: 1440, height: 900 })
 
