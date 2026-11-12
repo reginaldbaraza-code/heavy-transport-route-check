@@ -32,6 +32,7 @@ import { useRouteMonitoring } from '../context/RouteMonitoringContext'
 import { useJobs } from '../context/JobsContext'
 import { useOrgSettings } from '../context/OrgSettingsContext'
 import { formatBerlinDateTime } from '../lib/formatTime'
+import { importWithChunkRecovery } from '../lib/chunkLoadRecovery'
 import type { RouteEvidence } from '../data/routeChecks'
 import { confirmOnSiteTitles, downloadSnapshot, formatStartLabel, pdfBytesFromSnapshot, sanitizePdfText, snapshotFromResult } from '../lib/exportCheck'
 import {
@@ -58,7 +59,7 @@ import {
 import { displayEvidenceTitle, evidenceOriginalGerman, looksGerman, looksTechnical, splitConcatenatedPlaces } from '../lib/evidenceSummary'
 import { GPX_FRIENDLY_TOO_LARGE, GpxParseError, parseGpxDocument, serializeGpxTrack, validateGpxFileSize } from '../lib/gpxParse'
 
-const RouteMapGL = lazy(() => import('../components/RouteMapGL'))
+const RouteMapGL = lazy(() => importWithChunkRecovery(() => import('../components/RouteMapGL')))
 
 const routeLayers = [
   { id: 'roadworks', label: 'Roadworks' },
@@ -1302,7 +1303,11 @@ export default function RouteIntelligencePolished() {
                 {displayed.degraded && (
                   <div className="degraded-notice">
                     <AlertTriangle size={16} />
-                    <span>Data source temporarily unavailable – verify manually</span>
+                    <span>
+                      {displayed.degradedPartial
+                        ? 'Some Autobahn feeds unavailable – verify manually'
+                        : 'Data source temporarily unavailable – verify manually'}
+                    </span>
                   </div>
                 )}
                 {displayed.mode === 'simulated' && (

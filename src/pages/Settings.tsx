@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Bell, Building2, Database, Save, Timer, User } from 'lucide-react'
 import { Toast } from '../components/Feedback'
 import { useOrgSettings } from '../context/OrgSettingsContext'
@@ -28,12 +28,18 @@ const alertTypes = [
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]['id']>('profile')
+  const tabsRef = useRef<HTMLElement>(null)
   const {
     profile, dirty, complete, setProfile, saveProfile, notifications, setNotifications,
   } = useOrgSettings()
   const { prefs, setPrefs, requestNotifications, notificationPermission, monitoringActive, monitoredCount } = useJobs()
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    const activeButton = tabsRef.current?.querySelector<HTMLButtonElement>('button.active')
+    activeButton?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
+  }, [activeTab])
 
   const save = () => {
     const result = saveProfile()
@@ -76,7 +82,7 @@ export default function Settings() {
               {complete && <span className="verified-badge">Verification pending</span>}
             </div>
           </div>
-          <nav aria-label="Settings">
+          <nav ref={tabsRef} aria-label="Settings" className="settings-tabs">
             {tabs.map(({ id, label, icon: Icon }) => (
               <button type="button" key={id} onClick={() => setActiveTab(id)} className={activeTab === id ? 'active' : ''}>
                 <span><Icon size={16} /></span><strong>{label}</strong>

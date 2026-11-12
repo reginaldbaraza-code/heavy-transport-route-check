@@ -1,8 +1,9 @@
 import { lazy, Suspense } from 'react'
 import { Route } from 'lucide-react'
+import { importWithChunkRecovery } from '../lib/chunkLoadRecovery'
 import type { PermitLeafletMapProps } from './PermitLeafletMap'
 
-const PermitLeafletMap = lazy(() => import('./PermitLeafletMap'))
+const PermitLeafletMap = lazy(() => importWithChunkRecovery(() => import('./PermitLeafletMap')))
 
 function PermitMapSkeleton({
   badgeTitle,

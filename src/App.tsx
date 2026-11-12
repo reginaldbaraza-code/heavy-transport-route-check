@@ -5,16 +5,17 @@ import AppErrorBoundary from './components/AppErrorBoundary'
 import { RouteMonitoringProvider } from './context/RouteMonitoringContext'
 import { JobsProvider } from './context/JobsContext'
 import { OrgSettingsProvider } from './context/OrgSettingsContext'
+import { importWithChunkRecovery } from './lib/chunkLoadRecovery'
 import NotFound from './pages/NotFound'
 
-const MarketplaceOverview = lazy(() => import('./pages/MarketplaceOverview'))
-const RouteIntelligence = lazy(() => import('./pages/RouteIntelligence'))
-const LiveMap = lazy(() => import('./pages/LiveMap'))
-const Settings = lazy(() => import('./pages/Settings'))
-const DataPartners = lazy(() => import('./pages/DataPartners'))
-const SavedJobs = lazy(() => import('./pages/SavedJobs'))
-const MarketplaceActivity = lazy(() => import('./pages/MarketplaceActivity'))
-const SearchResults = lazy(() => import('./pages/SearchResults'))
+const MarketplaceOverview = lazy(() => importWithChunkRecovery(() => import('./pages/MarketplaceOverview')))
+const RouteIntelligence = lazy(() => importWithChunkRecovery(() => import('./pages/RouteIntelligence')))
+const LiveMap = lazy(() => importWithChunkRecovery(() => import('./pages/LiveMap')))
+const Settings = lazy(() => importWithChunkRecovery(() => import('./pages/Settings')))
+const DataPartners = lazy(() => importWithChunkRecovery(() => import('./pages/DataPartners')))
+const SavedJobs = lazy(() => importWithChunkRecovery(() => import('./pages/SavedJobs')))
+const MarketplaceActivity = lazy(() => importWithChunkRecovery(() => import('./pages/MarketplaceActivity')))
+const SearchResults = lazy(() => importWithChunkRecovery(() => import('./pages/SearchResults')))
 
 function PageFallback() {
   return <div className="page-fallback" role="status">Loading…</div>

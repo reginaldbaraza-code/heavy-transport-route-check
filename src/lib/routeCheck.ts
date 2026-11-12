@@ -16,6 +16,8 @@ export type RouteCheckResult = {
     corridor: string;
   };
   degraded: boolean;
+  /** True when some Autobahn feeds succeeded and others failed. */
+  degradedPartial?: boolean;
   retrievedAt?: string;
   source?: string;
   mode?: 'live' | 'simulated';

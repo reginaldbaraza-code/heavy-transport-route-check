@@ -358,6 +358,12 @@ test('READY only with clearance confirmed and no VERIFY blockers', () => {
 
   const degraded = determineVerdict([], { degraded: true, clearanceConfirmed: true })
   assert.equal(degraded.verdict, 'VERIFY')
+
+  // Remaining confirmed HOLD must not be downgraded when Autobahn feeds are degraded.
+  const holdWhileDegraded = determineVerdict([
+    { id: 'block', state: 'danger', blocker: true, category: 'closures' },
+  ], { degraded: true, clearanceConfirmed: true })
+  assert.equal(holdWhileDegraded.verdict, 'HOLD')
 })
 
 test('BW state roads and opposite direction cannot HOLD', () => {
