@@ -4,6 +4,8 @@ import {
   applySiteAcknowledgements,
   isAcknowledgeable,
   isHoldItem,
+  isNearbyOffRoute,
+  isOppositeDirectionNote,
 } from './siteAcknowledgements.ts'
 import type { RouteCheckResult } from './routeCheck.ts'
 
@@ -21,6 +23,30 @@ function result(evidence: RouteCheckResult['evidence'], verdict: RouteCheckResul
     clearanceConfirmed: true,
   }
 }
+
+test('opposite-direction info notes are not collapsed into nearby-off-route', () => {
+  const opposite = {
+    id: 'opp',
+    title: 'AS Westenholz (Opposite direction)',
+    detail: '',
+    source: 't',
+    age: '',
+    confidence: 'medium' as const,
+    state: 'info' as const,
+    category: 'closures' as const,
+    reason: 'Opposite direction — junction ramp/AS is against the route travel direction.',
+  }
+  const nearby = {
+    ...opposite,
+    id: 'near',
+    title: 'A2 works (nearby, not on route)',
+    reason: 'Nearby, not on route (0.8 km). Other Autobahn — shown for context.',
+  }
+  assert.equal(isOppositeDirectionNote(opposite), true)
+  assert.equal(isNearbyOffRoute(opposite), false)
+  assert.equal(isOppositeDirectionNote(nearby), false)
+  assert.equal(isNearbyOffRoute(nearby), true)
+})
 
 test('client overlay: acknowledging VERIFY items yields READY; HOLD cannot be cleared', () => {
   const verify = result([{

@@ -143,11 +143,6 @@ const RouteMapGL = forwardRef<RouteMapHandle, Props>(({
     });
 
     map.current = mapInstance;
-    
-    // Expose map instance for testing (non-production only)
-    if (typeof window !== 'undefined' && import.meta.env.DEV === false) {
-      (window as any).__TEST_MAP_INSTANCE__ = mapInstance;
-    }
 
     return () => {
       if (map.current) {

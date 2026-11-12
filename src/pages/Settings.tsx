@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Bell, Building2, Database, Save, Timer, User } from 'lucide-react'
 import { Toast } from '../components/Feedback'
 import { useOrgSettings } from '../context/OrgSettingsContext'
@@ -28,12 +28,18 @@ const alertTypes = [
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]['id']>('profile')
+  const tabsRef = useRef<HTMLElement>(null)
   const {
     profile, dirty, complete, setProfile, saveProfile, notifications, setNotifications,
   } = useOrgSettings()
   const { prefs, setPrefs, requestNotifications, notificationPermission, monitoringActive, monitoredCount } = useJobs()
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    const activeButton = tabsRef.current?.querySelector<HTMLButtonElement>('button.active')
+    activeButton?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
+  }, [activeTab])
 
   const save = () => {
     const result = saveProfile()
@@ -73,9 +79,10 @@ export default function Settings() {
             <div>
               <strong>{profile.orgName || 'Dispatcher'}</strong>
               <small className={complete ? 'status-complete' : ''}>{complete ? 'Saved locally' : 'No profile yet'}</small>
+              {complete && <span className="verified-badge">Verification pending</span>}
             </div>
           </div>
-          <nav aria-label="Settings">
+          <nav ref={tabsRef} aria-label="Settings" className="settings-tabs">
             {tabs.map(({ id, label, icon: Icon }) => (
               <button type="button" key={id} onClick={() => setActiveTab(id)} className={activeTab === id ? 'active' : ''}>
                 <span><Icon size={16} /></span><strong>{label}</strong>
@@ -84,28 +91,60 @@ export default function Settings() {
           </nav>
         </aside>
 
-        <main className="settings-content">
+        <div className="settings-content">
           {activeTab === 'profile' && (
             <section className="settings-card profile-settings-card">
               <header className="settings-card-header">
                 <div>
                   <span className="settings-card-icon"><Building2 size={18} /></span>
-                  <div><h2>Organisation profile</h2><p>This identity appears in the header. It is stored only in this browser.</p></div>
+                  <div>
+                    <h2>Organisation profile</h2>
+                    <p>This identity appears in the header. It is stored only in this browser.</p>
+                  </div>
                 </div>
-                <span className={`setup-pill ${complete && !dirty ? 'complete' : 'quiet'}`}>{statusLabel}</span>
+                <div className="settings-card-badges">
+                  {complete && !dirty && <span className="verified-badge">Verification pending</span>}
+                  <span className={`setup-pill ${complete && !dirty ? 'complete' : 'quiet'}`}>{statusLabel}</span>
+                </div>
               </header>
               <div className="settings-form">
                 <label className="settings-field">
                   <span>Organisation name</span>
-                  <small>Shown in the header. Stored only in this browser.</small>
-                  <input value={profile.orgName} onChange={event => { setProfile(current => ({ ...current, orgName: event.target.value })); setSaved(false) }} placeholder="e.g. Nordhauler GmbH" aria-invalid={Boolean(error && !profile.orgName.trim())} />
+                  <small>Your registered operator or legal entity name.</small>
+                  <input value={profile.orgName} onChange={event => { setProfile(current => ({ ...current, orgName: event.target.value })); setSaved(false); setError('') }} placeholder="e.g. RheinLift Logistics" aria-invalid={Boolean(error && !profile.orgName.trim())} />
                 </label>
+                <label className="settings-field">
+                  <span>Website</span>
+                  <small>Use the complete public URL, including https://.</small>
+                  <input value={profile.website} onChange={event => { setProfile(current => ({ ...current, website: event.target.value })); setSaved(false); setError('') }} placeholder="https://example.com" type="url" aria-invalid={Boolean(error && error.toLowerCase().includes('website'))} />
+                  {error && error.toLowerCase().includes('website') && <p role="alert" className="settings-error">{error}</p>}
+                </label>
+                <label className="settings-field">
+                  <span>Description</span>
+                  <small>Describe the operator role in heavy-transport dispatch.</small>
+                  <textarea value={profile.description} onChange={event => { setProfile(current => ({ ...current, description: event.target.value.slice(0, 500) })); setSaved(false) }} placeholder="e.g. Heavy-haul logistics operator coordinating permitted oversized and overweight transports across Germany." rows={3} maxLength={500} />
+                  <small>{profile.description.length} / 500</small>
+                </label>
+                <div className="settings-field-row">
+                  <label className="settings-field">
+                    <span>Organisation type</span>
+                    <input value={profile.orgType} onChange={event => { setProfile(current => ({ ...current, orgType: event.target.value })); setSaved(false) }} placeholder="Heavy-haul operator" />
+                  </label>
+                  <label className="settings-field">
+                    <span>Country</span>
+                    <select value={profile.country} onChange={event => { setProfile(current => ({ ...current, country: event.target.value })); setSaved(false) }}>
+                      <option value="Germany">Germany</option>
+                      <option value="Austria">Austria</option>
+                      <option value="Switzerland">Switzerland</option>
+                    </select>
+                  </label>
+                </div>
                 <label className="settings-field">
                   <span>Dispatcher name</span>
                   <small>Used as the default name on on-site confirmations.</small>
                   <input value={profile.dispatcherName} onChange={event => { setProfile(current => ({ ...current, dispatcherName: event.target.value })); setSaved(false) }} placeholder="e.g. Ada Dispatcher" />
                 </label>
-                {error && <p role="alert" className="settings-error">{error}</p>}
+                {error && !error.toLowerCase().includes('website') && <p role="alert" className="settings-error">{error}</p>}
               </div>
               <footer className="settings-card-footer">
                 <p>{footerStatus} Settings are saved in this browser only.</p>
@@ -227,7 +266,7 @@ export default function Settings() {
               </div>
             </section>
           )}
-        </main>
+        </div>
       </div>
       {saved && <Toast message="Profile saved in this browser only. It is not stored on a server." onClose={() => setSaved(false)} />}
     </div>

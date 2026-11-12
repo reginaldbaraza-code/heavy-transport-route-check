@@ -25,6 +25,11 @@ export type SiteAcknowledgement = {
 export type LocationKind = 'mainline' | 'ramp' | 'parking' | 'unknown'
 export type TravelDirection = 'with' | 'against' | 'unknown' | 'both'
 
+export type RelatedRecord = {
+  id: string
+  title: string
+}
+
 export type ClassifiedEvidence = {
   id: string
   title: string
@@ -45,6 +50,10 @@ export type ClassifiedEvidence = {
   locationKind: LocationKind
   road?: string
   blocker: boolean
+  /** Travel direction relative to the permitted route, used to keep opposite-direction records distinct in dedupe. */
+  travelDirection?: TravelDirection
+  /** Records absorbed by proximity dedupe — surfaced on the surviving card. */
+  relatedRecords?: RelatedRecord[]
 }
 
 export type CandidateInput = {
@@ -77,18 +86,55 @@ export type ClassifyContext = {
   windowStartMs: number
   windowEndMs: number
   nowMs: number
+  /**
+   * Route travel endpoints from the track (GPX start/end names or heading),
+   * used to detect opposite-direction feed text (e.g. "Hannover -> Hamburg").
+   * Prefer track-derived values over permit metadata so custom GPX matches samples.
+   */
+  travelFrom?: string
+  travelTo?: string
+  /** Overall route bearing in degrees (-180..180), start→end of the GPX line. */
+  routeBearing?: number
 }
 
 export const HOLD_DISTANCE_KM = 0.5
 export const VERIFY_DISTANCE_KM = 1.5
 export const DEDUPE_KM = 0.25
 
-const RAMP_RE = /\b(AS\b|Auffahrt|Abfahrt|Anschlussstelle|Parkplatz|Rastanlage|Rastplatz|Raststätte|\bPWC\b)/i
+const PARKING_RE = /\b(Parkplatz|Rastanlage|Rastplatz|Raststätte|\bPWC\b)/i
+const RAMP_EXPLICIT_RE = /\b(Rampe|Auffahrt|Abfahrt|Ausfahrt|Anschlussstelle)\b/i
+const MAINLINE_SPAN_RE = /\b(zwischen|between)\b[\s\S]{0,100}\b(AS|Anschlussstelle)\b|\bAS\b[\s\S]{0,60}\b(und|and|bis|–|-)\s*(AS\b|Anschlussstelle)/i
+const LONG_SECTION_RE = /\b\d{1,3}[.,]\d+\s*km\b/i
+/**
+ * Shared junction-ramp detector for every source (MIA closures, roadworks, warnings, samples, GPX).
+ * Explicit ramp language wins over "AS X bis AS Y" section naming so record type cannot flip the verdict.
+ * Bare "AS <name>" alone is handled later via RAMP_RE after mainline-span checks.
+ */
+const JUNCTION_RAMP_EXPLICIT_RE = new RegExp(
+  [
+    String.raw`Sperrung\s+(?:der\s+)?(?:Abfahrt|Auffahrt|Ausfahrt)`,
+    String.raw`(?:Abfahrt|Auffahrt|Ausfahrt)\s+[A-Za-zÄÖÜäöüß]`,
+    String.raw`nach\s+Abfahrt\s+von\s+der\s+A\s?\d+`,
+    String.raw`Von\s+Auffahrt\s+auf\s+die\s+A\s?\d+`,
+    String.raw`Vollsperrung\s+AS\b`,
+    String.raw`\bAnschlussstelle\b`,
+    String.raw`\b(?:Rampe|Zubringer|Überfahrt|Tangente|Ohr|Verf(?:le|el)chtung|Knotenpunkt|Betriebsumfahrung)\b`,
+    String.raw`Sperrung\s+im\s+Knotenpunkt`,
+  ].join('|'),
+  'i',
+)
+// Junction abbreviations AK/AD must be uppercase — lowercase "Ak – D …" is a MIA work-code, not Autobahnkreuz.
+const RAMP_RE = /(?:^|\s|,|-|\()(?:AS\b|Auffahrt|Abfahrt|Ausfahrt|Anschlussstelle|Parkplatz|Rastanlage|Rastplatz|Raststätte|PWC\b|Rampe|Zubringer|Überfahrt|Tangente|Ohr|Verf(?:le|el)chtung|Knotenpunkt|Betriebsumfahrung|Sperrung\s+im\s+Knotenpunkt)(?:\b|$|\s|,|-)/i
+const JUNCTION_RE = /(?:^|[\s,(/-])(?:AK|AD)(?=[\s,)/-]|$)/
 const FULL_CLOSURE_RE = /\b(Vollsperrung|volle?\s+Sperrung|carriagewayClosed|roadClosed|both directions|beide Richtungen|gesamt(e)? Fahrbahn)\b/i
 const OPPOSITE_RE = /\b(Gegenrichtung|entgegen|opposite direction|Gegenfahrbahn)\b/i
+const CARDINAL_RE = /\b(?:RF|FR|Richtung)\s+(Nord|Süd|Sud|Ost|West|N|S|O|W)\b/i
+const FR_PLACE_RE = /\b(?:FR|RF|Rifa|Fahrtrichtung|Richtung)\s+([A-Za-zÄÖÜäöüß][\w\-ÄÖÜäöüß]*)/gi
 const NIGHT_RE = /(?:von\s+)?(\d{1,2}):(\d{2})\s*(?:Uhr\s*)?(?:–|-|bis)\s*(\d{1,2}):(\d{2})/gi
 const ROAD_RE = /\bA\s?(\d{1,3})\b/gi
-const HARD_WIDTH_RE = /(?:Restbreite|residual(?:\s*road)?\s*width|max(?:imale)?\s*(?:Fahrbahn)?breite|lichte\s*Breite|Fahrbahnbreite(?:\s*max)?)\s*[:=]?\s*(\d+[.,]\d+)\s*m/i
+const HARD_WIDTH_RE = /(?:Restbreite|residual(?:\s*road)?\s*width|(?:maximale\s+)?Durchfahrtsbreite|max(?:imale)?\s*(?:Fahrbahn)?breite|lichte\s*Breite|Fahrbahnbreite(?:\s*max)?)\s*[:=]?\s*(\d+[.,]\d+)\s*m/i
+const HARD_HEIGHT_RE = /(?:(?:maximale\s+)?Durchfahrtshöhe|lichte\s*Höhe|height\s*limit|clearance(?:\s*height)?)\s*[:=]?\s*(\d+[.,]\d+)\s*m/i
+const HARD_WEIGHT_RE = /(?:(?:maximale[sn]?\s+)?(?:Achslast|Gewicht(?:sbeschränkung)?)|weight\s*limit|max(?:imum)?\s*weight)\s*[:=]?\s*(\d+[.,]?\d*)\s*t\b/i
 
 export function extractRoadNumbers(text?: string | null): string[] {
   if (!text) return []
@@ -102,7 +148,15 @@ export function extractRoadNumbers(text?: string | null): string[] {
 }
 
 export function inferPermittedRoads(corridor?: string, extra: string[] = []): string[] {
-  return [...new Set([...extractRoadNumbers(corridor), ...extra.map(road => road.toUpperCase().replace(/\s+/g, ''))])]
+  // Always extract Autobahn codes — polluted display labels like
+  // "A1·±0.5kmHOLD/±1.5kmVERIFY" must not become permitted-road tokens.
+  const fromExtra = extra.flatMap(road => {
+    const extracted = extractRoadNumbers(road)
+    if (extracted.length) return extracted
+    const cleaned = String(road || '').toUpperCase().replace(/\s+/g, '')
+    return /^A\d{1,3}$/.test(cleaned) ? [cleaned] : []
+  })
+  return [...new Set([...extractRoadNumbers(corridor), ...fromExtra])]
 }
 
 export function distanceToRouteKm(routeLine: Feature<LineString>, lat: number, lng: number): number {
@@ -111,15 +165,97 @@ export function distanceToRouteKm(routeLine: Feature<LineString>, lat: number, l
   return distanceToCorridorKm(buildCorridorIndex(points, 50), lat, lng)
 }
 
+/** True when the text names a junction ramp / AS exit-entry, shared across all feed types. */
+export function isJunctionRampText(text: string): boolean {
+  return JUNCTION_RAMP_EXPLICIT_RE.test(text) || JUNCTION_RE.test(text)
+}
+
 export function classifyLocationKind(text: string): LocationKind {
-  if (/\b(Parkplatz|Rastanlage|Rastplatz|Raststätte|\bPWC\b)/i.test(text)) return 'parking'
+  if (PARKING_RE.test(text) && !MAINLINE_SPAN_RE.test(text) && !LONG_SECTION_RE.test(text)) return 'parking'
+  // Explicit junction-ramp language wins over "AS X bis AS Y" section naming in the same sentence.
+  if (isJunctionRampText(text)) return 'ramp'
+  // Multi-km mainline sections often name endpoint junctions ("zwischen AS X und AS Y") — not ramps.
+  if (MAINLINE_SPAN_RE.test(text) || (LONG_SECTION_RE.test(text) && !RAMP_EXPLICIT_RE.test(text) && !JUNCTION_RE.test(text))) {
+    return 'mainline'
+  }
   if (RAMP_RE.test(text)) return 'ramp'
   return 'mainline'
 }
 
-export function parseTravelDirection(text: string): TravelDirection {
+function placeToken(value?: string | null): string {
+  if (!value) return ''
+  const token = value.trim().split(/[\s,/·|()]+/).find(Boolean) || ''
+  return token
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+const CARDINAL_BEARING: Record<string, number> = {
+  nord: 0,
+  n: 0,
+  ost: 90,
+  o: 90,
+  sud: 180,
+  süd: 180,
+  s: 180,
+  west: 270,
+  w: 270,
+}
+
+export function routeBearingDegrees(routeLine: Feature<LineString>): number {
+  const coords = routeLine.geometry.coordinates
+  if (coords.length < 2) return 0
+  const start = coords[0]
+  const end = coords[coords.length - 1]
+  return turf.bearing(turf.point(start), turf.point(end))
+}
+
+function cardinalVsBearing(cardinal: string, bearing: number): TravelDirection {
+  const target = CARDINAL_BEARING[cardinal.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')]
+  if (target == null) return 'unknown'
+  const normalized = ((bearing % 360) + 360) % 360
+  const diff = Math.min(Math.abs(normalized - target), 360 - Math.abs(normalized - target))
+  if (diff <= 55) return 'with'
+  if (diff >= 125) return 'against'
+  return 'unknown'
+}
+
+export function parseTravelDirection(
+  text: string,
+  travel?: { from?: string; to?: string },
+  routeBearing?: number,
+): TravelDirection {
   if (OPPOSITE_RE.test(text)) return 'against'
   if (/\b(beide Richtungen|both directions|beide Fahrtrichtungen)\b/i.test(text)) return 'both'
+
+  const from = placeToken(travel?.from)
+  const to = placeToken(travel?.to)
+  if (from && to) {
+    const arrowRe = /([A-Za-zÄÖÜäöüß][\w\-ÄÖÜäöüß]*)\s*(?:->|→|⇒)\s*([A-Za-zÄÖÜäöüß][\w\-ÄÖÜäöüß]*)/g
+    let match: RegExpExecArray | null
+    while ((match = arrowRe.exec(text))) {
+      const a = placeToken(match[1])
+      const b = placeToken(match[2])
+      if (a && b) {
+        if (a === to && b === from) return 'against'
+        if (a === from && b === to) return 'with'
+      }
+    }
+    const frRe = new RegExp(FR_PLACE_RE.source, 'gi')
+    while ((match = frRe.exec(text))) {
+      const place = placeToken(match[1])
+      if (!place || CARDINAL_BEARING[place] != null) continue
+      if (place === from || place.startsWith(from) || from.startsWith(place)) return 'against'
+      if (place === to || place.startsWith(to) || to.startsWith(place)) return 'with'
+    }
+  }
+
+  if (routeBearing != null && Number.isFinite(routeBearing)) {
+    const cardinal = text.match(CARDINAL_RE)
+    if (cardinal) return cardinalVsBearing(cardinal[1], routeBearing)
+  }
+
   return 'unknown'
 }
 
@@ -177,35 +313,52 @@ export function extractHardWidthLimit(text: string): number | null {
   return Number.isFinite(value) && value > 0 && value < 10 ? value : null
 }
 
+export function extractHardHeightLimit(text: string): number | null {
+  const match = text.match(HARD_HEIGHT_RE)
+  if (!match) return null
+  const value = parseFloat(match[1].replace(',', '.'))
+  return Number.isFinite(value) && value > 0 && value < 12 ? value : null
+}
+
+export function extractHardWeightLimit(text: string): number | null {
+  const match = text.match(HARD_WEIGHT_RE)
+  if (!match) return null
+  const value = parseFloat(match[1].replace(',', '.'))
+  return Number.isFinite(value) && value > 0 && value < 1000 ? value : null
+}
+
 function unknownDim(value?: number) {
   return !Number.isFinite(value) || !value || value <= 0
 }
 
 export function dimDecision(
   vehicle: VehicleDimensions,
-  input: Pick<CandidateInput, 'residualWidth' | 'minLaneWidth' | 'heightLimit' | 'weightLimit' | 'description'>,
+  input: Pick<CandidateInput, 'residualWidth' | 'minLaneWidth' | 'heightLimit' | 'weightLimit' | 'description' | 'title'>,
 ): { hold: boolean; verify: boolean; type?: string; restriction?: number } {
+  const text = `${input.title || ''} ${input.description || ''}`
   if (input.residualWidth && vehicle.width > input.residualWidth) {
     return { hold: true, verify: false, type: 'width', restriction: input.residualWidth }
   }
-  const hardWidth = extractHardWidthLimit(input.description || '')
+  const hardWidth = extractHardWidthLimit(text)
   if (hardWidth && vehicle.width > hardWidth) {
     return { hold: true, verify: false, type: 'width', restriction: hardWidth }
   }
-  if (input.heightLimit) {
+  const heightLimit = input.heightLimit || extractHardHeightLimit(text) || undefined
+  if (heightLimit) {
     if (unknownDim(vehicle.height)) {
-      return { hold: false, verify: true, type: 'height', restriction: input.heightLimit }
+      return { hold: false, verify: true, type: 'height', restriction: heightLimit }
     }
-    if (vehicle.height > input.heightLimit) {
-      return { hold: true, verify: false, type: 'height', restriction: input.heightLimit }
+    if (vehicle.height > heightLimit) {
+      return { hold: true, verify: false, type: 'height', restriction: heightLimit }
     }
   }
-  if (input.weightLimit) {
+  const weightLimit = input.weightLimit || extractHardWeightLimit(text) || undefined
+  if (weightLimit) {
     if (unknownDim(vehicle.grossWeight)) {
-      return { hold: false, verify: true, type: 'weight', restriction: input.weightLimit }
+      return { hold: false, verify: true, type: 'weight', restriction: weightLimit }
     }
-    if (vehicle.grossWeight > input.weightLimit) {
-      return { hold: true, verify: false, type: 'weight', restriction: input.weightLimit }
+    if (vehicle.grossWeight > weightLimit) {
+      return { hold: true, verify: false, type: 'weight', restriction: weightLimit }
     }
   }
   if (input.minLaneWidth && vehicle.width > input.minLaneWidth) {
@@ -239,12 +392,20 @@ export function departureWindow(opts: {
 }
 
 function roadMatchesPermit(input: CandidateInput, permittedRoads: string[]): { road?: string; offPermit: boolean } {
-  const fromItem = extractRoadNumbers([input.road, input.title, input.description].filter(Boolean).join(' '))
-  const road = input.road?.toUpperCase().replace(/\s+/g, '') || fromItem[0]
+  const titleRoads = extractRoadNumbers(input.title)
+  const descRoads = extractRoadNumbers(input.description)
+
+  // Prefer input.road if present, otherwise take the first road from title, then description
+  const road = input.road?.toUpperCase().replace(/\s+/g, '') || titleRoads[0] || descRoads[0]
+
   if (!permittedRoads.length || !road) return { road, offPermit: false }
+
   const permitted = new Set(permittedRoads.map(item => item.toUpperCase()))
-  const hits = [road, ...fromItem].some(value => permitted.has(value))
-  return { road, offPermit: !hits }
+
+  // Only the primary road (not all mentioned roads) determines permit match
+  const offPermit = !permitted.has(road)
+
+  return { road, offPermit }
 }
 
 export function classifyCandidate(input: CandidateInput, ctx: ClassifyContext): ClassifiedEvidence | null {
@@ -271,7 +432,11 @@ export function classifyCandidate(input: CandidateInput, ctx: ClassifyContext): 
   }
 
   const kind = classifyLocationKind(text)
-  const direction = parseTravelDirection(text)
+  const direction = parseTravelDirection(
+    text,
+    { from: ctx.travelFrom, to: ctx.travelTo },
+    ctx.routeBearing ?? routeBearingDegrees(ctx.routeLine),
+  )
   const { road, offPermit } = roadMatchesPermit(input, ctx.permittedRoads)
   const nearby = distanceKm != null && distanceKm > HOLD_DISTANCE_KM
   const unclearGeometry = distanceKm == null
@@ -299,6 +464,37 @@ export function classifyCandidate(input: CandidateInput, ctx: ClassifyContext): 
   let category: ClassifiedEvidence['category'] = input.category === 'closures' ? 'closures' : input.category === 'parking' ? 'observations' : 'roadworks'
   let title = input.title
   let blocker = true
+
+  // Opposite-direction ramp/AS stays visible as info — never HOLD/VERIFY, never dropped silently.
+  if ((kind === 'ramp' || kind === 'parking') && direction === 'against') {
+    state = 'info'
+    blocker = false
+    reason = 'Opposite direction — junction ramp/AS is against the route travel direction.'
+    title = `${input.title} (Opposite direction)`
+    category = input.category === 'closures' ? 'closures' : input.category === 'parking' ? 'observations' : 'roadworks'
+    const detail = splitConcatenatedPlaces([input.description, reason].filter(Boolean).join(' · '))
+    return {
+      id: input.id,
+      title: splitConcatenatedPlaces(title),
+      detail,
+      source: input.source,
+      confidence: 'medium',
+      state,
+      category,
+      lat: input.lat,
+      lng: input.lng,
+      startTimestamp: input.startTimestamp ?? null,
+      endTimestamp: input.endTimestamp ?? null,
+      retrievedAt: input.retrievedAt,
+      longRunning,
+      distanceKm: distanceKm != null && Number.isFinite(distanceKm) ? Math.round(distanceKm * 1000) / 1000 : null,
+      reason,
+      locationKind: kind,
+      road,
+      blocker: false,
+      travelDirection: direction,
+    }
+  }
 
   if (input.category === 'parking') {
     state = input.isBlocked ? 'warning' : 'clear'
@@ -357,10 +553,10 @@ export function classifyCandidate(input: CandidateInput, ctx: ClassifyContext): 
     const unit = dims.type === 'weight' ? 't' : 'm'
     reason = `Hard ${dims.type} limit ${dims.restriction} ${unit} vs vehicle ${vehicleValue} ${unit} on the mainline carriageway.`
     title = dims.type === 'width'
-      ? `Width restriction ${dims.restriction} m vs vehicle ${ctx.vehicle.width} m`
+      ? `Width limit ${dims.restriction} m vs vehicle ${ctx.vehicle.width} m`
       : dims.type === 'height'
-        ? `Height restriction ${dims.restriction} m vs vehicle ${ctx.vehicle.height} m`
-        : `Weight restriction ${dims.restriction} t vs vehicle ${ctx.vehicle.grossWeight} t`
+        ? `Height limit ${dims.restriction} m vs vehicle ${ctx.vehicle.height} m`
+        : `Weight limit ${dims.restriction} t vs vehicle ${ctx.vehicle.grossWeight} t`
     category = 'roadworks'
   } else if (dims.hold) {
     state = 'warning'
@@ -402,31 +598,76 @@ export function classifyCandidate(input: CandidateInput, ctx: ClassifyContext): 
     locationKind: kind,
     road,
     blocker: state === 'danger' || (state === 'warning' && blocker),
+    travelDirection: direction,
   }
 }
 
 const SEVERITY_RANK: Record<EvidenceState, number> = { danger: 4, warning: 3, info: 2, clear: 1 }
 
+function relatedNote(count: number): string {
+  return count === 1 ? '+1 related record' : `+${count} related records`
+}
+
+function withRelatedTrace(survivor: ClassifiedEvidence, absorbed: ClassifiedEvidence): ClassifiedEvidence {
+  const related = [
+    ...(survivor.relatedRecords || []),
+    ...(absorbed.relatedRecords || []),
+    { id: absorbed.id, title: absorbed.title },
+  ]
+  const note = relatedNote(related.length)
+  const reason = /\+\d+ related records?/.test(survivor.reason)
+    ? survivor.reason.replace(/\+\d+ related records?/g, note)
+    : `${survivor.reason} (${note})`
+  return { ...survivor, relatedRecords: related, reason }
+}
+
+function directionsMatch(a?: TravelDirection, b?: TravelDirection): boolean {
+  return (a ?? 'unknown') === (b ?? 'unknown')
+}
+
 export function dedupeClassified(items: ClassifiedEvidence[], maxKm = DEDUPE_KM): ClassifiedEvidence[] {
   const kept: ClassifiedEvidence[] = []
+  const bySourceId = new Map<string, ClassifiedEvidence>()
   for (const item of items) {
+    if (item.id) {
+      const prior = bySourceId.get(item.id)
+      if (prior) {
+        if (SEVERITY_RANK[item.state] > SEVERITY_RANK[prior.state]) {
+          const index = kept.indexOf(prior)
+          if (index >= 0) kept[index] = item
+          bySourceId.set(item.id, item)
+        }
+        continue
+      }
+    }
     const match = kept.find(existing => {
-      const sameId = Boolean(item.id && existing.id && (existing.id === item.id || existing.id.includes(item.id) || item.id.includes(existing.id)))
-      if (sameId) return true
+      if (item.id && existing.id && item.id === existing.id) return true
       const sameRoad = (existing.road || '') === (item.road || '')
       const sameType = existing.category === item.category
-      if (!sameRoad || !sameType) return false
+      const sameKind = existing.locationKind === item.locationKind
+      const sameDirection = directionsMatch(existing.travelDirection, item.travelDirection)
+      // Never absorb a record that differs in ramp/mainline kind or travel direction.
+      if (!sameRoad || !sameType || !sameKind || !sameDirection) return false
       if (item.lat == null || item.lng == null || existing.lat == null || existing.lng == null) return false
       const km = turf.distance([item.lng, item.lat], [existing.lng, existing.lat], { units: 'kilometers' })
       return km <= maxKm
     })
     if (!match) {
       kept.push(item)
+      if (item.id) bySourceId.set(item.id, item)
       continue
     }
+    const index = kept.indexOf(match)
     if (SEVERITY_RANK[item.state] > SEVERITY_RANK[match.state]) {
-      const index = kept.indexOf(match)
-      kept[index] = item
+      const merged = withRelatedTrace(item, match)
+      kept[index] = merged
+      if (item.id) bySourceId.set(item.id, merged)
+      if (match.id) bySourceId.set(match.id, merged)
+    } else {
+      const merged = withRelatedTrace(match, item)
+      kept[index] = merged
+      if (match.id) bySourceId.set(match.id, merged)
+      if (item.id) bySourceId.set(item.id, merged)
     }
   }
   return kept
@@ -448,6 +689,8 @@ export function determineVerdict(
   evidence: Array<Pick<ClassifiedEvidence, 'id' | 'state' | 'blocker' | 'category'>>,
   opts: {
     degraded?: boolean
+    /** Override the default degraded reason (e.g. corridor undetected). */
+    degradedReason?: string
     clearanceConfirmed?: boolean
     acknowledgements?: SiteAcknowledgement[]
   } = {},
@@ -459,15 +702,22 @@ export function determineVerdict(
 } {
   const reasons: string[] = []
   const ackIds = new Set((opts.acknowledgements || []).map(item => item.evidenceId))
-  if (opts.degraded) {
-    return { verdict: 'VERIFY', confidence: 'medium', reasons: ['Live Autobahn source unavailable.'], acknowledgedCount: 0 }
-  }
+  // Confirmed HOLD from remaining evidence must never be silently downgraded
+  // when a live Autobahn feed is degraded or unavailable.
   const hold = evidence.filter(item => item.state === 'danger')
   if (hold.length) {
     return {
       verdict: 'HOLD',
       confidence: 'high',
       reasons: [`${hold.length} confirmed mainline block${hold.length === 1 ? '' : 's'} on the permitted carriageway.`],
+      acknowledgedCount: 0,
+    }
+  }
+  if (opts.degraded) {
+    return {
+      verdict: 'VERIFY',
+      confidence: 'medium',
+      reasons: [opts.degradedReason || 'Live Autobahn source unavailable.'],
       acknowledgedCount: 0,
     }
   }
@@ -500,6 +750,8 @@ export function verdictCopy(
   verdict: 'READY' | 'HOLD' | 'VERIFY',
   opts: {
     degraded?: boolean
+    degradedPartial?: boolean
+    corridorUndetected?: boolean
     issueCount: number
     distanceKm: number
     clearanceConfirmed?: boolean
@@ -507,15 +759,32 @@ export function verdictCopy(
   },
 ) {
   if (verdict === 'HOLD') {
+    const blocking = `${opts.issueCount} blocking ${opts.issueCount === 1 ? 'issue' : 'issues'} on the permitted mainline.`
+    if (!opts.degraded) {
+      return { title: 'Hold departure – blocking issue on route', summary: blocking }
+    }
+    const feedNote = opts.degradedPartial
+      ? 'Autobahn live feed is partially unavailable — treat as incomplete evidence.'
+      : 'Autobahn live feed is unavailable — treat as incomplete evidence.'
     return {
       title: 'Hold departure – blocking issue on route',
-      summary: `${opts.issueCount} blocking ${opts.issueCount === 1 ? 'issue' : 'issues'} on the permitted mainline.`,
+      summary: `${blocking} ${feedNote}`,
     }
   }
   if (opts.degraded) {
+    if (opts.corridorUndetected) {
+      return {
+        title: "Can't confirm route – motorway not detected",
+        summary: 'Could not identify which Autobahn the GPX follows. Pass a corridor hint (e.g. A20) or verify manually.',
+      }
+    }
     return {
-      title: "Can't confirm route – data source unavailable",
-      summary: 'The Autobahn data source is temporarily unavailable. Retry or verify manually.',
+      title: opts.degradedPartial
+        ? "Can't confirm route – some Autobahn feeds unavailable"
+        : "Can't confirm route – data source unavailable",
+      summary: opts.degradedPartial
+        ? 'Some Autobahn live feeds failed. Remaining evidence is incomplete — retry or verify manually.'
+        : 'The Autobahn data source is temporarily unavailable. Retry or verify manually.',
     }
   }
   if (verdict === 'READY') {

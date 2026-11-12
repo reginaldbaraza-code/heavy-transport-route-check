@@ -28,6 +28,8 @@ export type RouteEvidence = {
   reason?: string
   locationKind?: string
   blocker?: boolean
+  travelDirection?: string
+  relatedRecords?: Array<{ id: string; title: string }>
   acknowledgedBy?: string
   acknowledgedAt?: string
 }

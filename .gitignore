@@ -12,6 +12,8 @@ logs/
 .claude-replay.*
 .tmp-*
 /.figma/design-context/
+/.playwright-mcp/
+package-lock.json
 
 # Platform-managed agentplat state, not project source. In the
 # client-initiated single-repo workspace layout (make's `Path: "."` spec) the
@@ -19,3 +21,5 @@ logs/
 # beside it.
 /.plugins/
 /.opencode-skills/
+
+.impeccable/hook.cache.json

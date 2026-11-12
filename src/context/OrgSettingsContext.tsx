@@ -1,5 +1,6 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'
 import { readJson, STORAGE_KEYS, writeJson } from '../lib/browserStore'
+import { isValidWebsiteUrl, WEBSITE_URL_ERROR } from '../lib/urlValidation'
 
 export type OrgProfile = {
   orgName: string
@@ -86,6 +87,9 @@ export function OrgSettingsProvider({ children }: { children: ReactNode }) {
   }
 
   const saveProfile: OrgSettingsValue['saveProfile'] = () => {
+    if (!isValidWebsiteUrl(profile.website)) {
+      return { ok: false, error: WEBSITE_URL_ERROR }
+    }
     setSavedProfile(profile)
     persist(profile, notifications)
     return { ok: true }

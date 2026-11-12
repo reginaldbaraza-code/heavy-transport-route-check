@@ -19,10 +19,10 @@ export default function MobileTabBar() {
         left: 0,
         right: 0,
         display: 'none', // Hidden on desktop, shown via media query
-        background: 'rgba(255,255,255,0.95)',
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
-        borderTop: '1px solid var(--border)',
+        background: 'var(--bg-glass-strong)',
+        backdropFilter: 'blur(20px) saturate(1.6)',
+        WebkitBackdropFilter: 'blur(20px) saturate(1.6)',
+        borderTop: 'var(--hairline)',
         paddingBottom: 'var(--safe-area-inset-bottom)',
         zIndex: 100,
       }}
@@ -46,24 +46,27 @@ export default function MobileTabBar() {
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 4,
+              gap: 2,
               textDecoration: 'none',
               minWidth: 44,
               minHeight: 44,
+              padding: '4px 2px',
             }}
           >
             {({ isActive }) => (
               <>
                 <Icon
-                  size={20}
+                  size={22}
+                  strokeWidth={isActive ? 2 : 1.75}
                   style={{
                     color: isActive ? 'var(--accent)' : 'var(--text-tertiary)',
                   }}
                 />
                 <span
                   style={{
-                    fontSize: 13,
-                    fontWeight: isActive ? 600 : 400,
+                    fontSize: 10,
+                    fontWeight: isActive ? 600 : 500,
+                    letterSpacing: '-0.01em',
                     color: isActive ? 'var(--accent)' : 'var(--text-tertiary)',
                   }}
                 >

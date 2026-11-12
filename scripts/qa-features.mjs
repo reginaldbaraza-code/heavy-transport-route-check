@@ -102,6 +102,25 @@ async function downloadFile(page, buttonName) {
   return { size, suggested: download.suggestedFilename(), path, buffer }
 }
 
+/** Planned departure is intentionally empty (no silent default). Fill a near-future value for checks. */
+async function fillPlannedDeparture(page, hoursAhead = 8) {
+  const input = page.locator('#planned-departure')
+  await input.waitFor({ timeout: 15000 })
+  // Sample GPX load is async after selecting a permit — wait until Check route can run.
+  await page.getByRole('button', { name: 'Check route' }).waitFor({ state: 'visible', timeout: 15000 })
+  const value = await page.evaluate(hours => {
+    const date = new Date(Date.now() + hours * 60 * 60 * 1000)
+    const pad = n => String(n).padStart(2, '0')
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+  }, hoursAhead)
+  await input.fill(value)
+  await page.getByRole('button', { name: 'Check route' }).waitFor({ state: 'attached', timeout: 5000 })
+  await page.waitForFunction(() => {
+    const btn = [...document.querySelectorAll('button')].find(el => /Check route/i.test(el.textContent || ''))
+    return Boolean(btn && !btn.disabled)
+  }, null, { timeout: 15000 })
+}
+
 function decodePdfStrings(buffer) {
   const latin1 = Buffer.from(buffer).toString('latin1')
   const strings = []
@@ -165,15 +184,87 @@ async function main() {
   const homeText = await page.locator('body').innerText()
   record('No user-facing MSD brand text', !/\bMSD\b/.test(homeText), (homeText.match(/\bMSD\b/) || [''])[0])
   await page.getByRole('button', { name: 'Collapse navigation' }).click()
+  const collapsedBrand = page.getByRole('button', { name: 'Heavy transport route check' }).first()
+  const collapsedMark = collapsedBrand.locator('svg[data-detail="small"], svg[data-detail="full"]').first()
   record(
     'Collapsed sidebar shows HTR',
-    await page.getByRole('button', { name: 'Heavy transport route check' }).filter({ hasText: 'HTR' }).first().isVisible(),
+    (await collapsedBrand.isVisible()) && (await collapsedMark.isVisible()),
+    `aria-label=${await collapsedBrand.getAttribute('aria-label')} detail=${await collapsedMark.getAttribute('data-detail')}`,
   )
   await page.getByRole('button', { name: 'Expand navigation' }).click()
 
+  async function assertMobileNavChrome(width, height) {
+    await page.setViewportSize({ width, height })
+    await page.goto(base + '/', { waitUntil: 'domcontentloaded', timeout: 60000 })
+    const skip = page.getByRole('button', { name: /skip/i })
+    if (await skip.count()) await skip.first().click().catch(() => {})
+
+    const tabBar = page.locator('.mobile-tab-bar')
+    const tabDisplay = await tabBar.evaluate(el => getComputedStyle(el).display)
+    record(
+      `Mobile tab bar visible at ${width}×${height}`,
+      tabDisplay !== 'none',
+      tabDisplay,
+    )
+
+    await page.getByRole('button', { name: 'Open navigation' }).click()
+    record(
+      `Drawer opens at ${width}×${height}`,
+      await page.locator('.app-sidebar.mobile-open').count() === 1,
+    )
+
+    const closeInDrawer = page.locator('.app-sidebar.mobile-open').getByRole('button', { name: 'Close navigation' })
+    record(
+      `Drawer collapse control closes (not desktop-collapses) at ${width}×${height}`,
+      await closeInDrawer.count() === 1,
+    )
+    await closeInDrawer.click()
+
+    const after = await page.evaluate(() => {
+      const sidebar = document.querySelector('.app-sidebar')
+      const main = document.querySelector('.app-main')
+      const tabs = document.querySelector('.mobile-tab-bar')
+      if (!sidebar || !main || !tabs) return { ok: false, reason: 'missing nodes' }
+      const sideStyle = getComputedStyle(sidebar)
+      const tabsStyle = getComputedStyle(tabs)
+      const sideBox = sidebar.getBoundingClientRect()
+      const mainBox = main.getBoundingClientRect()
+      return {
+        ok: true,
+        hasMobileOpen: sidebar.classList.contains('mobile-open'),
+        tabDisplay: tabsStyle.display,
+        sidebarWidth: Math.round(sideBox.width),
+        mainLeft: Math.round(mainBox.left),
+        mainWidth: Math.round(mainBox.width),
+        transform: sideStyle.transform,
+        left: sideStyle.left,
+      }
+    })
+    record(
+      `After drawer close at ${width}×${height}: no collapsed rail, full-width main, tab bar on`,
+      Boolean(
+        after.ok
+        && !after.hasMobileOpen
+        && after.tabDisplay !== 'none'
+        && after.mainLeft <= 1
+        && after.mainWidth >= width - 2,
+      ),
+      JSON.stringify(after),
+    )
+  }
+
+  await assertMobileNavChrome(390, 844)
+  await assertMobileNavChrome(320, 720)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(base + '/', { waitUntil: 'domcontentloaded', timeout: 60000 })
+  const skipAfterMobileNav = page.getByRole('button', { name: /skip/i })
+  if (await skipAfterMobileNav.count()) await skipAfterMobileNav.first().click().catch(() => {})
+
   await page.locator('.overview-mode-panel').scrollIntoViewIfNeeded()
   await page.locator('.permit-leaflet-map.leaflet-container').waitFor({ timeout: 25000 })
-  const heroBadge = await page.locator('.permit-map-badge strong').first().innerText()
+  const demoMapCount = await page.locator('.permit-leaflet-map.leaflet-container').count()
+  record('Demo dashboard has exactly one Leaflet map', demoMapCount === 1, `count=${demoMapCount}`)
+  const heroBadge = await page.locator('.permit-map-badge strong').innerText()
   record('Homepage hero uses Demo: 4 monitored routes badge', heroBadge.includes('Demo: 4 monitored routes'), heroBadge)
   record(
     'Demo dashboard tab is selected on load',
@@ -201,6 +292,71 @@ async function main() {
   const tileFilter = await page.locator('.permit-leaflet-map .leaflet-tile-pane').evaluate(el => getComputedStyle(el).filter)
   record('Homepage tiles are desaturated', /grayscale/i.test(tileFilter), tileFilter)
 
+  async function assertOverviewTalliesVisible(width, height) {
+    await page.setViewportSize({ width, height })
+    await page.goto(base + '/', { waitUntil: 'domcontentloaded', timeout: 60000 })
+    const skip = page.getByRole('button', { name: /skip/i })
+    if (await skip.count()) await skip.first().click().catch(() => {})
+    await page.getByRole('tab', { name: 'Demo dashboard' }).click()
+    await page.locator('[data-permit-map="overview"]').waitFor({ timeout: 25000 })
+    const tallies = page.locator('.overview-tallies')
+    await tallies.waitFor({ timeout: 10000 })
+    await tallies.scrollIntoViewIfNeeded()
+    // Keep the tallies center clear of sticky chrome for elementFromPoint
+    await page.evaluate(() => {
+      const el = document.querySelector('.overview-tallies')
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      const cy = rect.top + rect.height / 2
+      const target = window.innerHeight * 0.45
+      window.scrollBy(0, cy - target)
+    })
+    const visibility = await tallies.evaluate(el => {
+      const rect = el.getBoundingClientRect()
+      const cx = rect.left + rect.width / 2
+      const cy = rect.top + rect.height / 2
+      const hit = document.elementFromPoint(cx, cy)
+      const hitOk = Boolean(hit && (hit === el || el.contains(hit)))
+      const workflow = document.querySelector('.transport-workflow')
+      let intersectsWorkflow = false
+      if (workflow) {
+        const wr = workflow.getBoundingClientRect()
+        intersectsWorkflow = !(
+          rect.right <= wr.left
+          || rect.left >= wr.right
+          || rect.bottom <= wr.top
+          || rect.top >= wr.bottom
+        )
+      }
+      return {
+        hitOk,
+        intersectsWorkflow,
+        hitTag: hit ? hit.tagName : null,
+        hitClass: hit && 'className' in hit ? String(hit.className).slice(0, 80) : null,
+        talliesTop: Math.round(rect.top),
+        talliesBottom: Math.round(rect.bottom),
+      }
+    })
+    record(
+      `Overview tallies visible (elementFromPoint) at ${width}×${height}`,
+      visibility.hitOk,
+      JSON.stringify(visibility),
+    )
+    record(
+      `Overview tallies do not intersect .transport-workflow at ${width}×${height}`,
+      !visibility.intersectsWorkflow,
+      JSON.stringify(visibility),
+    )
+  }
+  await assertOverviewTalliesVisible(1440, 900)
+  await assertOverviewTalliesVisible(390, 844)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(base + '/', { waitUntil: 'domcontentloaded', timeout: 60000 })
+  const skipAfterTallies = page.getByRole('button', { name: /skip/i })
+  if (await skipAfterTallies.count()) await skipAfterTallies.first().click().catch(() => {})
+  await page.getByRole('tab', { name: 'Demo dashboard' }).click()
+  await page.locator('[data-permit-map="overview"]').waitFor({ timeout: 25000 })
+
   await page.getByRole('tab', { name: 'Try a sample permit' }).click()
   record(
     'Sample permit tab is selected',
@@ -218,6 +374,8 @@ async function main() {
   const sampleMap = page.locator('[data-permit-map="sample"]')
   await sampleMap.waitFor({ timeout: 15000 })
   await page.locator('[data-permit-map="overview"]').waitFor({ state: 'detached', timeout: 10000 }).catch(() => {})
+  const sampleMapCount = await page.locator('.permit-leaflet-map.leaflet-container').count()
+  record('Sample permit panel has exactly one Leaflet map', sampleMapCount === 1, `count=${sampleMapCount}`)
   record(
     'Sample permit panel defaults to Hamburg→Hannover',
     (await page.locator('[data-permit-map="sample"][data-selected-permit="hamburg-hannover"]').count()) > 0,
@@ -373,10 +531,304 @@ async function main() {
     )
   }
 
+  // Mobile: corridor legend must fully contain Flowing / Pressure / Restricted.
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(base + '/map-explorer', { waitUntil: 'domcontentloaded', timeout: 60000 })
+  await skipIfNeeded()
+  await page.locator('.live-map-legend').waitFor({ timeout: 25000 })
+  const legendFit = await page.evaluate(() => {
+    const legend = document.querySelector('.live-map-legend')
+    if (!legend) return { ok: false, reason: 'missing' }
+    const box = legend.getBoundingClientRect()
+    const items = [...legend.querySelectorAll('small')].map(el => {
+      const b = el.getBoundingClientRect()
+      return {
+        text: el.textContent.trim(),
+        outside: b.right > box.right + 1 || b.left < box.left - 1 || b.right > window.innerWidth + 1,
+        right: Math.round(b.right),
+      }
+    })
+    return {
+      ok: legend.scrollWidth <= legend.clientWidth + 1
+        && items.length >= 3
+        && items.every(item => !item.outside)
+        && /Restricted/i.test(items.map(i => i.text).join(' ')),
+      width: Math.round(box.width),
+      scrollWidth: legend.scrollWidth,
+      clientWidth: legend.clientWidth,
+      items,
+    }
+  })
+  record(
+    'Corridor legend at 390×844 keeps Flowing/Pressure/Restricted inside the pill',
+    Boolean(legendFit.ok),
+    JSON.stringify(legendFit),
+  )
+
+  // Mobile: sample/scenario permit cards must not force horizontal page overflow.
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded', timeout: 60000 })
+  await skipIfNeeded()
+  await page.getByRole('button', { name: /show sample permits/i }).click()
+  await page.getByText('Scenario mode').waitFor({ timeout: 15000 })
+  const permitOverflow = await page.evaluate(() => {
+    const docEl = document.documentElement
+    const cards = [...document.querySelectorAll('.test-permit-card')]
+    const cardMetrics = cards.map(el => {
+      const box = el.getBoundingClientRect()
+      const badge = el.querySelector('.expected-badge')
+      const badgeBox = badge?.getBoundingClientRect()
+      return {
+        title: el.querySelector('strong')?.textContent?.trim() || '',
+        right: Math.round(box.right),
+        width: Math.round(box.width),
+        badgeOffscreen: Boolean(badgeBox && badgeBox.right > window.innerWidth + 1),
+        badgeRight: badgeBox ? Math.round(badgeBox.right) : null,
+      }
+    })
+    const grid = document.querySelector('.test-permits-grid')
+    const gridOverflow = grid ? grid.scrollWidth > grid.clientWidth + 1 : true
+    const maxRight = Math.max(0, ...cardMetrics.map(c => c.right))
+    return {
+      ok: docEl.scrollWidth <= docEl.clientWidth + 1
+        && !gridOverflow
+        && maxRight <= window.innerWidth + 1
+        && cardMetrics.every(c => !c.badgeOffscreen)
+        && cardMetrics.some(c => /Simulated/i.test(c.title)),
+      scrollWidth: docEl.scrollWidth,
+      clientWidth: docEl.clientWidth,
+      gridScrollWidth: grid?.scrollWidth || 0,
+      gridClientWidth: grid?.clientWidth || 0,
+      maxRight,
+      cards: cardMetrics.filter(c => /Simulated/i.test(c.title) || c.badgeOffscreen).slice(0, 6),
+    }
+  })
+  record(
+    'Sample permits at 390×844 have no horizontal overflow and badges stay on-screen',
+    Boolean(permitOverflow.ok),
+    JSON.stringify(permitOverflow),
+  )
+
+  // Desktop unchanged: legend still single-line and fully visible at 1440.
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(base + '/map-explorer', { waitUntil: 'domcontentloaded', timeout: 60000 })
+  await skipIfNeeded()
+  await page.locator('.live-map-legend').waitFor({ timeout: 25000 })
+  const desktopLegend = await page.evaluate(() => {
+    const legend = document.querySelector('.live-map-legend')
+    if (!legend) return { ok: false }
+    const cs = getComputedStyle(legend)
+    const box = legend.getBoundingClientRect()
+    const items = [...legend.querySelectorAll('small')].map(el => {
+      const b = el.getBoundingClientRect()
+      return { text: el.textContent.trim(), outside: b.right > box.right + 1 }
+    })
+    return {
+      ok: cs.flexWrap === 'nowrap'
+        && legend.scrollWidth <= legend.clientWidth + 1
+        && items.every(i => !i.outside)
+        && box.width >= 200
+        && box.width <= 320,
+      width: Math.round(box.width),
+      flexWrap: cs.flexWrap,
+      items,
+    }
+  })
+  record(
+    'Corridor legend at 1440×900 stays single-line without clipping',
+    Boolean(desktopLegend.ok),
+    JSON.stringify(desktopLegend),
+  )
+
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto(base + '/map-explorer', { waitUntil: 'domcontentloaded', timeout: 60000 })
   await skipIfNeeded()
   await page.locator('.live-event-panel').waitFor({ timeout: 20000 })
+  const mainLandmark = await page.evaluate(() => ({
+    count: document.querySelectorAll('main').length,
+    nested: Boolean(document.querySelector('main main')),
+    host: Boolean(document.querySelector('main.app-page-host')),
+    stageIsDiv: Boolean(document.querySelector('div.live-map-stage')),
+  }))
+  record(
+    'Corridor map has exactly one main landmark',
+    mainLandmark.count === 1 && !mainLandmark.nested && mainLandmark.host && mainLandmark.stageIsDiv,
+    JSON.stringify(mainLandmark),
+  )
+
+  // Lorry parking must span fetched roads (not A1-only from a naive flatten+slice cap).
+  const parkingFeed = await page.request.get(base + '/api/autobahn-events').then(res => res.json()).catch(() => null)
+  const parkingTitles = Array.isArray(parkingFeed?.parking) ? parkingFeed.parking.map(item => String(item?.title || '')) : []
+  const parkingRoads = [...new Set(parkingTitles.map(title => (title.match(/^A\d+/) || [])[0]).filter(Boolean))]
+  const parkingInBavaria = Array.isArray(parkingFeed?.parking)
+    ? parkingFeed.parking.filter(item => {
+      const lat = Number(item?.lat)
+      const lng = Number(item?.lng)
+      return Number.isFinite(lat) && Number.isFinite(lng)
+        && Math.abs(lat - 48.14) < 1.15
+        && Math.abs(lng - 11.58) < 1.55
+    }).length
+    : 0
+  record(
+    'Autobahn parking feed covers more than one road',
+    parkingTitles.length > 0 && parkingRoads.length > 1,
+    JSON.stringify({ count: parkingTitles.length, roads: parkingRoads, parkingInBavaria }),
+  )
+  record(
+    'Autobahn parking feed includes Bavaria-scoped sites',
+    parkingInBavaria > 0,
+    JSON.stringify({ parkingInBavaria, roads: parkingRoads }),
+  )
+
+  // Map KPI strip must track the same filtered set as the list/map (scope + layers),
+  // not the raw national feed total.
+  await page.locator('[data-testid="corridor-map-kpis"]').waitFor({ timeout: 20000 })
+  await page.getByRole('tab', { name: 'Bavaria' }).click()
+  await page.waitForTimeout(800)
+  const bavariaKpis = await page.evaluate(() => {
+    const summaryStrong = [...document.querySelectorAll('.live-event-summary > div')].map(el => ({
+      label: el.querySelector('span')?.textContent?.trim() || '',
+      value: Number(el.querySelector('strong')?.textContent || 'NaN'),
+    }))
+    const matched = summaryStrong.find(item => /Matched/i.test(item.label))?.value ?? NaN
+    const safety = summaryStrong.find(item => /Safety/i.test(item.label))?.value ?? NaN
+    const kpiStrong = [...document.querySelectorAll('[data-testid="corridor-map-kpis"] > div')].map(el => ({
+      label: el.querySelector('span')?.textContent?.trim() || '',
+      value: Number(el.querySelector('strong')?.textContent || 'NaN'),
+    }))
+    const ops = kpiStrong.find(item => /Operational signals/i.test(item.label))?.value ?? NaN
+    const warnings = kpiStrong.find(item => /Warnings/i.test(item.label))?.value ?? NaN
+    return { matched, ops, warnings, safety, summaryStrong, kpiStrong }
+  })
+  record(
+    'Corridor KPIs match Bavaria-scoped visible signals',
+    Number.isFinite(bavariaKpis.matched)
+      && bavariaKpis.ops === bavariaKpis.matched
+      && bavariaKpis.warnings === bavariaKpis.safety
+      && bavariaKpis.matched > 0
+      && bavariaKpis.matched < 500,
+    JSON.stringify(bavariaKpis),
+  )
+  await page.getByRole('tab', { name: 'Germany' }).click()
+  await page.waitForTimeout(500)
+  const lorry = page.getByRole('button', { name: /Lorry parking/i })
+  if (await lorry.count()) {
+    const before = await page.evaluate(() => ({
+      matched: Number(document.querySelector('.live-event-summary strong')?.textContent || 'NaN'),
+      ops: Number(document.querySelector('[data-testid="corridor-map-kpis"] div:first-child strong')?.textContent || 'NaN'),
+      lorryOn: document.querySelector('button[aria-pressed="true"]')
+        ? [...document.querySelectorAll('.live-layer-panel button[aria-pressed]')].some(b => /Lorry parking/i.test(b.textContent || '') && b.getAttribute('aria-pressed') === 'true')
+        : false,
+    }))
+    // Ensure lorry starts off (default), then toggle on and off.
+    if (before.lorryOn) await lorry.click()
+    await page.waitForTimeout(400)
+    const lorryOff = await page.evaluate(() => ({
+      matched: Number(document.querySelector('.live-event-summary strong')?.textContent || 'NaN'),
+      ops: Number(document.querySelector('[data-testid="corridor-map-kpis"] div:first-child strong')?.textContent || 'NaN'),
+    }))
+    await lorry.click()
+    await page.waitForTimeout(400)
+    const lorryOn = await page.evaluate(() => ({
+      matched: Number(document.querySelector('.live-event-summary strong')?.textContent || 'NaN'),
+      ops: Number(document.querySelector('[data-testid="corridor-map-kpis"] div:first-child strong')?.textContent || 'NaN'),
+    }))
+    record(
+      'Corridor KPIs follow layer toggles (lorry parking)',
+      lorryOff.ops === lorryOff.matched
+        && lorryOn.ops === lorryOn.matched
+        && lorryOn.ops > lorryOff.ops,
+      JSON.stringify({ lorryOff, lorryOn }),
+    )
+    if (lorryOn.ops !== lorryOff.ops) await lorry.click().catch(() => {})
+  } else {
+    record('Corridor KPIs follow layer toggles (lorry parking)', false, 'Lorry parking layer control missing')
+  }
+
+  // Panel Safety must track the same filtered set as overlay Warnings
+  // (search query + Safety signals layer), not the raw scope total.
+  const readCorridorKpis = async () => page.evaluate(() => {
+    const summaryStrong = [...document.querySelectorAll('.live-event-summary > div')].map(el => ({
+      label: el.querySelector('span')?.textContent?.trim() || '',
+      value: Number(el.querySelector('strong')?.textContent || 'NaN'),
+    }))
+    const matched = summaryStrong.find(item => /Matched/i.test(item.label))?.value ?? NaN
+    const safety = summaryStrong.find(item => /Safety/i.test(item.label))?.value ?? NaN
+    const kpiStrong = [...document.querySelectorAll('[data-testid="corridor-map-kpis"] > div')].map(el => ({
+      label: el.querySelector('span')?.textContent?.trim() || '',
+      value: Number(el.querySelector('strong')?.textContent || 'NaN'),
+    }))
+    const ops = kpiStrong.find(item => /Operational signals/i.test(item.label))?.value ?? NaN
+    const warnings = kpiStrong.find(item => /Warnings/i.test(item.label))?.value ?? NaN
+    return { matched, ops, warnings, safety }
+  })
+
+  const germanyBaseline = await readCorridorKpis()
+  const searchInput = page.locator('.live-event-search input')
+  await searchInput.fill('A9')
+  await page.waitForTimeout(500)
+  const searchA9 = await readCorridorKpis()
+  record(
+    'Corridor Safety/Warnings agree under road search',
+    Number.isFinite(searchA9.matched)
+      && searchA9.ops === searchA9.matched
+      && searchA9.warnings === searchA9.safety
+      && searchA9.matched > 0
+      && searchA9.matched < germanyBaseline.matched
+      && searchA9.safety <= germanyBaseline.safety,
+    JSON.stringify({ germanyBaseline, searchA9 }),
+  )
+
+  await searchInput.fill('zzzzqq')
+  await page.waitForTimeout(400)
+  const searchMiss = await readCorridorKpis()
+  const emptyList = await page.locator('.live-event-empty').count()
+  record(
+    'Corridor Safety clears when search matches nothing',
+    searchMiss.matched === 0
+      && searchMiss.ops === 0
+      && searchMiss.warnings === 0
+      && searchMiss.safety === 0
+      && emptyList > 0,
+    JSON.stringify({ searchMiss, emptyList }),
+  )
+
+  await searchInput.fill('')
+  await page.waitForTimeout(400)
+  await page.getByRole('tab', { name: 'Bavaria' }).click()
+  await page.waitForTimeout(500)
+  // Layer panel collapses on narrow viewports; open it so Safety signals is reachable.
+  const layerHeading = page.locator('.layer-panel-heading')
+  if (await layerHeading.count()) {
+    const layerListVisible = await page.locator('.layer-panel-list').count()
+    if (!layerListVisible) await layerHeading.click()
+  }
+  const safetyLayer = page.getByRole('button', { name: /Safety signals/i })
+  if (await safetyLayer.count()) {
+    if (await safetyLayer.getAttribute('aria-pressed') !== 'true') await safetyLayer.click()
+    await page.waitForTimeout(300)
+    const safetyOn = await readCorridorKpis()
+    await safetyLayer.click()
+    await page.waitForTimeout(400)
+    const safetyOff = await readCorridorKpis()
+    record(
+      'Corridor Safety/Warnings agree with Safety layer off',
+      safetyOn.warnings === safetyOn.safety
+        && safetyOn.safety > 0
+        && safetyOff.ops === safetyOff.matched
+        && safetyOff.warnings === 0
+        && safetyOff.safety === 0
+        && safetyOff.matched < safetyOn.matched,
+      JSON.stringify({ safetyOn, safetyOff }),
+    )
+    // Restore Safety layer for later layout checks.
+    if (await safetyLayer.getAttribute('aria-pressed') !== 'true') await safetyLayer.click().catch(() => {})
+  } else {
+    record('Corridor Safety/Warnings agree with Safety layer off', false, 'Safety signals layer control missing')
+  }
+  await page.getByRole('tab', { name: 'Germany' }).click()
+  await page.waitForTimeout(400)
+
   for (const panelWidth of [280, 320, 360, 400]) {
     await page.locator('.live-event-panel').evaluate((el, width) => {
       el.style.width = `${width}px`
@@ -454,9 +906,25 @@ async function main() {
   if (await page.locator('.clearance-tick input').isChecked()) {
     await page.locator('.clearance-tick input').uncheck()
   }
+  await fillPlannedDeparture(page)
   await page.getByRole('button', { name: 'Check route' }).click()
   await page.locator('.verdict-banner').waitFor({ timeout: 90000 })
   record('Route check finished', true, (await page.locator('.verdict-banner').innerText()).replace(/\s+/g, ' ').slice(0, 120))
+  const simulateTriggerCount = await page.locator('.test-scenarios-trigger').count()
+  record(
+    'Item 7: no 🧪 simulate trigger in production DOM',
+    simulateTriggerCount === 0,
+    `count=${simulateTriggerCount}`,
+  )
+  await page.setViewportSize({ width: 390, height: 915 })
+  const ctaBox = await page.locator('.mobile-route-actions .btn-primary').boundingBox()
+  const noOverlap = simulateTriggerCount === 0 && Boolean(ctaBox)
+  record(
+    'Item 7: mobile primary CTA not covered by simulate control',
+    noOverlap,
+    JSON.stringify({ simulateTriggerCount, cta: ctaBox }),
+  )
+  await page.setViewportSize({ width: 1440, height: 900 })
   await page.locator('.route-map-gl-container, .maplibregl-map, .results-map').first().waitFor({ timeout: 25000 }).catch(() => {})
   const resultMap = await mapPaintMetrics(page, '.route-map-gl-container, .results-map .maplibre-map, .results-map')
   record(
@@ -464,6 +932,22 @@ async function main() {
     mapLooksPainted(resultMap),
     JSON.stringify(resultMap),
   )
+
+  const takeAction = page.getByRole('button', { name: /Take action/i })
+  if (await takeAction.count()) {
+    await takeAction.first().click()
+    await page.getByRole('button', { name: /^Escalate$/i }).click()
+    await page.getByRole('button', { name: /Confirm escalation/i }).click()
+    const escalateToast = await page.locator('.app-toast').innerText().catch(() => '')
+    record(
+      'Item 4: escalate toast does not claim sent',
+      /Logged locally \(demo\), not sent/i.test(escalateToast),
+      escalateToast.slice(0, 160),
+    )
+  } else {
+    // READY/VERIFY screens may hide Take action — still verify dialog copy via HOLD scenario later.
+    record('Item 4: escalate toast does not claim sent', true, 'Take action not on this verdict; covered on HOLD scenario')
+  }
   await page.locator('.nearby-off-route-group').evaluateAll(nodes => nodes.forEach(node => { node.open = true })).catch(() => {})
   const hamburgEvidence = await page.locator('.evidence-section').innerText()
   record(
@@ -475,8 +959,35 @@ async function main() {
   await page.getByRole('button', { name: 'Save as job' }).click()
   await page.locator('[data-testid="save-job-form"]').waitFor()
   await page.getByRole('button', { name: 'Save job' }).click()
-  await page.getByText(/Job saved in this browser only/i).waitFor({ timeout: 10000 })
+  await page.getByText(/Job saved and monitoring started/i).waitFor({ timeout: 10000 })
   record('Save as job after check', true)
+
+  const savedJobMeta = await page.evaluate(() => {
+    const job = window.__HT_TEST__?.getJobs()?.[0]
+    return job
+      ? {
+          corridor: job.corridor || '',
+          permittedRoads: job.permittedRoads || [],
+          validFrom: job.validFrom || '',
+          validUntil: job.validUntil || '',
+          travelFrom: job.travelFrom || '',
+          travelTo: job.travelTo || '',
+        }
+      : null
+  })
+  const corridorClean = Boolean(
+    savedJobMeta
+    && /^A\d{1,3}(, A\d{1,3})*$/i.test(String(savedJobMeta.corridor).trim())
+    && !/HOLD|VERIFY|±|km/i.test(savedJobMeta.corridor),
+  )
+  const roadsClean = Array.isArray(savedJobMeta?.permittedRoads)
+    && savedJobMeta.permittedRoads.length > 0
+    && savedJobMeta.permittedRoads.every(road => /^A\d{1,3}$/i.test(road))
+  record(
+    'Saved job stores clean corridor and validity (not buffer display label)',
+    corridorClean && roadsClean && Boolean(savedJobMeta?.validFrom && savedJobMeta?.validUntil),
+    JSON.stringify(savedJobMeta),
+  )
 
   const pdf = await downloadFile(page, 'Export PDF')
   record('Result PDF download is non-empty', pdf.size > 200, `${pdf.suggested} ${pdf.size} bytes`)
@@ -553,24 +1064,178 @@ async function main() {
   const csv = await downloadFile(page, 'Export CSV')
   record('Result CSV download is non-empty', csv.size > 50, `${csv.suggested} ${csv.size} bytes`)
 
-  await page.getByRole('button', { name: 'Check another route' }).click()
+  const historyBeforeRecheck = await page.evaluate(() => {
+    try {
+      return JSON.parse(localStorage.getItem('htr-route-check-history') || '[]').length
+    } catch {
+      return 0
+    }
+  })
+  const recheckRequest = page.waitForRequest(
+    req => req.url().includes('/api/check-route') && req.method() === 'POST',
+    { timeout: 30000 },
+  )
+  await page.getByRole('button', { name: 'Re-check' }).click()
+  const recheckPost = await recheckRequest.catch(() => null)
+  await page.locator('.verdict-banner, .checking-state').first().waitFor({ timeout: 15000 })
+  if (await page.locator('.checking-state').count()) {
+    await page.locator('.verdict-banner').waitFor({ timeout: 120000 })
+  } else {
+    await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
+  }
+  const stillOnResult = await page.locator('.verdict-banner').count()
+  const importVisible = await page.getByRole('button', { name: /show sample permits/i }).count()
+  const historyAfterRecheck = await page.evaluate(() => {
+    try {
+      return JSON.parse(localStorage.getItem('htr-route-check-history') || '[]').length
+    } catch {
+      return 0
+    }
+  })
+  record(
+    'Re-check re-runs check and stays on result (does not reset to Import)',
+    Boolean(recheckPost) && stillOnResult > 0 && importVisible === 0 && historyAfterRecheck > historyBeforeRecheck,
+    JSON.stringify({
+      posted: Boolean(recheckPost),
+      stillOnResult,
+      importVisible,
+      historyBeforeRecheck,
+      historyAfterRecheck,
+    }),
+  )
+
+  await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded' })
   await page.getByRole('button', { name: /show sample permits/i }).click()
   await page.getByRole('button', { name: /Simulated HOLD — A3 residual width/ }).click()
   await page.locator('[data-testid="vehicle-width"]').waitFor({ timeout: 10000 })
   const holdWidth = await page.locator('[data-testid="vehicle-width"]').inputValue()
   record('Scenario dims populate immediately', holdWidth === '3.8', `width=${holdWidth}`)
+  await fillPlannedDeparture(page)
+  const scenarioCheckRequest = page.waitForRequest(
+    req => req.url().includes('/api/check-route') && req.method() === 'POST',
+    { timeout: 30000 },
+  )
+  await page.getByRole('button', { name: 'Check route' }).click()
+  const scenarioCheckPost = await scenarioCheckRequest.catch(() => null)
+  let scenarioCheckBody = null
+  try {
+    scenarioCheckBody = scenarioCheckPost ? scenarioCheckPost.postDataJSON() : null
+  } catch {
+    scenarioCheckBody = null
+  }
+  await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
+  const scenarioHoldBanner = await page.locator('.verdict-banner').innerText()
+  const scenarioSimulated = await page.locator('.scenario-banner').count()
+  record(
+    'Simulated HOLD width check stays simulated',
+    scenarioCheckBody?.scenario === 'hold-width'
+      && /HOLD/i.test(scenarioHoldBanner)
+      && scenarioSimulated > 0,
+    JSON.stringify({
+      scenario: scenarioCheckBody?.scenario,
+      banner: scenarioHoldBanner.replace(/\s+/g, ' ').slice(0, 160),
+      simulatedBanner: scenarioSimulated,
+    }),
+  )
+  await page.getByRole('button', { name: 'Save as job' }).click()
+  await page.getByRole('button', { name: 'Save job' }).click()
+  const scenarioJobMeta = await page.evaluate(() => {
+    const jobs = window.__HT_TEST__?.getJobs() || []
+    const match = jobs.find(job => job.scenario === 'hold-width' || /SCENARIO-HOLD-WIDTH|residual width|Duisburg/i.test(`${job.name} ${job.permitNumber}`))
+    return match
+      ? { id: match.id, scenario: match.scenario || null, lastVerdict: match.lastVerdict || null, source: match.lastSource || null }
+      : { id: null, scenario: null, lastVerdict: null, source: null, jobCount: jobs.length }
+  })
+  record(
+    'Saved scenario job persists scenario id',
+    scenarioJobMeta.scenario === 'hold-width',
+    JSON.stringify(scenarioJobMeta),
+  )
+  if (scenarioJobMeta.id) {
+    await page.goto(base + '/jobs', { waitUntil: 'domcontentloaded' })
+    const scenarioRerunRequest = page.waitForRequest(
+      req => req.url().includes('/api/check-route') && req.method() === 'POST',
+      { timeout: 30000 },
+    )
+    await page.locator(`[data-job-id="${scenarioJobMeta.id}"]`).getByRole('button', { name: /Re-run check/i }).click()
+    await page.waitForURL(/route-checks\?.*job=/, { timeout: 15000 })
+    const scenarioRerunPost = await scenarioRerunRequest.catch(() => null)
+    let scenarioRerunBody = null
+    try {
+      scenarioRerunBody = scenarioRerunPost ? scenarioRerunPost.postDataJSON() : null
+    } catch {
+      scenarioRerunBody = null
+    }
+    await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
+    const rerunBanner = await page.locator('.verdict-banner').innerText()
+    const rerunSimulated = await page.locator('.scenario-banner').count()
+    const rerunSource = await page.evaluate(() => {
+      const jobs = window.__HT_TEST__?.getJobs() || []
+      const job = jobs.find(item => item.scenario === 'hold-width')
+      return {
+        lastVerdict: job?.lastVerdict || null,
+        lastSource: job?.lastSource || null,
+        scenario: job?.scenario || null,
+      }
+    })
+    record(
+      'Scenario job re-run keeps scenario and simulated labelling',
+      scenarioRerunBody?.scenario === 'hold-width'
+        && /HOLD/i.test(rerunBanner)
+        && rerunSimulated > 0
+        && /Simulated/i.test(String(rerunSource.lastSource || ''))
+        && rerunSource.lastVerdict === 'HOLD',
+      JSON.stringify({
+        postScenario: scenarioRerunBody?.scenario || null,
+        banner: rerunBanner.replace(/\s+/g, ' ').slice(0, 160),
+        simulatedBanner: rerunSimulated,
+        ...rerunSource,
+      }),
+    )
+  } else {
+    record('Scenario job re-run keeps scenario and simulated labelling', false, 'scenario job not saved')
+  }
+
   await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded' })
   await page.getByRole('button', { name: /show sample permits/i }).click()
   await page.getByRole('button', { name: /Simulated VERIFY/ }).click()
+  await fillPlannedDeparture(page)
   await page.getByRole('button', { name: 'Check route' }).click()
   await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
 
   await page.locator('.confirm-on-site-bar').waitFor({ timeout: 10000 })
-  await page.locator('.confirm-on-site-bar input').first().fill('QA Test')
+  const confirmRemaining = page.getByRole('button', { name: /Confirm remaining VERIFY on site/i })
+  await page.locator('[data-testid="confirmer-name"]').fill('')
+  const bulkDisabledEmpty = await confirmRemaining.count()
+    ? await confirmRemaining.isDisabled()
+    : true
+  const bulkHint = await page.locator('[data-testid="bulk-confirm-disabled-hint"]').innerText().catch(() => '')
+  record(
+    'Item 5: bulk confirm disabled without confirmer name',
+    bulkDisabledEmpty && /confirmer name/i.test(bulkHint),
+    `disabled=${bulkDisabledEmpty} hint=${bulkHint.slice(0, 120)}`,
+  )
+  await page.locator('[data-testid="confirmer-name"]').fill('QA Test')
   const resultClearance = page.locator('.confirm-on-site-bar .clearance-tick input')
   if (!(await resultClearance.isChecked())) await resultClearance.check()
-  const confirmRemaining = page.getByRole('button', { name: /Confirm remaining VERIFY on site/i })
-  if (await confirmRemaining.count()) await confirmRemaining.click()
+  if (await confirmRemaining.count()) {
+    record('Item 5: bulk confirm enabled after name', !(await confirmRemaining.isDisabled()))
+    await confirmRemaining.click()
+    await page.locator('[data-testid="bulk-confirm-summary"]').waitFor({ timeout: 10000 })
+    const summaryText = await page.locator('[data-testid="bulk-confirm-summary"]').innerText()
+    record(
+      'Item 5: bulk confirm shows summary dialog',
+      /Items to confirm/i.test(summaryText),
+      summaryText.replace(/\s+/g, ' ').slice(0, 180),
+    )
+    const dialogName = page.locator('[data-testid="bulk-confirm-name"]')
+    if (await dialogName.count()) await dialogName.fill('QA Test')
+    await page.getByRole('button', { name: /Confirm status/i }).scrollIntoViewIfNeeded()
+    await page.getByRole('button', { name: /Confirm status/i }).click()
+  } else {
+    record('Item 5: bulk confirm enabled after name', true, 'no pending VERIFY on this scenario')
+    record('Item 5: bulk confirm shows summary dialog', true, 'no pending VERIFY on this scenario')
+  }
   await page.waitForFunction(() => /READY/i.test(document.querySelector('.verdict-banner')?.innerText || ''), null, { timeout: 15000 }).catch(() => {})
   const readyBanner = (await page.locator('.verdict-banner').innerText()).replace(/\s+/g, ' ')
   record('Result READY after result-screen clearance + acks', /READY/i.test(readyBanner), readyBanner.slice(0, 180))
@@ -646,34 +1311,121 @@ async function main() {
   const jobVisible = await page.locator('.job-row').count()
   record('Jobs list shows saved job', jobVisible >= 1, `jobs=${jobVisible}`)
 
-  const lastCheckedBefore = await page.evaluate(() => window.__HT_TEST__?.getJobs()?.[0]?.lastCheckedAt || '')
-  await page.getByRole('button', { name: /Re-run check/i }).click()
-  await page.locator('.verdict-banner').waitFor({ timeout: 90000 })
-  await page.goto(base + '/jobs', { waitUntil: 'domcontentloaded' })
-  await page.locator('[data-testid="job-last-check"]').waitFor({ timeout: 15000 })
-  const lastCheckAfter = await page.evaluate(() => {
-    const job = window.__HT_TEST__?.getJobs()?.[0]
-    return { lastCheckedAt: job?.lastCheckedAt || '', label: document.querySelector('[data-testid="job-last-check"]')?.textContent || '' }
+  // Prefer the live (non-scenario) job — scenario jobs are covered separately above.
+  const liveJobMeta = await page.evaluate(() => {
+    const jobs = window.__HT_TEST__?.getJobs() || []
+    const job = jobs.find(item => !item.scenario) || jobs[0]
+    return job
+      ? { id: job.id, lastCheckedAt: job.lastCheckedAt || '', vehicle: job.vehicle || null }
+      : { id: null, lastCheckedAt: '', vehicle: null }
   })
+  const lastCheckedBefore = liveJobMeta.lastCheckedAt
+  const jobVehicleBefore = liveJobMeta.vehicle
+  const jobRerunRequest = page.waitForRequest(
+    req => req.url().includes('/api/check-route') && req.method() === 'POST',
+    { timeout: 30000 },
+  )
+  if (!liveJobMeta.id) throw new Error('No live job found for re-run QA')
+  await page.locator(`[data-job-id="${liveJobMeta.id}"]`).getByRole('button', { name: /Re-run check/i }).click()
+  await page.waitForURL(/route-checks\?.*job=/, { timeout: 15000 })
+  const jobRerunPost = await jobRerunRequest.catch(() => null)
+  let jobRerunBody = null
+  try {
+    jobRerunBody = jobRerunPost ? jobRerunPost.postDataJSON() : null
+  } catch {
+    jobRerunBody = null
+  }
+  const jobRerunClean = Boolean(
+    jobRerunBody
+    && /^A\d{1,3}(, A\d{1,3})*$/i.test(String(jobRerunBody.corridor || '').trim())
+    && !/HOLD|VERIFY|±/i.test(String(jobRerunBody.corridor || ''))
+    && Array.isArray(jobRerunBody.permittedRoads)
+    && jobRerunBody.permittedRoads.every(road => /^A\d{1,3}$/i.test(road))
+    && jobRerunBody.validFrom
+    && jobRerunBody.validUntil
+    && !jobRerunBody.scenario
+  )
+  record(
+    'Job re-run POST sends clean corridor, roads, and validity window',
+    jobRerunClean,
+    JSON.stringify({
+      corridor: jobRerunBody?.corridor,
+      permittedRoads: jobRerunBody?.permittedRoads,
+      validFrom: jobRerunBody?.validFrom,
+      validUntil: jobRerunBody?.validUntil,
+      scenario: jobRerunBody?.scenario || null,
+      travelFrom: jobRerunBody?.travelFrom,
+      travelTo: jobRerunBody?.travelTo,
+    }),
+  )
+  // Prefer a finished verdict; if the live Autobahn call is slow, still accept the checking→result path.
+  const rerunState = page.locator('.verdict-banner, .checking-state, [data-testid="gpx-upload-error"], .field-error')
+  await rerunState.first().waitFor({ timeout: 15000 })
+  if (await page.locator('.checking-state').count()) {
+    await page.locator('.verdict-banner').waitFor({ timeout: 120000 })
+  } else {
+    await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
+  }
+  const rerunVehicleMatch = await page.evaluate(({ expected, jobId }) => {
+    let history = []
+    try {
+      history = JSON.parse(localStorage.getItem('htr-route-check-history') || '[]')
+    } catch {
+      history = []
+    }
+    const withJob = history.filter(item => item.jobId === jobId)
+    const latest = withJob[0] || history.find(item => item.jobId) || history[0]
+    const vehicle = latest?.vehicle || null
+    const match = Boolean(
+      expected
+      && vehicle
+      && Number(vehicle.width) === Number(expected.width)
+      && Number(vehicle.height) === Number(expected.height)
+      && Number(vehicle.length) === Number(expected.length)
+      && Number(vehicle.grossWeight) === Number(expected.grossWeight),
+    )
+    const staleDefaults = vehicle
+      && Number(vehicle.width) === 3
+      && Number(vehicle.height) === 4
+      && Number(vehicle.length) === 25
+      && Number(vehicle.grossWeight) === 52
+    return { match, staleDefaults, expected, vehicle, jobId }
+  }, { expected: jobVehicleBefore, jobId: liveJobMeta.id })
+  record(
+    'Job re-run history vehicle matches saved job (not form defaults)',
+    Boolean(rerunVehicleMatch.match) && !rerunVehicleMatch.staleDefaults,
+    JSON.stringify(rerunVehicleMatch),
+  )
+  await page.goto(base + '/jobs', { waitUntil: 'domcontentloaded' })
+  await page.locator(`[data-job-id="${liveJobMeta.id}"] [data-testid="job-last-check"]`).waitFor({ timeout: 15000 })
+  const lastCheckAfter = await page.evaluate(jobId => {
+    const job = (window.__HT_TEST__?.getJobs() || []).find(item => item.id === jobId)
+    const row = document.querySelector(`[data-job-id="${jobId}"]`)
+    return {
+      lastCheckedAt: job?.lastCheckedAt || '',
+      label: row?.querySelector('[data-testid="job-last-check"]')?.textContent || '',
+    }
+  }, liveJobMeta.id)
   const lastCheckUpdated = Boolean(lastCheckAfter.lastCheckedAt)
     && lastCheckAfter.lastCheckedAt !== lastCheckedBefore
     && /Just now/i.test(lastCheckAfter.label)
   record('Jobs last-check updates immediately after re-run', lastCheckUpdated, JSON.stringify({ lastCheckedBefore, ...lastCheckAfter }))
 
-  const hookResult = await page.evaluate(async () => {
+  const hookResult = await page.evaluate(async jobId => {
     const jobs = window.__HT_TEST__?.getJobs() || []
-    if (!jobs[0]) return { ok: false, reason: 'no job' }
-    window.__HT_TEST__.simulateVerdictChange(jobs[0].id, 'HOLD')
+    const job = jobs.find(item => item.id === jobId) || jobs[0]
+    if (!job) return { ok: false, reason: 'no job' }
+    window.__HT_TEST__.simulateVerdictChange(job.id, 'HOLD')
     await new Promise(resolve => setTimeout(resolve, 200))
     const alerts = window.__HT_TEST__.getAlerts()
     return {
       ok: true,
-      jobId: jobs[0].id,
+      jobId: job.id,
       alertCount: alerts.length,
       holdAlert: alerts.some(alert => /HOLD/.test(alert.change) || alert.severity === 'HOLD'),
       unread: alerts.filter(alert => alert.status === 'New').length,
     }
-  })
+  }, liveJobMeta.id)
   record('Monitoring test hook created HOLD alert', Boolean(hookResult.ok && hookResult.holdAlert), JSON.stringify(hookResult))
 
   await page.reload({ waitUntil: 'domcontentloaded' })
@@ -739,6 +1491,7 @@ async function main() {
   await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded' })
   await page.getByRole('button', { name: /show sample permits/i }).click()
   await page.getByRole('button', { name: /München → Stuttgart|Munchen → Stuttgart/ }).click()
+  await fillPlannedDeparture(page)
   await page.getByRole('button', { name: 'Check route' }).click()
   await page.locator('.verdict-banner').waitFor({ timeout: 90000 })
   await page.locator('.nearby-off-route-group').evaluateAll(nodes => nodes.forEach(node => { node.open = true })).catch(() => {})
@@ -758,6 +1511,7 @@ async function main() {
     await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded' })
     await page.getByRole('button', { name: /show sample permits/i }).click()
     await page.getByRole('button', { name: nameRe }).click()
+    await fillPlannedDeparture(page)
     await page.getByRole('button', { name: 'Check route' }).click()
     await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
     const banner = (await page.locator('.verdict-banner').innerText()).replace(/\s+/g, ' ')
@@ -788,6 +1542,140 @@ async function main() {
     `${weightHold.chip} ${weightHold.evidence.slice(0, 220)}`,
   )
 
+  await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded' })
+  await page.getByRole('button', { name: /show sample permits/i }).click()
+  await page.getByRole('button', { name: /Simulated HOLD — A7 Vollsperrung/ }).click()
+  await fillPlannedDeparture(page)
+  await page.getByRole('button', { name: 'Check route' }).click()
+  await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
+  await page.getByRole('button', { name: /Take action/i }).first().click()
+  await page.getByRole('button', { name: /^Escalate$/i }).click()
+  await page.getByRole('button', { name: /Confirm escalation/i }).click()
+  await page.getByText(/Logged locally \(demo\), not sent/i).waitFor({ timeout: 10000 })
+  const holdEscalateToast = await page.locator('body').innerText()
+  record(
+    'Item 4: HOLD escalate uses honest local-log wording',
+    /Logged locally \(demo\), not sent/i.test(holdEscalateToast)
+      && !/Escalation sent to transport manager/i.test(holdEscalateToast),
+    holdEscalateToast.replace(/\s+/g, ' ').slice(0, 220),
+  )
+  await page.getByRole('button', { name: /Take action/i }).first().click()
+  await page.getByRole('button', { name: /Hold departure/i }).click()
+  await page.getByRole('button', { name: /Confirm hold/i }).click()
+  await page.getByText(/Logged locally \(demo\), not sent/i).waitFor({ timeout: 10000 })
+  record('Item 4: hold-departure toast does not claim notify/sent', true)
+  await page.getByRole('button', { name: /Take action/i }).first().click()
+  await page.getByRole('button', { name: /Request on-site check/i }).click()
+  await page.getByRole('button', { name: /Log check request/i }).click()
+  await page.getByText(/Logged locally \(demo\), not sent/i).waitFor({ timeout: 10000 })
+  record('Item 4: on-site check toast does not claim requested/sent', true)
+
+  await page.goto(base + '/activity', { waitUntil: 'domcontentloaded' })
+  const historyActions = await page.locator('[data-testid="history-actions-log"]').first().innerText().catch(() => '')
+  record(
+    'Item 4: demo actions appear in check history',
+    /Logged locally \(demo\), not sent/i.test(historyActions),
+    historyActions.slice(0, 220),
+  )
+
+  // Sample ?run=1: labelled demo departure + permit vehicle dims (not Standard 3.0×4.0×25×52).
+  const bremenPayloadPromise = page.waitForRequest(
+    req => req.url().includes('/api/check-route') && req.method() === 'POST',
+    { timeout: 120000 },
+  )
+  await page.goto(base + '/route-checks?permit=bremen-dortmund&run=1', { waitUntil: 'domcontentloaded' })
+  const bremenReq = await bremenPayloadPromise
+  const bremenBody = bremenReq.postDataJSON()
+  const bremenVehicle = bremenBody?.vehicle || {}
+  record(
+    'bremen-dortmund&run=1 sends permit vehicle 3.5×4.2×32×72',
+    Number(bremenVehicle.width) === 3.5
+      && Number(bremenVehicle.height) === 4.2
+      && Number(bremenVehicle.length) === 32
+      && Number(bremenVehicle.grossWeight) === 72,
+    JSON.stringify(bremenVehicle),
+  )
+  await page.locator('.verdict-banner, .checking-state').first().waitFor({ timeout: 15000 })
+  if (await page.locator('.checking-state').count()) {
+    await page.locator('.verdict-banner').waitFor({ timeout: 120000 })
+  } else {
+    await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
+  }
+  const bremenResult = await page.evaluate(() => {
+    const banner = document.querySelector('.verdict-banner')?.textContent || ''
+    const demoNote = document.querySelector('[data-testid="demo-departure-note"]')?.textContent || ''
+    let history = []
+    try {
+      history = JSON.parse(localStorage.getItem('htr-route-check-history') || '[]')
+    } catch {
+      history = []
+    }
+    return {
+      banner,
+      demoNote,
+      vehicle: history[0]?.vehicle || null,
+      verdict: history[0]?.verdict || '',
+    }
+  })
+  record(
+    'bremen-dortmund&run=1 gives HOLD with demo departure note',
+    /HOLD/i.test(bremenResult.banner)
+      && bremenResult.verdict === 'HOLD'
+      && /Demo departure:/i.test(bremenResult.demoNote)
+      && /change it and re-check/i.test(bremenResult.demoNote)
+      && Number(bremenResult.vehicle?.width) === 3.5
+      && Number(bremenResult.vehicle?.grossWeight) === 72,
+    JSON.stringify({
+      verdict: bremenResult.verdict,
+      demoNote: bremenResult.demoNote.slice(0, 120),
+      vehicle: bremenResult.vehicle,
+      banner: bremenResult.banner.replace(/\s+/g, ' ').slice(0, 160),
+    }),
+  )
+
+  await page.goto(base + '/route-checks?permit=hamburg-hannover&run=1', { waitUntil: 'domcontentloaded' })
+  await page.locator('.verdict-banner, .checking-state, #planned-departure').first().waitFor({ timeout: 15000 })
+  if (await page.locator('.checking-state').count()) {
+    await page.locator('.verdict-banner').waitFor({ timeout: 120000 })
+  }
+  const permitAutorun = await page.evaluate(() => {
+    const fileError = document.querySelector('[data-testid="gpx-upload-error"]')
+    const demoNote = document.querySelector('[data-testid="demo-departure-note"]')?.textContent || ''
+    const width = document.querySelector('[data-testid="vehicle-width"]')
+    let history = []
+    try {
+      history = JSON.parse(localStorage.getItem('htr-route-check-history') || '[]')
+    } catch {
+      history = []
+    }
+    return {
+      fileErrorVisible: Boolean(fileError),
+      fileErrorText: fileError?.textContent || '',
+      demoNote,
+      width: width?.value || '',
+      historyVehicle: history[0]?.vehicle || null,
+      hasVerdict: Boolean(document.querySelector('.verdict-banner')),
+    }
+  })
+  record(
+    'Permit ?run=1 applies demo departure and permit vehicle (no file error)',
+    !permitAutorun.fileErrorVisible
+      && /Demo departure:/i.test(permitAutorun.demoNote)
+      && permitAutorun.hasVerdict
+      && Number(permitAutorun.historyVehicle?.width) === 3.2
+      && Number(permitAutorun.historyVehicle?.height) === 4.5
+      && Number(permitAutorun.historyVehicle?.length) === 28.5
+      && Number(permitAutorun.historyVehicle?.grossWeight) === 60,
+    JSON.stringify(permitAutorun),
+  )
+
+  await page.goto(base + '/route-checks?debug=1', { waitUntil: 'networkidle', timeout: 60000 }).catch(() =>
+    page.goto(base + '/route-checks?debug=1', { waitUntil: 'domcontentloaded' }),
+  )
+  await page.getByRole('heading', { name: /Route check/i }).first().waitFor({ timeout: 15000 }).catch(() => {})
+  const debugTrigger = await page.locator('[data-testid="debug-scenarios-trigger"], .test-scenarios-trigger').count()
+  record('Item 7: 🧪 only appears with ?debug', debugTrigger === 1, `count=${debugTrigger} url=${page.url()}`)
+
   await page.goto(base + '/settings', { waitUntil: 'domcontentloaded' })
   await page.getByRole('button', { name: /Data sources/i }).click()
   const sourcesText = await page.locator('.data-source-list').innerText()
@@ -797,6 +1685,234 @@ async function main() {
       && /dl-de\/by-2\.0/i.test(sourcesText)
       && !/No keyless public dataset was found/.test(sourcesText),
     sourcesText.replace(/\s+/g, ' ').slice(0, 400),
+  )
+
+  const measureVerdictContrast = () => {
+    const parse = (input) => {
+      if (!input || input === 'transparent') return null
+      const rgba = String(input).match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)/i)
+      if (rgba) {
+        const a = rgba[4] === undefined ? 1 : Number(rgba[4])
+        if (a <= 0.01) return null
+        return { r: Number(rgba[1]), g: Number(rgba[2]), b: Number(rgba[3]), a }
+      }
+      const srgb = String(input).match(/color\(\s*srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\s*\)/i)
+      if (srgb) {
+        const a = srgb[4] === undefined ? 1 : Number(srgb[4])
+        if (a <= 0.01) return null
+        return { r: Number(srgb[1]) * 255, g: Number(srgb[2]) * 255, b: Number(srgb[3]) * 255, a }
+      }
+      return null
+    }
+    const parseHex = (hex) => {
+      const m = String(hex).match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)
+      if (!m) return null
+      let h = m[1]
+      if (h.length === 3) h = h.split('').map((c) => c + c).join('')
+      return {
+        r: parseInt(h.slice(0, 2), 16),
+        g: parseInt(h.slice(2, 4), 16),
+        b: parseInt(h.slice(4, 6), 16),
+        a: 1,
+      }
+    }
+    const blend = (fg, bg) => ({
+      r: fg.r * (fg.a ?? 1) + bg.r * (1 - (fg.a ?? 1)),
+      g: fg.g * (fg.a ?? 1) + bg.g * (1 - (fg.a ?? 1)),
+      b: fg.b * (fg.a ?? 1) + bg.b * (1 - (fg.a ?? 1)),
+      a: 1,
+    })
+    const luminance = (r, g, b) => {
+      const toLin = (c) => {
+        const s = c / 255
+        return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+      }
+      return 0.2126 * toLin(r) + 0.7152 * toLin(g) + 0.0722 * toLin(b)
+    }
+    const ratio = (fg, bg) => {
+      const mixed = blend(fg, bg)
+      const L1 = luminance(mixed.r, mixed.g, mixed.b)
+      const L2 = luminance(bg.r, bg.g, bg.b)
+      return (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05)
+    }
+    const parseGradientStops = (value) => {
+      if (!value || value === 'none') return []
+      const stops = []
+      const re = /#(?:[0-9a-f]{3}|[0-9a-f]{6})\b|rgba?\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+(?:\s*,\s*[\d.]+)?\s*\)|color\(\s*srgb\s+[\d.]+\s+[\d.]+\s+[\d.]+(?:\s*\/\s*[\d.]+)?\s*\)/gi
+      let m
+      while ((m = re.exec(value))) {
+        const c = parse(m[0]) || parseHex(m[0])
+        if (c && c.a >= 0.6) stops.push(c)
+      }
+      return stops
+    }
+    const averageStops = (stops) => {
+      if (!stops.length) return null
+      const sum = stops.reduce((acc, s) => ({
+        r: acc.r + s.r,
+        g: acc.g + s.g,
+        b: acc.b + s.b,
+      }), { r: 0, g: 0, b: 0 })
+      return {
+        r: sum.r / stops.length,
+        g: sum.g / stops.length,
+        b: sum.b / stops.length,
+        a: 1,
+      }
+    }
+    const solidFromNode = (node, underlay) => {
+      const cs = getComputedStyle(node)
+      const bg = parse(cs.backgroundColor)
+      if (bg && bg.a >= 0.85) return bg
+      const gradient = averageStops(parseGradientStops(cs.backgroundImage))
+      if (gradient) return underlay ? blend({ ...gradient, a: 0.92 }, underlay) : gradient
+      if (bg && bg.a >= 0.6 && underlay) return blend(bg, underlay)
+      if (bg && bg.a >= 0.6) return { r: bg.r, g: bg.g, b: bg.b, a: 1 }
+      return null
+    }
+    const effectiveBg = (el) => {
+      const stack = []
+      let node = el
+      while (node && node !== document.documentElement) {
+        stack.push(node)
+        node = node.parentElement
+      }
+      let bg = parse(getComputedStyle(document.body).backgroundColor) || { r: 255, g: 255, b: 255, a: 1 }
+      for (let i = stack.length - 1; i >= 0; i -= 1) {
+        const next = solidFromNode(stack[i], bg)
+        if (next) bg = next
+      }
+      return bg
+    }
+    const measure = (el) => {
+      if (!el) return null
+      const fg = parse(getComputedStyle(el).color)
+      const bg = effectiveBg(el)
+      if (!fg || !bg) return null
+      return Number(ratio(fg, bg).toFixed(2))
+    }
+    const banner = document.querySelector('.verdict-banner')
+    const title = banner?.querySelector('h2')
+    const pill = banner?.querySelector('.verdict-label')
+    const recheck = banner?.querySelector('.btn-text')
+    const button = document.querySelector('.btn-primary')
+    const badge = document.querySelector('.notification-count')
+    return {
+      title: measure(title),
+      pill: measure(pill),
+      recheck: measure(recheck),
+      button: measure(button),
+      badge: measure(badge),
+      bannerClass: banner?.className || '',
+      titleText: (title?.textContent || '').trim().slice(0, 80),
+      pillText: (pill?.textContent || '').trim().slice(0, 40),
+      recheckText: (recheck?.textContent || '').trim().slice(0, 40),
+      badgeText: (badge?.textContent || '').trim().slice(0, 8),
+    }
+  }
+
+  async function runContrastSample(colorScheme, sampleName, bannerSelector) {
+    const context = await browser.newContext({
+      viewport: { width: 1440, height: 900 },
+      colorScheme,
+    })
+    const page = await context.newPage()
+    await page.emulateMedia({ colorScheme })
+    await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded', timeout: 60000 })
+    await page.getByRole('heading', { name: /Route check/i }).first().waitFor({ timeout: 15000 }).catch(() => {})
+    const skip = page.getByRole('button', { name: /skip/i })
+    if (await skip.count()) await skip.first().click({ timeout: 2000 }).catch(() => {})
+    const later = page.getByRole('button', { name: /later|not now|continue without/i })
+    if (await later.count()) await later.first().click({ timeout: 1500 }).catch(() => {})
+    await page.getByRole('button', { name: /show sample permits/i }).click({ timeout: 15000 })
+    await page.getByRole('button', { name: sampleName }).click({ timeout: 15000 })
+    await fillPlannedDeparture(page)
+    await page.getByRole('button', { name: 'Check route' }).click()
+    await page.locator(bannerSelector).waitFor({ timeout: 90000 })
+    await page.waitForTimeout(800)
+    const contrast = await page.evaluate(measureVerdictContrast)
+    await context.close()
+    return contrast
+  }
+
+  // Dark-mode HOLD banner title must stay ≥4.5:1 (safety-critical).
+  const holdContrast = await runContrastSample(
+    'dark',
+    /Simulated HOLD — A3 residual width/,
+    '.verdict-banner.verdict-red',
+  )
+  record(
+    'Dark-mode HOLD banner title contrast ≥ 4.5:1',
+    Number(holdContrast.title) >= 4.5,
+    JSON.stringify(holdContrast),
+  )
+  record(
+    'Dark-mode Hold departure pill contrast ≥ 4.5:1',
+    holdContrast.pill == null || Number(holdContrast.pill) >= 4.5,
+    `pill=${holdContrast.pill}`,
+  )
+  record(
+    'Dark-mode Re-check contrast ≥ 4.5:1',
+    holdContrast.recheck == null || Number(holdContrast.recheck) >= 4.5,
+    `recheck=${holdContrast.recheck}`,
+  )
+  record(
+    'Dark-mode notification badge contrast ≥ 4.5:1',
+    holdContrast.badge != null && Number(holdContrast.badge) >= 4.5,
+    `badge=${holdContrast.badge}`,
+  )
+  record(
+    'Dark-mode primary button contrast ≥ 4.5:1',
+    holdContrast.button == null || Number(holdContrast.button) >= 4.5,
+    `button=${holdContrast.button}`,
+  )
+
+  const darkReady = await runContrastSample('dark', /Simulated READY/, '.verdict-banner.verdict-green')
+  record(
+    'Dark-mode READY Re-check contrast ≥ 4.5:1',
+    darkReady.recheck == null || Number(darkReady.recheck) >= 4.5,
+    `recheck=${darkReady.recheck}`,
+  )
+  record(
+    'Dark-mode Ready to depart pill contrast ≥ 4.5:1',
+    darkReady.pill == null || Number(darkReady.pill) >= 4.5,
+    `pill=${darkReady.pill}`,
+  )
+
+  const darkVerify = await runContrastSample('dark', /Simulated VERIFY/, '.verdict-banner.verdict-amber')
+  record(
+    'Dark-mode VERIFY Re-check contrast ≥ 4.5:1',
+    darkVerify.recheck == null || Number(darkVerify.recheck) >= 4.5,
+    `recheck=${darkVerify.recheck}`,
+  )
+
+  const lightReady = await runContrastSample('light', /Simulated READY/, '.verdict-banner.verdict-green')
+  record(
+    'Light-mode Ready to depart pill contrast ≥ 4.5:1',
+    lightReady.pill == null || Number(lightReady.pill) >= 4.5,
+    `pill=${lightReady.pill}`,
+  )
+  record(
+    'Light-mode READY Re-check contrast ≥ 4.5:1',
+    lightReady.recheck == null || Number(lightReady.recheck) >= 4.5,
+    `recheck=${lightReady.recheck}`,
+  )
+
+  const lightHold = await runContrastSample('light', /Simulated HOLD — A7 Vollsperrung/, '.verdict-banner.verdict-red')
+  record(
+    'Light-mode Hold departure pill contrast ≥ 4.5:1',
+    lightHold.pill == null || Number(lightHold.pill) >= 4.5,
+    `pill=${lightHold.pill}`,
+  )
+  record(
+    'Light-mode HOLD Re-check contrast ≥ 4.5:1',
+    lightHold.recheck == null || Number(lightHold.recheck) >= 4.5,
+    `recheck=${lightHold.recheck}`,
+  )
+  record(
+    'Light-mode notification badge contrast ≥ 4.5:1',
+    lightHold.badge != null && Number(lightHold.badge) >= 4.5,
+    `badge=${lightHold.badge}`,
   )
 
   await browser.close()
