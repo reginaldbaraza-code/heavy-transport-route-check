@@ -81,6 +81,8 @@
   /* Filled primary controls (may diverge from --accent in dark mode) */
   --accent-button: var(--accent);
   --accent-button-hover: var(--accent-hover);
+  /* Text-button / banner Re-check link (dark mode may lighten for tinted banners) */
+  --banner-link: var(--accent);
 
   /* Semantic READY / VERIFY / HOLD — AA text on tinted surfaces */
   --green: #34c759;
@@ -186,6 +188,8 @@
     --accent-button: #0066cc;
     --accent-button-hover: #0055d4;
     --text-on-accent: #ffffff;
+    /* Lighter blue so Re-check stays ≥4.5:1 on HOLD/VERIFY/READY banners */
+    --banner-link: #6cb4ff;
     --green: #30d158;
     --green-bg: #143528;
     --green-text: #6fde92;
@@ -197,8 +201,9 @@
     --red-text: #ffb4ae;
     --blue-bg: #0c2a4a;
     --blue-text: #64d2ff;
-    --border: rgba(84, 84, 88, 0.65);
-    --border-strong: rgba(84, 84, 88, 0.85);
+    /* Opaque separators ≥3:1 on --bg-card / --bg-base (non-text UI) */
+    --border: #6e6e73;
+    --border-strong: #8e8e93;
     --divider: rgba(84, 84, 88, 0.45);
     --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.35);
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35), 0 6px 16px rgba(0, 0, 0, 0.4);
@@ -2643,6 +2648,10 @@ h4 { font-size: 18px !important; line-height: 1.35 !important; }
   background: transparent;
   color: var(--accent);
   padding: 0 12px;
+}
+
+.verdict-banner .btn-text {
+  color: var(--banner-link);
 }
 
 .btn-text:hover {

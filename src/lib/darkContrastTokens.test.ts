@@ -85,6 +85,10 @@ test('dark-mode verdict and button tokens meet WCAG AA contrast', () => {
   const textOnAccent = resolve(tokens, '--text-on-accent')
   const hold = resolve(tokens, '--hold')
   const ready = resolve(tokens, '--ready')
+  const bannerLink = resolve(tokens, '--banner-link')
+  const border = resolve(tokens, '--border')
+  const bgCard = resolve(tokens, '--bg-card')
+  const bgBase = resolve(tokens, '--bg-base')
 
   assert.ok(contrastRatio(textPrimary, holdBg) >= 4.5, `HOLD banner title ${textPrimary} on ${holdBg}`)
   assert.ok(contrastRatio(textPrimary, readyBg) >= 4.5, `READY banner title on ${readyBg}`)
@@ -96,4 +100,15 @@ test('dark-mode verdict and button tokens meet WCAG AA contrast', () => {
   // Verdict pills use dark ink on the bright semantic fill in dark mode
   assert.ok(contrastRatio('#1c1c1e', hold) >= 4.5, `Hold departure pill on ${hold}`)
   assert.ok(contrastRatio('#1c1c1e', ready) >= 4.5, `Ready pill on ${ready}`)
+
+  // Banner Re-check link must stay ≥4.5:1 on all three tinted verdict surfaces
+  assert.ok(contrastRatio(bannerLink, holdBg) >= 4.5, `Re-check link ${bannerLink} on HOLD ${holdBg}`)
+  assert.ok(contrastRatio(bannerLink, verifyBg) >= 4.5, `Re-check link ${bannerLink} on VERIFY ${verifyBg}`)
+  assert.ok(contrastRatio(bannerLink, readyBg) >= 4.5, `Re-check link ${bannerLink} on READY ${readyBg}`)
+
+  // Non-text UI borders (toast, overview-tallies, permit-map-badge) ≥3:1 vs adjacent surfaces
+  assert.ok(contrastRatio(border, bgCard) >= 3, `border ${border} on bg-card ${bgCard}`)
+  assert.ok(contrastRatio(border, bgBase) >= 3, `border ${border} on bg-base ${bgBase}`)
+  // permit-map-badge sits on glass over the map; glass channels match bg-card when opaque
+  assert.ok(contrastRatio(border, bgCard) >= 3, `permit-map-badge border ${border} on glass/card ${bgCard}`)
 })

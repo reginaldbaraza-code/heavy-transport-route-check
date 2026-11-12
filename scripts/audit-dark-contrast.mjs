@@ -189,24 +189,216 @@ async function main() {
       }
     }
 
-    // Route result after HOLD sample — safety-critical banner contrast
+    // Non-text borders: toast, overview-tallies, permit-map-badge (≥3:1 in dark mode)
+    if (colorScheme === 'dark' && vp.name === '1440x900') {
+      await page.goto(base + '/', { waitUntil: 'domcontentloaded', timeout: 60000 })
+      await skipOnboarding(page)
+      await page.waitForTimeout(1500)
+      const borderCheck = await page.evaluate(() => {
+        const parse = (input) => {
+          if (!input || input === 'transparent') return null
+          const m = String(input).match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)/i)
+          if (!m) return null
+          const a = m[4] === undefined ? 1 : Number(m[4])
+          if (a <= 0.01) return null
+          return { r: Number(m[1]), g: Number(m[2]), b: Number(m[3]), a }
+        }
+        const luminance = (r, g, b) => {
+          const toLin = (c) => {
+            const s = c / 255
+            return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+          }
+          return 0.2126 * toLin(r) + 0.7152 * toLin(g) + 0.0722 * toLin(b)
+        }
+        const ratio = (fg, bg) => {
+          const a = fg.a ?? 1
+          const rr = fg.r * a + bg.r * (1 - a)
+          const gg = fg.g * a + bg.g * (1 - a)
+          const bb = fg.b * a + bg.b * (1 - a)
+          const L1 = luminance(rr, gg, bb)
+          const L2 = luminance(bg.r, bg.g, bg.b)
+          return (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05)
+        }
+        const effectiveBg = (el) => {
+          let node = el
+          while (node && node !== document.documentElement) {
+            const cs = getComputedStyle(node)
+            const bg = parse(cs.backgroundColor)
+            if (bg && bg.a >= 0.85) return bg
+            if (bg && bg.a >= 0.6) {
+              const parent = node.parentElement ? parse(getComputedStyle(node.parentElement).backgroundColor) : null
+              if (parent) {
+                return {
+                  r: bg.r * bg.a + parent.r * (1 - bg.a),
+                  g: bg.g * bg.a + parent.g * (1 - bg.a),
+                  b: bg.b * bg.a + parent.b * (1 - bg.a),
+                  a: 1,
+                }
+              }
+              return { r: bg.r, g: bg.g, b: bg.b, a: 1 }
+            }
+            node = node.parentElement
+          }
+          return parse(getComputedStyle(document.body).backgroundColor) || { r: 0, g: 0, b: 0, a: 1 }
+        }
+        const measureBorder = (el) => {
+          if (!el) return null
+          const cs = getComputedStyle(el)
+          const border = parse(cs.borderTopColor) || parse(cs.borderColor)
+          const bg = effectiveBg(el)
+          if (!border || !bg) return null
+          return Number(ratio(border, bg).toFixed(2))
+        }
+
+        let toast = document.querySelector('.app-toast')
+        let injected = false
+        if (!toast) {
+          toast = document.createElement('div')
+          toast.className = 'app-toast'
+          toast.textContent = 'Contrast probe'
+          document.body.appendChild(toast)
+          injected = true
+        }
+        const tallies = document.querySelector('.overview-tallies')
+        const badge = document.querySelector('.permit-map-badge')
+        const result = {
+          toast: measureBorder(toast),
+          tallies: measureBorder(tallies),
+          badge: measureBorder(badge),
+        }
+        if (injected) toast.remove()
+        return result
+      })
+
+      for (const [name, value] of Object.entries(borderCheck)) {
+        const ok = value != null && Number(value) >= 3
+        console.log(`border ${name} contrast=${value} (need ≥3)`)
+        report.push({ label: `${prefix}-border-${name}-${vp.name}`, ratio: value, ok })
+        if (!ok) {
+          criticalCount += 1
+          violationCount += 1
+        }
+      }
+    }
+
+    // Probe HOLD / VERIFY / READY banner Re-check link contrast via live CSS (no API required)
+    if (colorScheme === 'dark' && vp.name === '1440x900') {
+      await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded', timeout: 60000 })
+      await skipOnboarding(page)
+      await page.waitForTimeout(600)
+      const bannerLinkCheck = await page.evaluate(() => {
+        const parse = (input) => {
+          if (!input || input === 'transparent') return null
+          const m = String(input).match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)/i)
+          if (!m) return null
+          const a = m[4] === undefined ? 1 : Number(m[4])
+          if (a <= 0.01) return null
+          return { r: Number(m[1]), g: Number(m[2]), b: Number(m[3]), a }
+        }
+        const luminance = (r, g, b) => {
+          const toLin = (c) => {
+            const s = c / 255
+            return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+          }
+          return 0.2126 * toLin(r) + 0.7152 * toLin(g) + 0.0722 * toLin(b)
+        }
+        const ratio = (fg, bg) => {
+          const a = fg.a ?? 1
+          const rr = fg.r * a + bg.r * (1 - a)
+          const gg = fg.g * a + bg.g * (1 - a)
+          const bb = fg.b * a + bg.b * (1 - a)
+          const L1 = luminance(rr, gg, bb)
+          const L2 = luminance(bg.r, bg.g, bg.b)
+          return (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05)
+        }
+        const effectiveBg = (el) => {
+          let node = el
+          while (node && node !== document.documentElement) {
+            const cs = getComputedStyle(node)
+            const bg = parse(cs.backgroundColor)
+            if (bg && bg.a >= 0.85) return bg
+            if (bg && bg.a >= 0.6) {
+              const parent = node.parentElement ? parse(getComputedStyle(node.parentElement).backgroundColor) : null
+              if (parent) {
+                return {
+                  r: bg.r * bg.a + parent.r * (1 - bg.a),
+                  g: bg.g * bg.a + parent.g * (1 - bg.a),
+                  b: bg.b * bg.a + parent.b * (1 - bg.a),
+                  a: 1,
+                }
+              }
+            }
+            node = node.parentElement
+          }
+          return parse(getComputedStyle(document.body).backgroundColor) || { r: 0, g: 0, b: 0, a: 1 }
+        }
+
+        const host = document.createElement('div')
+        host.setAttribute('data-contrast-probe', 'banner-recheck')
+        host.style.cssText = 'position:fixed;left:-9999px;top:0;pointer-events:none;'
+        host.innerHTML = `
+          <div class="verdict-banner verdict-red"><button type="button" class="btn-text">Re-check</button></div>
+          <div class="verdict-banner verdict-amber"><button type="button" class="btn-text">Re-check</button></div>
+          <div class="verdict-banner verdict-green"><button type="button" class="btn-text">Re-check</button></div>
+        `
+        document.body.appendChild(host)
+        const measure = (sel) => {
+          const banner = host.querySelector(sel)
+          const link = banner?.querySelector('.btn-text')
+          if (!banner || !link) return null
+          const fg = parse(getComputedStyle(link).color)
+          const bg = effectiveBg(link)
+          if (!fg || !bg) return null
+          return Number(ratio(fg, bg).toFixed(2))
+        }
+        const result = {
+          HOLD: measure('.verdict-red'),
+          VERIFY: measure('.verdict-amber'),
+          READY: measure('.verdict-green'),
+        }
+        host.remove()
+        return result
+      })
+
+      for (const [name, value] of Object.entries(bannerLinkCheck)) {
+        const ok = value != null && Number(value) >= 4.5
+        console.log(`${name} Re-check contrast=${value} (need ≥4.5)`)
+        report.push({ label: `${prefix}-banner-recheck-${name.toLowerCase()}-${vp.name}`, ratio: value, ok })
+        if (!ok) {
+          criticalCount += 1
+          violationCount += 1
+        }
+      }
+    }
+
+    // Route result after HOLD sample — safety-critical banner title contrast (needs /api/check-route)
     await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded', timeout: 60000 })
     await skipOnboarding(page)
     const toggle = page.getByRole('button', { name: /show sample permits/i })
-    if (await toggle.count()) await toggle.click()
-    const holdSample = page.getByRole('button', { name: /Simulated HOLD/i }).first()
+    try {
+      await toggle.waitFor({ state: 'visible', timeout: 15000 })
+      await toggle.click()
+    } catch {}
+    const holdSample = page.getByRole('button', { name: /Simulated HOLD — A3 residual width/i }).first()
     const readySample = page.getByRole('button', { name: /Simulated READY/i })
     const sample = (await holdSample.count()) ? holdSample : readySample
     if (await sample.count()) {
       await sample.click()
       const departure = page.locator('#planned-departure')
       if (await departure.count()) {
-        const value = await page.evaluate(() => {
-          const date = new Date(Date.now() + 8 * 60 * 60 * 1000)
-          const pad = n => String(n).padStart(2, '0')
-          return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
-        })
-        await departure.fill(value)
+        try {
+          await departure.waitFor({ state: 'visible', timeout: 15000 })
+          const value = await page.evaluate(() => {
+            const date = new Date(Date.now() + 8 * 60 * 60 * 1000)
+            const pad = n => String(n).padStart(2, '0')
+            return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+          })
+          await departure.fill(value)
+          await page.waitForFunction(() => {
+            const btn = [...document.querySelectorAll('button')].find(el => /Check route/i.test(el.textContent || ''))
+            return Boolean(btn && !btn.disabled)
+          }, null, { timeout: 15000 })
+        } catch {}
       }
       const check = page.getByRole('button', { name: 'Check route' })
       if (await check.count()) {
@@ -273,6 +465,7 @@ async function main() {
             if (!banner) return { found: false }
             const title = banner.querySelector('h2') || banner
             const pill = banner.querySelector('.verdict-label')
+            const recheck = [...banner.querySelectorAll('button, a')].find((el) => /re-?check/i.test(el.textContent || ''))
             const button = document.querySelector('.btn-primary, .primary-button')
             const measure = (el) => {
               if (!el) return null
@@ -286,17 +479,20 @@ async function main() {
               found: true,
               titleRatio: measure(title),
               pillRatio: measure(pill),
+              recheckRatio: measure(recheck),
               buttonRatio: measure(button),
             }
           })
 
           if (colorScheme === 'dark' && holdBanner.found) {
             const holdOk = Number(holdBanner.titleRatio) >= 4.5
+            const recheckOk = holdBanner.recheckRatio == null || Number(holdBanner.recheckRatio) >= 4.5
             console.log(`HOLD banner title contrast=${holdBanner.titleRatio} (need ≥4.5)`)
+            console.log(`HOLD Re-check contrast=${holdBanner.recheckRatio} (need ≥4.5)`)
             if (holdBanner.pillRatio != null) console.log(`HOLD pill contrast=${holdBanner.pillRatio}`)
             if (holdBanner.buttonRatio != null) console.log(`primary button contrast=${holdBanner.buttonRatio}`)
-            report.push({ label: `${label}-hold-banner`, holdBanner, ok: holdOk })
-            if (!holdOk) {
+            report.push({ label: `${label}-hold-banner`, holdBanner, ok: holdOk && recheckOk })
+            if (!holdOk || !recheckOk) {
               criticalCount += 1
               violationCount += 1
             }
