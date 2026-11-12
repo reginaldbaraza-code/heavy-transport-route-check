@@ -461,6 +461,115 @@ async function main() {
     )
   }
 
+  // Mobile: corridor legend must fully contain Flowing / Pressure / Restricted.
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(base + '/map-explorer', { waitUntil: 'domcontentloaded', timeout: 60000 })
+  await skipIfNeeded()
+  await page.locator('.live-map-legend').waitFor({ timeout: 25000 })
+  const legendFit = await page.evaluate(() => {
+    const legend = document.querySelector('.live-map-legend')
+    if (!legend) return { ok: false, reason: 'missing' }
+    const box = legend.getBoundingClientRect()
+    const items = [...legend.querySelectorAll('small')].map(el => {
+      const b = el.getBoundingClientRect()
+      return {
+        text: el.textContent.trim(),
+        outside: b.right > box.right + 1 || b.left < box.left - 1 || b.right > window.innerWidth + 1,
+        right: Math.round(b.right),
+      }
+    })
+    return {
+      ok: legend.scrollWidth <= legend.clientWidth + 1
+        && items.length >= 3
+        && items.every(item => !item.outside)
+        && /Restricted/i.test(items.map(i => i.text).join(' ')),
+      width: Math.round(box.width),
+      scrollWidth: legend.scrollWidth,
+      clientWidth: legend.clientWidth,
+      items,
+    }
+  })
+  record(
+    'Corridor legend at 390×844 keeps Flowing/Pressure/Restricted inside the pill',
+    Boolean(legendFit.ok),
+    JSON.stringify(legendFit),
+  )
+
+  // Mobile: sample/scenario permit cards must not force horizontal page overflow.
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded', timeout: 60000 })
+  await skipIfNeeded()
+  await page.getByRole('button', { name: /show sample permits/i }).click()
+  await page.getByText('Scenario mode').waitFor({ timeout: 15000 })
+  const permitOverflow = await page.evaluate(() => {
+    const docEl = document.documentElement
+    const cards = [...document.querySelectorAll('.test-permit-card')]
+    const cardMetrics = cards.map(el => {
+      const box = el.getBoundingClientRect()
+      const badge = el.querySelector('.expected-badge')
+      const badgeBox = badge?.getBoundingClientRect()
+      return {
+        title: el.querySelector('strong')?.textContent?.trim() || '',
+        right: Math.round(box.right),
+        width: Math.round(box.width),
+        badgeOffscreen: Boolean(badgeBox && badgeBox.right > window.innerWidth + 1),
+        badgeRight: badgeBox ? Math.round(badgeBox.right) : null,
+      }
+    })
+    const grid = document.querySelector('.test-permits-grid')
+    const gridOverflow = grid ? grid.scrollWidth > grid.clientWidth + 1 : true
+    const maxRight = Math.max(0, ...cardMetrics.map(c => c.right))
+    return {
+      ok: docEl.scrollWidth <= docEl.clientWidth + 1
+        && !gridOverflow
+        && maxRight <= window.innerWidth + 1
+        && cardMetrics.every(c => !c.badgeOffscreen)
+        && cardMetrics.some(c => /Simulated/i.test(c.title)),
+      scrollWidth: docEl.scrollWidth,
+      clientWidth: docEl.clientWidth,
+      gridScrollWidth: grid?.scrollWidth || 0,
+      gridClientWidth: grid?.clientWidth || 0,
+      maxRight,
+      cards: cardMetrics.filter(c => /Simulated/i.test(c.title) || c.badgeOffscreen).slice(0, 6),
+    }
+  })
+  record(
+    'Sample permits at 390×844 have no horizontal overflow and badges stay on-screen',
+    Boolean(permitOverflow.ok),
+    JSON.stringify(permitOverflow),
+  )
+
+  // Desktop unchanged: legend still single-line and fully visible at 1440.
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(base + '/map-explorer', { waitUntil: 'domcontentloaded', timeout: 60000 })
+  await skipIfNeeded()
+  await page.locator('.live-map-legend').waitFor({ timeout: 25000 })
+  const desktopLegend = await page.evaluate(() => {
+    const legend = document.querySelector('.live-map-legend')
+    if (!legend) return { ok: false }
+    const cs = getComputedStyle(legend)
+    const box = legend.getBoundingClientRect()
+    const items = [...legend.querySelectorAll('small')].map(el => {
+      const b = el.getBoundingClientRect()
+      return { text: el.textContent.trim(), outside: b.right > box.right + 1 }
+    })
+    return {
+      ok: cs.flexWrap === 'nowrap'
+        && legend.scrollWidth <= legend.clientWidth + 1
+        && items.every(i => !i.outside)
+        && box.width >= 200
+        && box.width <= 320,
+      width: Math.round(box.width),
+      flexWrap: cs.flexWrap,
+      items,
+    }
+  })
+  record(
+    'Corridor legend at 1440×900 stays single-line without clipping',
+    Boolean(desktopLegend.ok),
+    JSON.stringify(desktopLegend),
+  )
+
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto(base + '/map-explorer', { waitUntil: 'domcontentloaded', timeout: 60000 })
   await skipIfNeeded()
