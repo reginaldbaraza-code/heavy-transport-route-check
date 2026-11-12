@@ -5775,7 +5775,6 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   .login-picker {
     display: flex;
     flex-direction: column;
-    flex: 1 1 auto;
     min-width: 0;
     min-height: 0;
   }
@@ -5822,7 +5821,7 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   }
 
   .login-footnote {
-    margin-top: auto;
+    margin-top: 12px;
     padding-top: 8px;
     font-size: 14px !important;
   }
@@ -5852,7 +5851,11 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   .login-layout {
     flex: 1 1 auto;
     min-height: min(100%, calc(100svh - 52px));
-    padding-top: 4px;
+    padding-top: 20px;
+  }
+
+  .login-picker {
+    flex: 1 1 auto;
   }
 
   .login-hero {
@@ -5860,7 +5863,7 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
     order: -1;
     flex: none;
     width: 100%;
-    padding: 2px 0 6px;
+    padding: 8px 0 22px;
     justify-items: stretch;
     align-self: stretch;
     opacity: 0.7;
@@ -5879,13 +5882,26 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
     display: none;
   }
 
+  .login-greet {
+    margin-bottom: 10px;
+  }
+
   .login-headline {
     font-size: 44px !important;
+  }
+
+  .login-lede {
+    margin: 14px 0 22px;
   }
 
   .login-user-tile {
     min-height: 48px;
     padding: 7px 2px;
+  }
+
+  .login-user-tile.is-demo {
+    min-height: 48px;
+    padding: 10px 2px;
   }
 
   .login-user-name {
@@ -5898,9 +5914,13 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
     font-size: 9px;
   }
 
+  .login-demo-divider {
+    margin: 18px 0 8px;
+  }
+
   .login-footnote {
     margin-top: auto;
-    padding-top: 8px;
+    padding-top: 16px;
     font-size: 14px !important;
   }
 }
