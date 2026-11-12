@@ -120,7 +120,7 @@ export default function RequestAccess() {
       </div>
 
       {/* Step content */}
-      <div className="bg-white rounded-xl border border-[var(--border)] p-6 mb-5">
+      <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border)] p-6 mb-5">
         {step === 0 && (
           <div>
             <h2 className="font-bold text-lg text-[var(--foreground)] mb-1">Dataset</h2>

@@ -13,7 +13,7 @@ export default function TransferProcesses() {
         <div className="connector-workspace-body p-8">
           <div className="grid grid-cols-2 gap-6 mb-6">
             {['Consuming', 'Providing'].map(dir => (
-              <div key={dir} className="bg-white rounded-xl border border-[var(--border)] p-6">
+              <div key={dir} className="bg-[var(--bg-card)] rounded-xl border border-[var(--border)] p-6">
                 <h2 className="text-lg font-bold text-[var(--foreground)] mb-1">{dir} Transfers</h2>
                 <p className="text-sm text-[var(--muted-foreground)] mb-8">Active {dir.toLowerCase()} transfer processes</p>
                 <div className="flex flex-col items-center justify-center py-8 gap-3">

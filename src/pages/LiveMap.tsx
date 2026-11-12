@@ -573,7 +573,7 @@ export default function LiveMap() {
           </div>
         </aside>
 
-        <main className="live-map-stage">
+        <div className="live-map-stage">
           <div ref={mapContainer} className="maplibre-map" data-testid="corridor-map" aria-label="Interactive live mobility map of Germany" />
 
           <div className="live-map-end-stack">
@@ -612,7 +612,7 @@ export default function LiveMap() {
           <div className="live-map-legend">
             <span>Corridor pressure</span><i className="legend-low" /><small>Flowing</small><i className="legend-mid" /><small>Pressure</small><i className="legend-high" /><small>Restricted</small>
           </div>
-        </main>
+        </div>
       </div>
     </div>
   )
