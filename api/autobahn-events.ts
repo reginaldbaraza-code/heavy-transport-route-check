@@ -9,6 +9,7 @@ import {
   summarizeAutobahnFetchHealth,
 } from './_lib/autobahnFetch.js';
 import { guardApi } from './_lib/httpGuard.js';
+import { PARKING_EVENT_CAP, selectBalancedByGroups } from './_lib/parkingSelect.js';
 
 export const config = {
   maxDuration: 30,
@@ -158,14 +159,17 @@ async function fetchAutobahnEvents(roads?: string[]): Promise<AutobahnEventsResp
       })
     ).filter(isUsableEvent);
 
-    const processedParking: AutobahnEvent[] = allEvents.flatMap(({ parking }) =>
+    // Cap parking for map payload size, but round-robin across roads so A1
+    // (often 100+ sites) cannot monopolize the national / Bavaria layers.
+    const parkingByRoad = allEvents.map(({ parking }) =>
       parking.map((item: any) => {
         const mapped = mapAutobahnEvent(item, 'Lorry parking', 'HGV parking', retrievedAt, 'medium');
         mapped.type = 'parking';
         mapped.severity = String(item.isBlocked) === 'true' ? 'warning' : 'info';
         return mapped;
-      })
-    ).filter(isUsableEvent).slice(0, 120);
+      }).filter(isUsableEvent)
+    );
+    const processedParking: AutobahnEvent[] = selectBalancedByGroups(parkingByRoad, PARKING_EVENT_CAP);
 
     const response: AutobahnEventsResponse = {
       roadworks: processedRoadworks,
