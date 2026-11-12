@@ -1,26 +1,52 @@
-import { useEffect, useId, useMemo, useRef } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import RouteCheckLogo from '../components/RouteCheckLogo'
 import { useAuth } from '../context/AuthContext'
 import { userInitials, type AppUser } from '../lib/users'
 
-function UserTile({
+const BERLIN_TZ = 'Europe/Berlin'
+
+function berlinParts(date: Date, opts: Intl.DateTimeFormatOptions) {
+  return new Intl.DateTimeFormat('en-GB', { timeZone: BERLIN_TZ, ...opts })
+}
+
+function berlinHour(date: Date): number {
+  return Number(berlinParts(date, { hour: '2-digit', hour12: false }).format(date))
+}
+
+function berlinGreeting(date: Date): string {
+  const hour = berlinHour(date)
+  if (hour < 12) return 'Good morning.'
+  if (hour < 18) return 'Good afternoon.'
+  return 'Good evening.'
+}
+
+function berlinDateLabel(date: Date): string {
+  const weekday = berlinParts(date, { weekday: 'long' }).format(date)
+  const day = berlinParts(date, { day: 'numeric' }).format(date)
+  const month = berlinParts(date, { month: 'long' }).format(date)
+  return `${weekday}, ${day} ${month} · Berlin`
+}
+
+function UserRow({
   user,
   lastUsed,
   loading,
   autoFocus,
+  compact,
   onSelect,
 }: {
   user: AppUser
   lastUsed: boolean
   loading: boolean
   autoFocus: boolean
+  compact?: boolean
   onSelect: () => void
 }) {
   const label = `Continue as ${user.name}`
   return (
     <button
       type="button"
-      className={`login-user-tile${lastUsed ? ' is-last-used' : ''}${loading ? ' is-loading' : ''}${user.id === 'demo' ? ' is-demo' : ''}`}
+      className={`login-user-tile${compact ? ' is-demo' : ''}${lastUsed ? ' is-last-used' : ''}${loading ? ' is-loading' : ''}`}
       onClick={onSelect}
       disabled={loading}
       autoFocus={autoFocus}
@@ -36,7 +62,7 @@ function UserTile({
       </span>
       <span className="login-user-copy">
         <span className="login-user-name">{user.name}</span>
-        {user.id === 'demo' && <span className="login-user-caption">Shared sandbox account</span>}
+        {compact && <span className="login-user-caption">Shared sandbox account</span>}
         {loading && <span className="login-user-loading">Loading your workspace…</span>}
       </span>
       {lastUsed && !loading && <span className="login-last-used">Last used</span>}
@@ -47,27 +73,36 @@ function UserTile({
 export default function Login() {
   const { users, lastUsedId, selectingId, selectUser } = useAuth()
   const headingId = useId()
-  const gridRef = useRef<HTMLDivElement>(null)
+  const pickerRef = useRef<HTMLDivElement>(null)
+  const [now, setNow] = useState(() => new Date())
 
   const namedUsers = useMemo(() => users.filter(user => user.id !== 'demo'), [users])
   const demoUser = useMemo(() => users.find(user => user.id === 'demo')!, [users])
 
   useEffect(() => {
-    const root = gridRef.current
+    const tick = () => setNow(new Date())
+    tick()
+    const id = window.setInterval(tick, 60_000)
+    return () => window.clearInterval(id)
+  }, [])
+
+  useEffect(() => {
+    const root = pickerRef.current
     if (!root) return
     const onKeyDown = (event: KeyboardEvent) => {
-      // Include named tiles and the Demo tile so arrow keys can reach Demo.
+      // Named rows + Demo — linear roving for the list layout.
       const buttons = [...root.querySelectorAll<HTMLButtonElement>('button.login-user-tile:not(:disabled)')]
       if (buttons.length === 0) return
       const currentIndex = buttons.indexOf(document.activeElement as HTMLButtonElement)
       if (currentIndex < 0) return
-      const cols = window.matchMedia('(min-width: 768px)').matches ? 3 : 2
       let next = currentIndex
-      if (event.key === 'ArrowRight') next = Math.min(buttons.length - 1, currentIndex + 1)
-      else if (event.key === 'ArrowLeft') next = Math.max(0, currentIndex - 1)
-      else if (event.key === 'ArrowDown') next = Math.min(buttons.length - 1, currentIndex + cols)
-      else if (event.key === 'ArrowUp') next = Math.max(0, currentIndex - cols)
-      else return
+      if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+        next = (currentIndex + 1) % buttons.length
+      } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+        next = (currentIndex - 1 + buttons.length) % buttons.length
+      } else {
+        return
+      }
       event.preventDefault()
       buttons[next]?.focus()
     }
@@ -77,17 +112,29 @@ export default function Login() {
 
   return (
     <div className="login-screen" role="main" aria-labelledby={headingId}>
-      <div className="login-shell">
-        <header className="login-brand">
-          <RouteCheckLogo size={48} tone="auto" />
-          <h1 id={headingId}>Who&apos;s checking routes?</h1>
-          <p>Pick your name. Your jobs, checks and alerts are saved to your account.</p>
-        </header>
+      <header className="login-top">
+        <div className="login-brand-mark">
+          <RouteCheckLogo size={32} tone="auto" decorative className="login-logo" />
+          <span className="login-wordmark">HTR</span>
+        </div>
+        <p className="login-when" aria-live="polite">
+          {berlinDateLabel(now)}
+        </p>
+      </header>
 
-        <div className="login-picker" ref={gridRef}>
-          <div className="login-grid" role="group" aria-label="Choose an account">
+      <div className="login-layout">
+        <p className="login-greet">{berlinGreeting(now)}</p>
+        <h1 id={headingId} className="login-headline">
+          Who&apos;s checking<br />routes?
+        </h1>
+        <p className="login-lede">
+          Your jobs, checks and alerts are saved to your account.
+        </p>
+
+        <div className="login-picker" ref={pickerRef}>
+          <div className="login-names" role="group" aria-label="Choose an account">
             {namedUsers.map((user, index) => (
-              <UserTile
+              <UserRow
                 key={user.id}
                 user={user}
                 lastUsed={lastUsedId === user.id}
@@ -103,19 +150,25 @@ export default function Login() {
           </div>
 
           <div className="login-demo-row">
-            <UserTile
+            <UserRow
               user={demoUser}
+              compact
               lastUsed={lastUsedId === demoUser.id}
               loading={selectingId === demoUser.id}
               autoFocus={lastUsedId === demoUser.id}
               onSelect={() => { void selectUser(demoUser.id) }}
             />
           </div>
+
+          <p className="login-footnote">
+            Demo login — no password. Anyone with the link can open any account.
+          </p>
         </div>
 
-        <p className="login-footnote">
-          Demo login — no password. Anyone with the link can open any account.
-        </p>
+        <aside className="login-hero" aria-hidden="true">
+          <img className="login-convoy" src="/assets/convoy.svg" alt="" width={640} height={140} />
+          <span className="login-hero-caption">Escort · low-loader · oversize</span>
+        </aside>
       </div>
     </div>
   )
