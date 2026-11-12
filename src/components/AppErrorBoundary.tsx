@@ -72,7 +72,7 @@ export default class AppErrorBoundary extends Component<{ children: ReactNode },
           <div>
             <span><RefreshCw size={21} /></span>
             <h1>Updating workspace</h1>
-            <p>Loading the latest version. Your jobs and history stay in this browser.</p>
+            <p>Loading the latest version. Your jobs and history stay in your account.</p>
           </div>
         </main>
       )
@@ -90,7 +90,7 @@ export default class AppErrorBoundary extends Component<{ children: ReactNode },
           {reloadAlreadyTried ? (
             <>
               <h1>A new version is available — reload</h1>
-              <p>This tab is still on an older build. Reload to continue. Your jobs and history stay in this browser.</p>
+              <p>This tab is still on an older build. Reload to continue. Your jobs and history stay in your account.</p>
             </>
           ) : (
             <>

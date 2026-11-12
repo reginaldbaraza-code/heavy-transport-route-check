@@ -15,14 +15,14 @@ const tabs = [
 ] as const
 
 const deliveryChannels = [
-  { id: 'inApp', label: 'In-app', description: 'Show route alerts in this browser. Stored only on this device.' },
+  { id: 'inApp', label: 'In-app', description: 'Show route alerts for your account. Saved with your notification preferences.' },
   { id: 'email', label: 'E-mail', description: 'Not enabled — this app does not send email.' },
   { id: 'sms', label: 'SMS', description: 'Not enabled — this app does not send SMS.' },
 ] as const
 
 const alertTypes = [
   { id: 'verdict', label: 'Verdict change', description: 'READY, VERIFY, or HOLD status changes from checks you run.' },
-  { id: 'closure', label: 'New closure', description: 'A closure appears in a check you ran in this browser.' },
+  { id: 'closure', label: 'New closure', description: 'A closure appears in a check you ran.' },
   { id: 'stale', label: 'Data stale', description: 'A required source is too old for a dispatch decision.' },
 ] as const
 
@@ -160,7 +160,7 @@ export default function Settings() {
                   <span className="settings-card-icon"><Bell size={18} /></span>
                   <div>
                     <h2>Route alert preferences</h2>
-                    <p>In-app alerts come from route checks you run in this browser. Email and SMS are not sent.</p>
+                    <p>In-app alerts come from route checks you run. Email and SMS are not sent.</p>
                   </div>
                 </div>
               </header>

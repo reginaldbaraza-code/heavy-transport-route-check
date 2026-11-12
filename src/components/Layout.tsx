@@ -427,7 +427,7 @@ export default function Layout() {
                   </div>
                   {notifications.length === 0 && (
                     <div style={{ padding: '16px', fontSize: 14, color: 'var(--text-secondary)' }}>
-                      No alerts yet. Alerts appear after you run a route check in this browser.
+                      No alerts yet. Alerts appear after you run a route check.
                     </div>
                   )}
                   {notifications.map((n, i) => (

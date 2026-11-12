@@ -129,7 +129,7 @@ export default function SavedJobs() {
 
       <section className="route-alert-log jobs-list">
         <header>
-          <div><Briefcase size={20} /><h2>Jobs in this browser</h2></div>
+          <div><Briefcase size={20} /><h2>Jobs in your account</h2></div>
           <span>{jobs.length} saved</span>
         </header>
         {jobs.map(job => {
@@ -175,7 +175,7 @@ export default function SavedJobs() {
               {confirmId === job.id && (
                 <div className="job-confirm">
                   <AlertTriangle size={16} />
-                  <span>Delete this job from this browser?</span>
+                  <span>Delete this job from your account?</span>
                   <button type="button" className="btn-secondary" onClick={() => setConfirmId(null)}>Cancel</button>
                   <button type="button" className="btn-primary" onClick={() => { deleteJob(job.id); setConfirmId(null); setToast('Job deleted.') }}>Delete</button>
                 </div>
@@ -187,7 +187,7 @@ export default function SavedJobs() {
           <div className="market-empty">
             <Briefcase size={30} />
             <h2>No saved jobs yet</h2>
-            <p>Run a route check, then choose Save as job. The permit file, vehicle dimensions, and planned departure stay in this browser.</p>
+            <p>Run a route check, then choose Save as job. The permit file, vehicle dimensions, and planned departure are saved to your account.</p>
             <Link to="/route-checks" className="market-button primary">Check a route</Link>
           </div>
         )}
@@ -217,7 +217,7 @@ export default function SavedJobs() {
                 ))}
               </select>
             </label>
-            <p className="storage-note">Stored in this browser only. Monitoring runs only while the tab is open and stops after departure.</p>
+            <p className="storage-note">Saved to your account. Monitoring runs only while the tab is open and stops after departure.</p>
             <div className="form-actions">
               <button type="button" className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
               <button type="button" className="btn-primary" onClick={saveEdit}>Save job</button>

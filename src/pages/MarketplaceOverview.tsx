@@ -206,14 +206,14 @@ export default function MarketplaceOverview() {
               )
             })}
           </div>
-          <p className="storage-note">History is stored only in this browser.</p>
+          <p className="storage-note">History is saved to your account.</p>
         </section>
       ) : (
         <section className="transport-empty-state saved-checks-empty">
           <div className="empty-state-card">
             <Upload size={48} />
             <h2>No saved routes yet</h2>
-            <p>Import a permitted route to check live Autobahn conditions. Completed checks are stored only in this browser.</p>
+            <p>Import a permitted route to check live Autobahn conditions. Completed checks are saved to your account.</p>
             <Link to="/route-checks" className="market-button primary">
               <Upload size={16} /> Check your first route
             </Link>

@@ -38,7 +38,7 @@ export default function HoldDepartureDialog({ open, onClose, onConfirm, routeNam
           <h2 id="hold-dialog-title">Log a departure hold (demo)?</h2>
           <p>
             This demo only marks{' '}
-            {routeName ? `the ${routeName} route` : 'the route'} as held in this browser. The dispatch team is not
+            {routeName ? `the ${routeName} route` : 'the route'} as held in your account. The dispatch team is not
             notified — nothing is sent.
           </p>
         </header>

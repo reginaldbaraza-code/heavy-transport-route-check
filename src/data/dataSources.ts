@@ -88,7 +88,7 @@ export const dataSources: DataSourceNote[] = [
     name: 'Background monitoring / email / SMS',
     status: 'unavailable',
     used: false,
-    summary: 'In-tab re-checks run only while this browser tab is open.',
+    summary: 'In-tab re-checks run only while this tab is open.',
     limitation: 'Vercel Hobby cron is once per day, which is too coarse for departure monitoring. Email and SMS stay disabled. No paid notification service is used.',
   },
 ]
