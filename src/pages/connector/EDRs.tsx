@@ -12,7 +12,7 @@ export default function EDRs() {
           <p className="text-sm text-[var(--foreground)]/70 mt-0.5">Endpoint Data References</p>
         </div>
         <div className="connector-workspace-body p-8">
-          <div className="bg-white rounded-xl border border-[var(--border)] p-6 mb-5">
+          <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border)] p-6 mb-5">
             <p className="text-sm text-[var(--muted-foreground)] mb-6">
               EDRs (Endpoint Data References) are tokens that grant temporary access to a data endpoint after a transfer process has been successfully initiated.
             </p>

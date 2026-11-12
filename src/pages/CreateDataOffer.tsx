@@ -105,7 +105,7 @@ export default function CreateDataOffer() {
                 <label className="block text-sm font-semibold text-[var(--foreground)] mb-1.5">Type</label>
                 <div className="relative">
                   <select value={type} onChange={e => setType(e.target.value)}
-                    className="w-full appearance-none bg-white border border-[var(--border)] rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-blue-100 transition-all">
+                    className="w-full appearance-none bg-[var(--bg-card)] border border-[var(--border)] rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-blue-100 transition-all">
                     <option>REST-API Endpoint</option>
                     <option>S3 Bucket</option>
                     <option>SFTP</option>
@@ -120,7 +120,7 @@ export default function CreateDataOffer() {
                 <label className="block text-sm font-semibold text-[var(--foreground)] mb-1.5">Method</label>
                 <div className="relative">
                   <select value={method} onChange={e => setMethod(e.target.value)}
-                    className="w-full appearance-none bg-white border border-[var(--border)] rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-blue-100 transition-all">
+                    className="w-full appearance-none bg-[var(--bg-card)] border border-[var(--border)] rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-blue-100 transition-all">
                     <option>GET</option>
                     <option>POST</option>
                     <option>PUT</option>
@@ -149,7 +149,7 @@ export default function CreateDataOffer() {
                   type="url"
                   aria-invalid={Boolean(error)}
                   placeholder="https://your-api.example.com"
-                  className="w-full bg-white border border-[var(--border)] rounded-lg px-3 py-2.5 text-sm placeholder:text-[var(--muted-foreground)] outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-blue-100 transition-all"
+                  className="w-full bg-[var(--bg-card)] border border-[var(--border)] rounded-lg px-3 py-2.5 text-sm placeholder:text-[var(--muted-foreground)] outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-blue-100 transition-all"
                 />
               </div>
 
@@ -160,7 +160,7 @@ export default function CreateDataOffer() {
                   value={path}
                   onChange={e => setPath(e.target.value)}
                   placeholder="/api/v1/data"
-                  className="w-full bg-white border border-[var(--border)] rounded-lg px-3 py-2.5 text-sm placeholder:text-[var(--muted-foreground)] outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-blue-100 transition-all"
+                  className="w-full bg-[var(--bg-card)] border border-[var(--border)] rounded-lg px-3 py-2.5 text-sm placeholder:text-[var(--muted-foreground)] outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-blue-100 transition-all"
                 />
               </div>
 
