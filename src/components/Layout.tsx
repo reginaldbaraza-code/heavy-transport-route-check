@@ -109,9 +109,8 @@ export default function Layout() {
       <aside
         className={`app-sidebar ${mobileOpen ? 'mobile-open' : ''}`}
         style={{
-          width: collapsed ? 64 : 220,
-          background: 'var(--navy)',
-          transition: 'width 250ms cubic-bezier(0.4,0,0.2,1)',
+          width: collapsed ? 72 : 232,
+          transition: 'width 220ms var(--ease-out)',
           display: 'flex',
           flexDirection: 'column',
           flexShrink: 0,
@@ -137,7 +136,7 @@ export default function Layout() {
                 onClick={() => navigate('/')}
                 aria-label="Go to home"
               >
-                <RouteCheckLogo size={32} tone="dark" decorative />
+                <RouteCheckLogo size={32} tone="light" decorative />
               </button>
               <button
                 type="button"
@@ -161,9 +160,9 @@ export default function Layout() {
         </div>
 
         {/* Nav */}
-        <nav style={{ flex: 1, padding: '10px 8px', overflowY: 'auto', overflowX: 'hidden' }}>
+        <nav className="sidebar-nav">
           {!collapsed && (
-            <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: '0.08em', color: 'rgba(255,255,255,0.72)', padding: '4px 8px 6px', textTransform: 'uppercase' }}>
+            <div className="sidebar-section-label">
               Heavy transport
             </div>
           )}
@@ -175,35 +174,14 @@ export default function Layout() {
               to={path}
               end={exact}
               title={collapsed ? label : undefined}
-              style={{ display: 'block', marginBottom: 2 }}
-              className="group"
+              className="sidebar-link"
               onClick={() => setMobileOpen(false)}
             >
               {({ isActive }) => (
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: collapsed ? '9px 10px' : '8px 10px',
-                  borderRadius: 8,
-                  background: isActive ? 'rgba(255,255,255,0.12)' : 'transparent',
-                  color: isActive ? '#ffffff' : 'rgba(255,255,255,0.72)',
-                  cursor: 'pointer',
-                  justifyContent: collapsed ? 'center' : 'flex-start',
-                  transition: 'all 120ms',
-                  position: 'relative',
-                }}>
-                  {isActive && (
-                    <div style={{
-                      position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
-                      width: 3, height: 18, background: '#f5c518', borderRadius: '0 3px 3px 0',
-                    }} />
-                  )}
-                  <Icon size={18} strokeWidth={1.75} style={{ flexShrink: 0 }} />
+                <div className={`sidebar-link-row ${isActive ? 'is-active' : ''} ${collapsed ? 'is-collapsed' : ''}`}>
+                  <Icon size={18} strokeWidth={isActive ? 2 : 1.75} style={{ flexShrink: 0 }} />
                   {!collapsed && (
-                    <span style={{ fontSize: 14, fontWeight: isActive ? 600 : 400, letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
-                      {label}
-                    </span>
+                    <span>{label}</span>
                   )}
                 </div>
               )}
@@ -212,45 +190,25 @@ export default function Layout() {
 
           <div style={{ height: 16 }} />
           {!collapsed && (
-            <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: '0.08em', color: 'rgba(255,255,255,0.72)', padding: '4px 8px 6px', textTransform: 'uppercase' }}>
+            <div className="sidebar-section-label">
               Coming later
             </div>
           )}
-          {collapsed && <div style={{ height: 2, background: 'rgba(255,255,255,0.07)', margin: '0 4px 8px' }} />}
+          {collapsed && <div className="sidebar-divider" />}
 
           {connectorItems.map(({ path, label, icon: Icon }) => (
             <NavLink
               key={path}
               to={path}
               title={collapsed ? label : undefined}
-              style={{ display: 'block', marginBottom: 2 }}
+              className="sidebar-link"
               onClick={() => setMobileOpen(false)}
             >
               {({ isActive }) => (
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: collapsed ? '9px 10px' : '8px 10px',
-                  borderRadius: 8,
-                  background: isActive ? 'rgba(255,255,255,0.12)' : 'transparent',
-                  color: isActive ? '#ffffff' : 'rgba(255,255,255,0.72)',
-                  cursor: 'pointer',
-                  justifyContent: collapsed ? 'center' : 'flex-start',
-                  transition: 'all 120ms',
-                  position: 'relative',
-                }}>
-                  {isActive && (
-                    <div style={{
-                      position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
-                      width: 3, height: 18, background: '#f5c518', borderRadius: '0 3px 3px 0',
-                    }} />
-                  )}
-                  <Icon size={18} strokeWidth={1.75} style={{ flexShrink: 0 }} />
+                <div className={`sidebar-link-row ${isActive ? 'is-active' : ''} ${collapsed ? 'is-collapsed' : ''}`}>
+                  <Icon size={18} strokeWidth={isActive ? 2 : 1.75} style={{ flexShrink: 0 }} />
                   {!collapsed && (
-                    <span style={{ fontSize: 14, fontWeight: isActive ? 600 : 400, letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
-                      {label}
-                    </span>
+                    <span>{label}</span>
                   )}
                 </div>
               )}
@@ -259,22 +217,12 @@ export default function Layout() {
         </nav>
 
         {/* Settings */}
-        <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', padding: '8px' }}>
-          <NavLink to="/settings" title={collapsed ? 'Settings' : undefined} onClick={() => setMobileOpen(false)}>
+        <div className="sidebar-footer">
+          <NavLink to="/settings" title={collapsed ? 'Settings' : undefined} className="sidebar-link" onClick={() => setMobileOpen(false)}>
             {({ isActive }) => (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '8px 10px',
-                borderRadius: 8,
-                background: isActive ? 'rgba(255,255,255,0.12)' : 'transparent',
-                color: isActive ? '#fff' : 'rgba(255,255,255,0.72)',
-                cursor: 'pointer',
-                justifyContent: collapsed ? 'center' : 'flex-start',
-              }}>
-                <Settings size={18} strokeWidth={1.75} />
-                {!collapsed && <span style={{ fontSize: 14, fontWeight: 400, letterSpacing: '-0.01em' }}>Settings</span>}
+              <div className={`sidebar-link-row ${isActive ? 'is-active' : ''} ${collapsed ? 'is-collapsed' : ''}`}>
+                <Settings size={18} strokeWidth={isActive ? 2 : 1.75} />
+                {!collapsed && <span>Settings</span>}
               </div>
             )}
           </NavLink>
@@ -288,10 +236,10 @@ export default function Layout() {
         {/* Topbar */}
         <header className="app-topbar" style={{
           height: 56,
-          background: 'rgba(242,242,247,0.85)',
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
-          borderBottom: '1px solid rgba(0,0,0,0.06)',
+          background: 'var(--bg-glass)',
+          backdropFilter: 'blur(20px) saturate(1.6)',
+          WebkitBackdropFilter: 'blur(20px) saturate(1.6)',
+          borderBottom: 'var(--hairline)',
           display: 'flex',
           alignItems: 'center',
           gap: 12,
@@ -301,7 +249,7 @@ export default function Layout() {
           zIndex: 20,
         }}>
           <button type="button" className="mobile-nav-trigger" aria-label="Open navigation" onClick={() => { setCollapsed(false); setMobileOpen(true) }}>
-            <Menu size={17} />
+            <Menu size={18} />
           </button>
           {/* Search */}
           <div className="topbar-search" ref={searchRef} style={{
@@ -310,13 +258,13 @@ export default function Layout() {
             display: 'flex',
             alignItems: 'center',
             gap: 8,
-            background: 'rgba(0,0,0,0.06)',
+            background: 'var(--bg-fill)',
             borderRadius: 10,
             padding: '0 12px',
-            height: 34,
+            height: 36,
             position: 'relative',
           }}>
-            <Search size={14} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
+            <Search size={15} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
             <input
               type="search"
               aria-label="Search permits, routes, roads, and alerts"
@@ -332,14 +280,14 @@ export default function Layout() {
                 background: 'transparent',
                 border: 'none',
                 outline: 'none',
-                fontSize: 14,
+                fontSize: 15,
                 color: 'var(--text-primary)',
                 width: '100%',
               }}
             />
             {searchQuery && (
-              <button onClick={() => setSearchQuery('')} aria-label="Clear search" style={{ color: 'var(--text-tertiary)', display: 'flex', padding: 2 }}>
-                <X size={12} />
+              <button onClick={() => setSearchQuery('')} aria-label="Clear search" style={{ color: 'var(--text-tertiary)', display: 'flex', padding: 4, minWidth: 28, minHeight: 28, alignItems: 'center', justifyContent: 'center' }}>
+                <X size={14} />
               </button>
             )}
             {searchOpen && searchQuery.trim() && (
@@ -377,8 +325,8 @@ export default function Layout() {
                 aria-label="Notifications"
                 aria-expanded={notifOpen}
                 style={{
-                  width: 34, height: 34,
-                  borderRadius: 9,
+                  width: 44, height: 44,
+                  borderRadius: 12,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   background: 'transparent',
                   color: 'var(--text-secondary)',
@@ -386,7 +334,7 @@ export default function Layout() {
                 }}
                 className="hover:!bg-black/[0.06] hover:!text-[var(--text-primary)]"
               >
-                <Bell size={17} />
+                <Bell size={18} />
                 {unreadCount > 0 && (
                   <span className="notification-count">{unreadCount > 9 ? '9+' : unreadCount}</span>
                 )}
@@ -395,14 +343,16 @@ export default function Layout() {
               {notifOpen && (
                 <div className="notification-popover" style={{
                   position: 'absolute',
-                  top: 42, right: 0,
+                  top: 48, right: 0,
                   width: 400,
-                  background: 'var(--bg-card)',
+                  background: 'var(--bg-glass-strong)',
                   borderRadius: 14,
                   boxShadow: 'var(--shadow-xl)',
-                  border: '1px solid var(--border)',
+                  border: 'var(--hairline)',
                   overflow: 'hidden',
                   zIndex: 100,
+                  backdropFilter: 'blur(24px)',
+                  WebkitBackdropFilter: 'blur(24px)',
                 }}>
                   <div style={{ padding: '14px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--divider)' }}>
                     <span style={{ fontWeight: 600, fontSize: 14, letterSpacing: '-0.01em' }}>Notifications</span>
@@ -453,9 +403,9 @@ export default function Layout() {
                 onClick={() => { setHelpOpen(!helpOpen); setNotifOpen(false) }}
                 aria-label="Help and settings"
                 aria-expanded={helpOpen}
-                style={{ width: 34, height: 34, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', color: helpOpen ? 'var(--text-primary)' : 'var(--text-secondary)', background: helpOpen ? 'rgba(0,0,0,0.06)' : 'transparent' }}
+                style={{ width: 44, height: 44, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: helpOpen ? 'var(--text-primary)' : 'var(--text-secondary)', background: helpOpen ? 'var(--bg-fill)' : 'transparent' }}
               >
-                <HelpCircle size={17} />
+                <HelpCircle size={18} />
               </button>
               {helpOpen && (
                 <div className="topbar-dropdown" style={{
