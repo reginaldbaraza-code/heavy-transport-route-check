@@ -70,7 +70,7 @@ export default function Contracts() {
         </div>
 
         {/* Search */}
-        <div className="flex items-center bg-white border border-[var(--border)] rounded-lg px-3 py-2.5 gap-2 mb-4 max-w-sm focus-within:border-[var(--accent)] focus-within:ring-2 focus-within:ring-blue-100 transition-all">
+        <div className="flex items-center bg-[var(--bg-card)] border border-[var(--border)] rounded-lg px-3 py-2.5 gap-2 mb-4 max-w-sm focus-within:border-[var(--accent)] focus-within:ring-2 focus-within:ring-blue-100 transition-all">
           <Search size={15} className="text-[var(--muted-foreground)]" />
           <input
             value={searchQuery}
@@ -82,7 +82,7 @@ export default function Contracts() {
         </div>
 
         {/* Table */}
-        <div className="data-table-shell bg-white rounded-xl border border-[var(--border)] overflow-hidden flex-1">
+        <div className="data-table-shell bg-[var(--bg-card)] rounded-xl border border-[var(--border)] overflow-hidden flex-1">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--border)] bg-[var(--muted)]">
@@ -164,7 +164,7 @@ function ContractDetailDrawer({ contract, onClose }: { contract: Contract; onClo
   ]
 
   return (
-    <div className="w-[400px] flex-shrink-0 border-l border-[var(--border)] bg-white flex flex-col overflow-hidden">
+    <div className="w-[400px] flex-shrink-0 border-l border-[var(--border)] bg-[var(--bg-card)] flex flex-col overflow-hidden">
       <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)] bg-[var(--muted)]">
         <h3 className="font-bold text-sm text-[var(--foreground)]">Contract details</h3>
         <button onClick={onClose} aria-label="Close contract details" className="p-1.5 rounded hover:bg-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors">

@@ -149,3 +149,6 @@
 # so pointer files would be served as text instead of images.
 public/*.png         -filter -diff -merge text=binary
 
+
+docs/logo-refresh/*.png -filter -diff -merge text=binary
+docs/logo-refresh/*.pdf -filter -diff -merge text=binary

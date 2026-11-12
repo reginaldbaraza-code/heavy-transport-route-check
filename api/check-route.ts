@@ -6,6 +6,13 @@ import {
   isoNow,
   splitConcatenatedPlaces,
 } from './_lib/autobahnTimes.js';
+import {
+  fetchAutobahnRoadFeeds,
+  formatAutobahnFailureDetail,
+  summarizeAutobahnFetchHealth,
+  type AutobahnFetchHealth,
+} from './_lib/autobahnFetch.js';
+import { determineAffectedRoads } from './_lib/affectedRoads.js';
 import { prepareRouteGeometry } from './_lib/corridor.js';
 import { GpxParseError, parseGpxDocument } from './_lib/gpxParse.js';
 import { guardApi, rejectOversizedBody } from './_lib/httpGuard.js';
@@ -25,6 +32,7 @@ import {
   departureWindow,
   determineVerdict,
   inferPermittedRoads,
+  routeBearingDegrees,
   routeLineFromPoints,
   verdictCopy,
   type CandidateInput,
@@ -69,6 +77,8 @@ type RouteEvidence = {
   reason?: string;
   locationKind?: string;
   blocker?: boolean;
+  travelDirection?: string;
+  relatedRecords?: Array<{ id: string; title: string }>;
 };
 
 type RouteCheckResult = {
@@ -87,6 +97,8 @@ type RouteCheckResult = {
     corridor: string;
   };
   degraded: boolean;
+  /** True when some Autobahn feeds succeeded and others failed. */
+  degradedPartial?: boolean;
   retrievedAt: string;
   source: string;
   mode?: 'live' | 'simulated';
@@ -102,68 +114,33 @@ function waypointLabel(point?: GPXPoint): string {
   return name
 }
 
+/** Prefer GPX track endpoint / metadata names so custom uploads match sample-permit direction. */
+function inferTravelFromTrack(
+  points: GPXPoint[],
+  gpxContent: string,
+): { from?: string; to?: string } {
+  const startName = String(points[0]?.name || '').trim()
+  const endName = String(points[points.length - 1]?.name || '').trim()
+  if (startName && endName && !/^(starts?|end|ende|ziel)$/i.test(startName) && !/^(starts?|end|ende|ziel)$/i.test(endName)) {
+    return { from: startName, to: endName }
+  }
+  const arrow = gpxContent.match(
+    /<name>\s*([A-Za-zÄÖÜäöüß][^<]*?)\s*(?:→|->|⇒)\s*([A-Za-zÄÖÜäöüß][^<]*?)\s*<\/name>/i,
+  )
+  if (arrow) {
+    return {
+      from: arrow[1].replace(/\s+A\d+\s*$/i, '').trim(),
+      to: arrow[2].replace(/\s+A\d+\s*$/i, '').trim(),
+    }
+  }
+  return {
+    from: startName || undefined,
+    to: endName || undefined,
+  }
+}
+
 function uniqueRoads(roads: string[]): string[] {
   return [...new Set(roads.map(road => road.toUpperCase().replace(/\s+/g, '')).filter(Boolean))]
-}
-
-function determineAffectedRoads(points: GPXPoint[]): string[] {
-  // Simple heuristic: determine which Autobahn roads (A1-A99) the route might touch
-  // based on rough geographic areas in Germany
-  
-  const minLat = Math.min(...points.map(p => p.lat));
-  const maxLat = Math.max(...points.map(p => p.lat));
-  const minLng = Math.min(...points.map(p => p.lng));
-  const maxLng = Math.max(...points.map(p => p.lng));
-  
-  const roads: string[] = [];
-  
-  // North-South routes
-  if (minLng < 10 && maxLng > 8) roads.push('A7'); // Hamburg-Kassel-Würzburg
-  if (minLng < 9 && maxLng > 7) roads.push('A1'); // Hamburg-Bremen-Dortmund-Köln
-  if (minLng < 12 && maxLng > 10) roads.push('A9'); // Berlin-Leipzig-Nürnberg-München
-  
-  // East-West routes
-  if (minLat < 52 && maxLat > 50 && minLng < 9 && maxLng > 6) roads.push('A2'); // Dortmund-Hannover-Berlin
-  if (minLat < 51 && maxLat > 49 && minLng < 9 && maxLng > 6) roads.push('A3'); // Köln-Frankfurt-Nürnberg
-  if (minLat < 49 && maxLat > 47 && minLng < 11 && maxLng > 8) roads.push('A8'); // Stuttgart-München
-  
-  // Add some major connectors
-  if (minLat < 53 && maxLat > 51 && minLng < 11) roads.push('A27'); // Bremen area
-  if (minLat < 52 && maxLat > 50 && minLng < 10) roads.push('A31', 'A33'); // Northern routes
-  
-  // If no roads determined, return main ones to check
-  if (roads.length === 0) {
-    return ['A1', 'A3', 'A7', 'A8', 'A9'];
-  }
-  
-  return [...new Set(roads)];
-}
-
-async function fetchRoadEvents(
-  road: string,
-  type: 'roadworks' | 'closure' | 'warning' | 'parking_lorry',
-): Promise<any[]> {
-  try {
-    const response = await fetch(
-      `https://verkehr.autobahn.de/o/autobahn/${road}/services/${type}`,
-      {
-        headers: { 'Accept': 'application/json' },
-        signal: AbortSignal.timeout(5000),
-      }
-    );
-    
-    if (!response.ok) return [];
-    
-    const data = await response.json();
-    const key = type === 'roadworks' ? 'roadworks'
-      : type === 'closure' ? 'closure'
-      : type === 'warning' ? 'warning'
-      : 'parking_lorry';
-    return data[key] || [];
-  } catch (error) {
-    console.error(`Error fetching ${type} for ${road}:`, error);
-    return [];
-  }
 }
 
 function processAutobahnItem(
@@ -205,28 +182,31 @@ function isUsableEvent(item: { lat: number; lng: number; expired: boolean }) {
   return !Number.isNaN(item.lat) && !Number.isNaN(item.lng) && !item.expired;
 }
 
-async function fetchAutobahnEventsForRoute(roads: string[], retrievedAt: string): Promise<any> {
+async function fetchAutobahnEventsForRoute(
+  roads: string[],
+  retrievedAt: string,
+): Promise<{
+  roadworks: any[]
+  closures: any[]
+  warnings: any[]
+  parking: any[]
+  source: string
+  roads: string
+  retrievedAt: string
+  health: AutobahnFetchHealth
+} | null> {
   try {
     const unique = uniqueRoads(roads)
-    const allEvents = await Promise.all(
-      unique.map(async (road) => {
-        const [roadworks, closures, warnings, parking] = await Promise.all([
-          fetchRoadEvents(road, 'roadworks'),
-          fetchRoadEvents(road, 'closure'),
-          fetchRoadEvents(road, 'warning'),
-          fetchRoadEvents(road, 'parking_lorry'),
-        ]);
-        
-        return { road, roadworks, closures, warnings, parking };
-      })
-    );
-    
-    const processedRoadworks = allEvents.flatMap(({ roadworks }) =>
+    const allEvents = await Promise.all(unique.map(road => fetchAutobahnRoadFeeds(road)))
+    const health = summarizeAutobahnFetchHealth(allEvents)
+
+    const processedRoadworks = allEvents.flatMap(({ road, roadworks }) =>
       roadworks.map((item: any) => {
         const processed = processAutobahnItem(item, 'Roadworks', 'Roadworks in progress', retrievedAt);
         const isBlocked = processed.isBlocked;
         return {
           ...processed,
+          road,
           type: 'roadworks' as const,
           severity: isBlocked ? 'warning' as const : 'info' as const,
           isBlocked,
@@ -234,26 +214,29 @@ async function fetchAutobahnEventsForRoute(roads: string[], retrievedAt: string)
       })
     ).filter(isUsableEvent);
 
-    const processedClosures = allEvents.flatMap(({ closures }) =>
+    const processedClosures = allEvents.flatMap(({ road, closures }) =>
       closures.map((item: any) => ({
         ...processAutobahnItem(item, 'Closure', 'Road closure in effect', retrievedAt),
+        road,
         type: 'closures' as const,
         severity: 'danger' as const,
       }))
     ).filter(isUsableEvent);
 
-    const processedWarnings = allEvents.flatMap(({ warnings }) =>
+    const processedWarnings = allEvents.flatMap(({ road, warnings }) =>
       warnings.map((item: any) => ({
         ...processAutobahnItem(item, 'Warning', 'Traffic warning', retrievedAt),
+        road,
         type: 'warnings' as const,
         severity: 'warning' as const,
         confidence: 'medium' as const,
       }))
     ).filter(isUsableEvent);
 
-    const processedParking = allEvents.flatMap(({ parking }) =>
+    const processedParking = allEvents.flatMap(({ road, parking }) =>
       parking.map((item: any) => ({
         ...processAutobahnItem(item, 'Lorry parking', 'HGV parking on this Autobahn', retrievedAt),
+        road,
         type: 'parking' as const,
         severity: String(item.isBlocked) === 'true' ? 'warning' as const : 'info' as const,
         isBlocked: String(item.isBlocked) === 'true',
@@ -266,9 +249,12 @@ async function fetchAutobahnEventsForRoute(roads: string[], retrievedAt: string)
       closures: processedClosures,
       warnings: processedWarnings,
       parking: processedParking,
-      source: 'Autobahn GmbH (verkehr.autobahn.de)',
+      source: health.degraded
+        ? 'Autobahn GmbH (verkehr.autobahn.de) – degraded'
+        : 'Autobahn GmbH (verkehr.autobahn.de)',
       roads: roads.join(', '),
       retrievedAt,
+      health,
     };
   } catch (error) {
     console.error('Error fetching Autobahn events:', error);
@@ -320,6 +306,8 @@ function toRouteEvidence(item: ClassifiedEvidence, age: string): RouteEvidence {
     reason: item.reason,
     locationKind: item.locationKind,
     blocker: item.blocker,
+    travelDirection: item.travelDirection,
+    relatedRecords: item.relatedRecords,
   };
 }
 
@@ -369,6 +357,8 @@ export default async function handler(
       confirmedAt,
       scenario,
       acknowledgements,
+      travelFrom,
+      travelTo,
     } = req.body;
 
     const gpxBytes = typeof gpxContent === 'string' ? Buffer.byteLength(gpxContent, 'utf8') : 0
@@ -411,21 +401,31 @@ export default async function handler(
       requestedCorridor,
       Array.isArray(requestedRoads) ? requestedRoads : [],
     );
-    const affectedRoads = permittedRoads.length ? uniqueRoads(permittedRoads) : uniqueRoads(determineAffectedRoads(geometry.matchPoints));
+    const detectedRoads = uniqueRoads(determineAffectedRoads(geometry.matchPoints));
+    // Never invent a fallback motorway when geometry cannot identify one.
+    const corridorUndetected = !permittedRoads.length && detectedRoads.length === 0;
+    const affectedRoads = permittedRoads.length ? uniqueRoads(permittedRoads) : detectedRoads;
+    // GPX uploads without a corridor must still classify against the inferred Autobahn set so the same geometry matches sample-permit verdicts.
+    const classifyRoads = permittedRoads.length ? uniqueRoads(permittedRoads) : affectedRoads;
     const window = departureWindow({
       departureStart,
       departureEnd,
       validFrom,
       validUntil,
     });
+    const trackTravel = inferTravelFromTrack(parsedPoints, gpxContent)
     const classifyCtx = {
       routeLine,
       corridor: geometry.corridor,
-      permittedRoads,
+      permittedRoads: classifyRoads,
       vehicle,
       windowStartMs: window.startMs,
       windowEndMs: window.endMs,
       nowMs: Date.now(),
+      // Track geometry/names first so sample permit and bare custom GPX agree.
+      travelFrom: trackTravel.from || (typeof travelFrom === 'string' ? travelFrom : undefined),
+      travelTo: trackTravel.to || (typeof travelTo === 'string' ? travelTo : undefined),
+      routeBearing: routeBearingDegrees(routeLine),
     };
     const clearanceConfirmed = Boolean(bridgeClearanceConfirmed);
     const siteAcknowledgements = parseAcknowledgements(acknowledgements);
@@ -468,7 +468,9 @@ export default async function handler(
 
     const retrievedAt = isoNow();
     const [autobahnData, bwResult, miaResult] = await Promise.all([
-      fetchAutobahnEventsForRoute(affectedRoads, retrievedAt),
+      corridorUndetected
+        ? Promise.resolve(null)
+        : fetchAutobahnEventsForRoute(affectedRoads, retrievedAt),
       fetchBwRoadworks(retrievedAt)
         .then(items => ({ items, error: null as string | null }))
         .catch((error: unknown) => ({
@@ -477,11 +479,58 @@ export default async function handler(
         })),
       resolveMiaSnapshot(),
     ]);
-    const degraded = !autobahnData;
-    const source = 'Autobahn GmbH + MobiData BW';
+    const autobahnHealth: AutobahnFetchHealth = corridorUndetected
+      ? {
+          degraded: true,
+          partial: false,
+          failures: [],
+          criticalAttempted: 0,
+          criticalSucceeded: 0,
+        }
+      : autobahnData?.health || {
+          degraded: true,
+          partial: false,
+          failures: affectedRoads.flatMap(road =>
+            (['roadworks', 'closure', 'warning'] as const).map(type => ({
+              road,
+              type,
+              error: 'Autobahn fetch unavailable',
+            })),
+          ),
+          criticalAttempted: affectedRoads.length * 3,
+          criticalSucceeded: 0,
+        };
+    const degraded = corridorUndetected || !autobahnData || autobahnHealth.degraded;
+    const degradedPartial = Boolean(autobahnData) && autobahnHealth.partial;
+    const source = corridorUndetected
+      ? 'Motorway undetected + MobiData BW'
+      : degraded
+        ? (degradedPartial
+          ? 'Autobahn GmbH (partial) + MobiData BW'
+          : 'Autobahn GmbH unavailable + MobiData BW')
+        : 'Autobahn GmbH + MobiData BW';
     
     const classified: ClassifiedEvidence[] = [];
-    const src = `Autobahn GmbH · ${affectedRoads.join(', ')}`;
+    const src = affectedRoads.length
+      ? `Autobahn GmbH · ${affectedRoads.join(', ')}`
+      : 'Autobahn GmbH';
+
+    if (corridorUndetected) {
+      classified.push({
+        id: 'corridor-undetected',
+        title: 'Motorway not detected from GPX',
+        detail: 'Could not identify which Autobahn the track follows. Pass a corridor hint (e.g. A20) or verify the route manually — live Autobahn feeds were not queried.',
+        source: 'Route check system',
+        confidence: 'medium',
+        state: 'warning',
+        category: 'observations',
+        distanceKm: null,
+        reason: 'Corridor undetected from geometry.',
+        locationKind: 'unknown',
+        blocker: false,
+        retrievedAt,
+      });
+    }
 
     if (autobahnData) {
       for (const event of autobahnData.roadworks || []) {
@@ -492,6 +541,7 @@ export default async function handler(
           source: src,
           lat: event.lat,
           lng: event.lng,
+          road: event.road,
           startTimestamp: event.startTimestamp,
           endTimestamp: event.endTimestamp,
           retrievedAt: event.retrievedAt,
@@ -508,6 +558,7 @@ export default async function handler(
           source: src,
           lat: event.lat,
           lng: event.lng,
+          road: event.road,
           startTimestamp: event.startTimestamp,
           endTimestamp: event.endTimestamp,
           retrievedAt: event.retrievedAt,
@@ -524,6 +575,7 @@ export default async function handler(
           source: src,
           lat: event.lat,
           lng: event.lng,
+          road: event.road,
           startTimestamp: event.startTimestamp,
           endTimestamp: event.endTimestamp,
           retrievedAt: event.retrievedAt,
@@ -542,6 +594,7 @@ export default async function handler(
           source: `Autobahn GmbH parking_lorry · ${affectedRoads.join(', ')}`,
           lat: event.lat,
           lng: event.lng,
+          road: event.road,
           startTimestamp: event.startTimestamp,
           endTimestamp: event.endTimestamp,
           retrievedAt: event.retrievedAt,
@@ -550,6 +603,25 @@ export default async function handler(
         }, classifyCtx);
         if (classified.length > before) parkingAdded += 1;
       }
+    }
+
+    if (degraded && !corridorUndetected) {
+      classified.push({
+        id: 'autobahn-feed-unavailable',
+        title: degradedPartial
+          ? 'Some Autobahn GmbH feeds unavailable'
+          : 'Autobahn GmbH live feeds unavailable',
+        detail: formatAutobahnFailureDetail(autobahnHealth) || 'Live Autobahn source unavailable.',
+        source: 'Autobahn GmbH (verkehr.autobahn.de)',
+        confidence: 'medium',
+        state: 'warning',
+        category: 'observations',
+        distanceKm: null,
+        reason: degradedPartial ? 'Partial Autobahn outage.' : 'Autobahn feed unavailable.',
+        locationKind: 'unknown',
+        blocker: false,
+        retrievedAt,
+      });
     }
 
     for (const item of bwResult.items) {
@@ -705,17 +777,27 @@ export default async function handler(
     });
     const decided = determineVerdict(uniqueClassified, {
       degraded,
+      degradedReason: corridorUndetected
+        ? 'Motorway not detected from GPX geometry.'
+        : undefined,
       clearanceConfirmed,
       acknowledgements: siteAcknowledgements,
     });
     const issueCount = uniqueEvidence.filter(item => item.state === 'danger').length;
     const copy = verdictCopy(decided.verdict, {
       degraded,
+      degradedPartial,
+      corridorUndetected,
       issueCount,
       distanceKm: distance,
       clearanceConfirmed,
       acknowledgedCount: decided.acknowledgedCount,
     });
+
+    const corridorRoads = permittedRoads.length ? permittedRoads : affectedRoads;
+    const corridorLabel = corridorUndetected
+      ? 'Unknown · motorway not detected from GPX · VERIFY'
+      : `${corridorRoads.join(', ')} · ±0.5 km HOLD / ±1.5 km VERIFY`;
 
     const result: RouteCheckResult = {
       verdict: decided.verdict,
@@ -730,9 +812,10 @@ export default async function handler(
         origin,
         destination,
         distance,
-        corridor: `${(permittedRoads.length ? permittedRoads : affectedRoads).join(', ')} · ±0.5 km HOLD / ±1.5 km VERIFY`,
+        corridor: corridorLabel,
       },
       degraded,
+      degradedPartial,
       retrievedAt,
       source,
       mode: 'live',

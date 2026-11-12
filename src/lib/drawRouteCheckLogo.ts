@@ -1,82 +1,75 @@
-import { jsPDF, GState } from 'jspdf'
+import { jsPDF } from "jspdf"
 
-// Keep these path strings here so the PDF helper does not import the React logo
-// component (that would pull jsPDF into the homepage bundle).
-const ROUTE_PATH =
-  'M7 52 C22 52 36.5 48 36.5 39.5 C36.5 33.5 28.2 30.5 28.2 24.5 C28.2 19.6 34 15.6 39.6 11.8 L47.6 20 L56.6 11'
-const LANE_LEFT_PATH =
-  'M18.5 46.4 C24.6 44.6 29.4 40.6 30 35.6 C30.2 33.8 29.6 32.4 28.8 31.2'
-const LANE_RIGHT_PATH =
-  'M38.6 31.6 C42.4 35 43.6 40 41.8 44.4 C40.8 47 38.8 49.4 36.2 51.4'
-const LANE_DASHOFFSET_LEFT = '4.1'
-const LANE_DASHOFFSET_RIGHT = '2.35'
+// Direction B "Autobahn Plate" — 64-unit master, vector only (no images, no gradients, no GState).
+// Keep these literals in sync with src/components/RouteCheckLogo.tsx (asserted in logoAssets.test.ts).
+const BLUE: [number, number, number] = [0, 113, 227] // --accent #0071e3
+const NAVY: [number, number, number] = [12, 36, 57] // --navy #0c2439
+const WHITE: [number, number, number] = [255, 255, 255]
+const YELLOW: [number, number, number] = [245, 197, 24] // #f5c518
+const ROAD = [
+  [30, 24],
+  [34, 24],
+  [50, 52],
+  [14, 52],
+] as const
+const DASHES = [
+  [30, 38, 4, 5],
+  [30, 46, 4, 6],
+] as const
+const DIAMOND = [
+  [32, 15],
+  [42, 25],
+  [32, 35],
+  [22, 25],
+] as const
 
-function parsePath(d: string) {
-  const tokens = d.replace(/,/g, ' ').trim().split(/\s+/)
-  const ops: Array<{ cmd: string; nums: number[] }> = []
-  let i = 0
-  while (i < tokens.length) {
-    const cmd = tokens[i]
-    if (cmd === 'M' || cmd === 'L') {
-      ops.push({ cmd, nums: [Number(tokens[i + 1]), Number(tokens[i + 2])] })
-      i += 3
-    } else if (cmd === 'C') {
-      ops.push({
-        cmd,
-        nums: [Number(tokens[i + 1]), Number(tokens[i + 2]), Number(tokens[i + 3]), Number(tokens[i + 4]), Number(tokens[i + 5]), Number(tokens[i + 6])],
-      })
-      i += 7
-    } else {
-      i += 1
-    }
-  }
-  return ops
+function polygon(
+  doc: jsPDF,
+  pts: ReadonlyArray<readonly [number, number]>,
+  px: (n: number) => number,
+  py: (n: number) => number,
+  style: "F" | "FD",
+) {
+  const [x0, y0] = pts[0]
+  const segs = pts
+    .slice(1)
+    .map(([x, y], i) => [px(x) - px(pts[i][0]), py(y) - py(pts[i][1])])
+  doc.lines(segs, px(x0), py(y0), [1, 1], style, true)
 }
 
-function strokePath(doc: jsPDF, px: (n: number) => number, py: (n: number) => number, d: string) {
-  const ops = parsePath(d)
-  for (const op of ops) {
-    if (op.cmd === 'M') doc.moveTo(px(op.nums[0]), py(op.nums[1]))
-    else if (op.cmd === 'L') doc.lineTo(px(op.nums[0]), py(op.nums[1]))
-    else if (op.cmd === 'C') {
-      doc.curveTo(px(op.nums[0]), py(op.nums[1]), px(op.nums[2]), py(op.nums[3]), px(op.nums[4]), py(op.nums[5]))
-    }
-  }
-  doc.stroke()
-}
-
-/** Draw the route-check mark in the 64×64 viewBox, scaled into a square of `size` mm. */
-export function drawRouteCheckLogo(doc: jsPDF, x: number, y: number, size: number) {
+/** Draw the Autobahn Plate mark into a `size` mm square. tone 'dark' = on dark backgrounds (white rim). */
+export function drawRouteCheckLogo(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  size: number,
+  tone: "dark" | "light" = "dark",
+) {
   const k = size / 64
   const px = (n: number) => x + n * k
   const py = (n: number) => y + n * k
-  const rx = 14.5 * k
-
-  doc.setFillColor(10, 26, 51)
-  doc.roundedRect(x, y, size, size, rx, rx, 'F')
-
-  doc.saveGraphicsState()
-  doc.setGState(new GState({ 'stroke-opacity': 0.08 }))
-  doc.setDrawColor(255, 255, 255)
-  doc.setLineWidth(0.2)
-  doc.roundedRect(x + 0.15, y + 0.15, size - 0.3, size - 0.3, 14 * k, 14 * k, 'S')
-  doc.restoreGraphicsState()
-
-  doc.setLineCap('round')
-  doc.setLineJoin('round')
-
-  doc.setDrawColor(245, 197, 24)
-  doc.setLineWidth(3.2 * k)
-  strokePath(doc, px, py, ROUTE_PATH)
-
-  doc.saveGraphicsState()
-  doc.setGState(new GState({ 'stroke-opacity': 0.9 }))
-  doc.setDrawColor(255, 255, 255)
-  doc.setLineWidth(1.1 * k)
-  doc.setLineDashPattern([2.2 * k, 2.4 * k], Number(LANE_DASHOFFSET_LEFT) * k)
-  strokePath(doc, px, py, LANE_LEFT_PATH)
-  doc.setLineDashPattern([2.2 * k, 2.4 * k], Number(LANE_DASHOFFSET_RIGHT) * k)
-  strokePath(doc, px, py, LANE_RIGHT_PATH)
-  doc.setLineDashPattern([], 0)
-  doc.restoreGraphicsState()
+  if (tone === "dark") {
+    doc.setFillColor(...WHITE)
+    doc.roundedRect(x, y, size, size, 14 * k, 14 * k, "F")
+    doc.setFillColor(...BLUE)
+    doc.roundedRect(px(3), py(3), 58 * k, 58 * k, 11 * k, 11 * k, "F")
+  } else {
+    doc.setFillColor(...BLUE)
+    doc.roundedRect(x, y, size, size, 14 * k, 14 * k, "F")
+    doc.setDrawColor(...WHITE)
+    doc.setLineWidth(3 * k)
+    doc.roundedRect(px(5.5), py(5.5), 53 * k, 53 * k, 9 * k, 9 * k, "S")
+  }
+  doc.setFillColor(...WHITE)
+  polygon(doc, ROAD, px, py, "F")
+  doc.setFillColor(...BLUE)
+  for (const [dx, dy, w, h] of DASHES)
+    doc.rect(px(dx), py(dy), w * k, h * k, "F")
+  // Checkpoint diamond: yellow fill + navy stroke (9.7:1 vs yellow; separates it from road and plate)
+  doc.setFillColor(...YELLOW)
+  doc.setDrawColor(...NAVY)
+  doc.setLineWidth(3 * k)
+  doc.setLineJoin("miter")
+  polygon(doc, DIAMOND, px, py, "FD")
+  doc.setLineJoin("round")
 }

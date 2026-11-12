@@ -4,8 +4,12 @@ import { useEffect, useRef, useState } from 'react'
 interface OnSiteConfirmDialogProps {
   open: boolean
   onClose: () => void
-  onConfirm: (outcome: 'open' | 'closed' | 'partly', note: string, photo?: File) => void
+  onConfirm: (outcome: 'open' | 'closed' | 'partly', note: string, photo: File | undefined, confirmedBy: string) => void
   location?: string
+  /** VERIFY items about to be confirmed — shown as a summary before bulk confirm. */
+  items?: Array<{ id: string; title: string }>
+  confirmerName?: string
+  requireConfirmerName?: boolean
 }
 
 export default function OnSiteConfirmDialog({
@@ -13,13 +17,21 @@ export default function OnSiteConfirmDialog({
   onClose,
   onConfirm,
   location,
+  items = [],
+  confirmerName = '',
+  requireConfirmerName = false,
 }: OnSiteConfirmDialogProps) {
   const [outcome, setOutcome] = useState<'open' | 'closed' | 'partly'>('open')
   const [note, setNote] = useState('')
   const [photo, setPhoto] = useState<File | undefined>()
   const [photoPreview, setPhotoPreview] = useState('')
+  const [name, setName] = useState(confirmerName)
   const dialogRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (open) setName(confirmerName)
+  }, [open, confirmerName])
 
   useEffect(() => {
     if (!open) return
@@ -50,8 +62,11 @@ export default function OnSiteConfirmDialog({
     return () => URL.revokeObjectURL(url)
   }, [photo])
 
+  const nameOk = !requireConfirmerName || Boolean(name.trim())
+
   const handleConfirm = () => {
-    onConfirm(outcome, note.trim(), photo)
+    if (!nameOk) return
+    onConfirm(outcome, note.trim(), photo, name.trim())
     setOutcome('open')
     setNote('')
     setPhoto(undefined)
@@ -73,9 +88,42 @@ export default function OnSiteConfirmDialog({
       <div ref={dialogRef} className="dialog-content dialog-large">
         <header>
           <h2 id="onsite-confirm-title">On-site confirmation</h2>
-          <p>Record the actual road status{location ? ` at ${location}` : ''} verified on site.</p>
+          <p>
+            {items.length > 1
+              ? `Confirm ${items.length} VERIFY items on site. HOLD / restriction items are never included.`
+              : `Record the actual road status${location ? ` at ${location}` : ''} verified on site.`}
+          </p>
         </header>
         <div className="dialog-form">
+          {items.length > 0 && (
+            <div className="bulk-confirm-summary" data-testid="bulk-confirm-summary">
+              <strong>Items to confirm ({items.length})</strong>
+              <ul>
+                {items.map(item => (
+                  <li key={item.id}>{item.title}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {requireConfirmerName && (
+            <label>
+              <span>Confirmer name (required)</span>
+              <input
+                value={name}
+                onChange={event => setName(event.target.value)}
+                placeholder="Name stored with each confirmation"
+                data-testid="bulk-confirm-name"
+                aria-required="true"
+              />
+              {!name.trim() && (
+                <span className="field-hint" data-testid="bulk-confirm-name-hint">
+                  Enter a confirmer name before confirming VERIFY items.
+                </span>
+              )}
+            </label>
+          )}
+
           <fieldset className="onsite-outcome-group">
             <legend>Road status</legend>
             <label className={`onsite-outcome-option ${outcome === 'open' ? 'selected' : ''}`}>
@@ -151,7 +199,7 @@ export default function OnSiteConfirmDialog({
           <button type="button" className="btn-secondary" onClick={onClose}>
             Cancel
           </button>
-          <button type="button" className="btn-primary" onClick={handleConfirm}>
+          <button type="button" className="btn-primary" onClick={handleConfirm} disabled={!nameOk}>
             Confirm status
           </button>
         </div>

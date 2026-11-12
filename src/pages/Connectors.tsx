@@ -64,7 +64,7 @@ export default function Connectors() {
           <button onClick={() => setAddMode('caas')} className="flex items-center gap-2 bg-[var(--primary)] text-white text-sm font-semibold px-4 py-2.5 rounded-lg">
             <Plus size={15} /> Add managed
           </button>
-          <button onClick={() => setAddMode('onprem')} className="flex items-center gap-2 border border-[var(--border-strong)] bg-white text-[var(--foreground)] text-sm font-semibold px-4 py-2.5 rounded-lg">
+          <button onClick={() => setAddMode('onprem')} className="flex items-center gap-2 border border-[var(--border-strong)] bg-[var(--bg-card)] text-[var(--foreground)] text-sm font-semibold px-4 py-2.5 rounded-lg">
             <Plus size={15} /> Add on-premises
           </button>
         </div>
@@ -74,7 +74,7 @@ export default function Connectors() {
 
       {/* Add connector modal */}
       {addMode && (
-        <div className="connector-add-panel mb-5 bg-white border border-[var(--accent)] rounded-xl p-5">
+        <div className="connector-add-panel mb-5 bg-[var(--bg-card)] border border-[var(--accent)] rounded-xl p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-bold text-[var(--foreground)]">
               {addMode === 'caas' ? 'Add CaaS Connector' : 'Add On-Premises Connector'}
@@ -118,7 +118,7 @@ export default function Connectors() {
           <select
             value={typeFilter ?? ''}
             onChange={e => setTypeFilter(e.target.value || null)}
-            className="appearance-none bg-white border border-[var(--border)] rounded-lg pl-3 pr-8 py-2 text-sm font-medium text-[var(--foreground)] outline-none cursor-pointer focus:border-[var(--accent)] transition-all"
+            className="appearance-none bg-[var(--bg-card)] border border-[var(--border)] rounded-lg pl-3 pr-8 py-2 text-sm font-medium text-[var(--foreground)] outline-none cursor-pointer focus:border-[var(--accent)] transition-all"
           >
             <option value="">All types</option>
             <option value="OWN">OWN</option>
@@ -132,7 +132,7 @@ export default function Connectors() {
       </div>
 
       {/* Table */}
-      <div className="data-table-shell bg-white rounded-xl border border-[var(--border)] overflow-hidden mb-4">
+      <div className="data-table-shell bg-[var(--bg-card)] rounded-xl border border-[var(--border)] overflow-hidden mb-4">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-[var(--primary)] text-white text-left">
@@ -163,7 +163,7 @@ export default function Connectors() {
                 <td className="px-5 py-3.5">
                   <button
                     onClick={() => navigate(c.frontendUrl)}
-                    className="inline-flex items-center gap-1.5 bg-white hover:bg-[var(--accent-soft)] border border-[var(--border-strong)] text-[var(--accent)] text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                    className="inline-flex items-center gap-1.5 bg-[var(--bg-card)] hover:bg-[var(--accent-soft)] border border-[var(--border-strong)] text-[var(--accent)] text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors"
                   >
                     <ExternalLink size={12} /> Frontend
                   </button>

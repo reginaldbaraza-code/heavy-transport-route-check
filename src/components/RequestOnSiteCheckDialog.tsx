@@ -47,10 +47,10 @@ export default function RequestOnSiteCheckDialog({
     <div className="dialog-overlay" role="dialog" aria-modal="true" aria-labelledby="onsite-request-title">
       <div ref={dialogRef} className="dialog-content">
         <header>
-          <h2 id="onsite-request-title">Request on-site check</h2>
+          <h2 id="onsite-request-title">Log an on-site check (demo)</h2>
           <p>
-            Request a field verification{location ? ` at ${location}` : ''} to confirm the current road status before
-            departure.
+            This demo only records a field-verification note{location ? ` for ${location}` : ''} in this browser.
+            Nobody is notified — nothing is sent.
           </p>
         </header>
         <div className="dialog-form">
@@ -70,7 +70,7 @@ export default function RequestOnSiteCheckDialog({
             Cancel
           </button>
           <button type="button" className="btn-primary" onClick={handleConfirm}>
-            Request check
+            Log check request
           </button>
         </div>
       </div>

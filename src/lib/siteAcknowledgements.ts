@@ -14,8 +14,19 @@ export function isHoldItem(item: Pick<RouteEvidence, 'state'>) {
   return item.state === 'danger'
 }
 
-export function isNearbyOffRoute(item: Pick<RouteEvidence, 'state'>) {
-  return item.state === 'info'
+export function isOppositeDirectionNote(
+  item: Pick<RouteEvidence, 'state' | 'reason' | 'title'>,
+) {
+  if (item.state !== 'info') return false
+  return /Opposite direction/i.test(`${item.title || ''} ${item.reason || ''}`)
+}
+
+export function isNearbyOffRoute(
+  item: Pick<RouteEvidence, 'state' | 'reason' | 'title'>,
+) {
+  if (item.state !== 'info') return false
+  // Opposite-direction notes stay visible outside the collapsed nearby group.
+  return !isOppositeDirectionNote(item)
 }
 
 export function isAcknowledgeable(item: Pick<RouteEvidence, 'id' | 'state' | 'blocker'>) {

@@ -21,3 +21,5 @@ package-lock.json
 # beside it.
 /.plugins/
 /.opencode-skills/
+
+.impeccable/hook.cache.json

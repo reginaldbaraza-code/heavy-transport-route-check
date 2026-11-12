@@ -20,6 +20,7 @@ export type PermitLeafletMapProps = {
   showLegend: boolean
   selectedPermitId?: string
   highlightPermitId?: string
+  dataTestId?: string
 }
 
 type DrawnTrack = {
@@ -158,6 +159,7 @@ export default function PermitLeafletMap({
   showLegend,
   selectedPermitId,
   highlightPermitId,
+  dataTestId,
 }: PermitLeafletMapProps) {
   const mapNode = useRef<HTMLDivElement>(null)
   const mapRef = useRef<LeafletMap | null>(null)
@@ -374,7 +376,7 @@ export default function PermitLeafletMap({
   return (
     <div
       className="heatmap-shell heatmap-compact permit-leaflet-shell"
-      data-permit-map={endpointMode === 'cities' ? 'overview' : 'sample'}
+      data-permit-map={dataTestId ?? (endpointMode === 'cities' ? 'overview' : 'sample')}
       data-selected-permit={selectedPermitId ?? permits[0]?.id ?? ''}
       data-featured-permit={highlightPermitId ?? ''}
     >

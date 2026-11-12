@@ -43,15 +43,15 @@ export default function DataOffers() {
         </div>
         <div className="connector-workspace-body p-8">
           <div className="metric-grid grid grid-cols-3 gap-4 mb-6">
-            <div className="metric-card bg-white rounded-xl border border-[var(--border)] p-4 text-center">
+            <div className="metric-card bg-[var(--bg-card)] rounded-xl border border-[var(--border)] p-4 text-center">
               <div className="text-4xl font-bold text-[var(--foreground)]">{offers.filter(o => o.status === 'published').length}</div>
               <div className="text-sm text-[var(--muted-foreground)] mt-1">Published</div>
             </div>
-            <div className="metric-card bg-white rounded-xl border border-[var(--border)] p-4 text-center">
+            <div className="metric-card bg-[var(--bg-card)] rounded-xl border border-[var(--border)] p-4 text-center">
               <div className="text-4xl font-bold text-[var(--foreground)]">{offers.filter(o => o.status === 'draft').length}</div>
               <div className="text-sm text-[var(--muted-foreground)] mt-1">Drafts</div>
             </div>
-            <div className="metric-card bg-white rounded-xl border border-[var(--border)] p-4 text-center">
+            <div className="metric-card bg-[var(--bg-card)] rounded-xl border border-[var(--border)] p-4 text-center">
               <div className="text-4xl font-bold text-[var(--foreground)]">{offers.reduce((s, o) => s + o.subscriptions, 0)}</div>
               <div className="text-sm text-[var(--muted-foreground)] mt-1">Total subscriptions</div>
             </div>
@@ -63,7 +63,7 @@ export default function DataOffers() {
             </div>
           )}
 
-          <div className="data-table-shell bg-white rounded-xl border border-[var(--border)] overflow-hidden">
+          <div className="data-table-shell bg-[var(--bg-card)] rounded-xl border border-[var(--border)] overflow-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--border)] bg-[var(--muted)]">
