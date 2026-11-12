@@ -8,7 +8,7 @@ This is a free-tier MVP. It is not a permit, not MDS, and not a substitute for d
 
 - Import the exact approved route (GPX) and vehicle dimensions
 - Compare that corridor with current roadworks, closures, warnings, and a few simulated scenarios
-- Save jobs in this browser and re-check them until the planned departure
+- Pick a demo user, save jobs to that account (Upstash Redis), and re-check them until the planned departure
 - Export PDF / CSV for the current result
 
 ## Live sources (free, no keys)
@@ -34,7 +34,7 @@ HOLD items cannot be acknowledged away. VERIFY items can be confirmed on site by
 The overview page has two modes:
 
 - **Demo dashboard** — a fixed preview of monitoring with made-up routes and verdicts. Never live, never saved.
-- **Try a sample permit** — real GPX files. Opening one runs a live Autobahn check that is saved to this browser’s history.
+- **Try a sample permit** — real GPX files. Opening one runs a live Autobahn check that is saved to your account history.
 
 `public/test-permits/` holds the snapped GPX samples (Hamburg→Hannover A7, Bremen→Dortmund A1, Leipzig→Nürnberg A9, Duisburg→Köln A3, München→Stuttgart A8, Lübeck→Rostock A20, Hof→Bayreuth A9). Scenario cards on Route checks skip live feeds so READY / VERIFY / HOLD can be demoed. Tracks were pre-snapped with public OSRM. © OpenStreetMap contributors, ODbL.
 
@@ -54,7 +54,7 @@ pnpm test:qa      # Playwright against a local preview of dist/
 - Build: `pnpm build`
 - Output: `dist`
 - API routes in `api/` (Node ESM). Relative API imports use `.js`.
-- No paid Vercel features, no API keys, no cron-based monitoring
+- Connect an Upstash Redis store (Vercel KV REST) and set `KV_REST_API_URL` + `KV_REST_API_TOKEN` (or `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`). Without them the API falls back to in-memory storage for local/dev.
 
 ## Limitations
 
@@ -63,7 +63,8 @@ pnpm test:qa      # Playwright against a local preview of dist/
 - **Monitoring** runs only while this tab is open. Keep it open until departure.
 - **MIA snapshot** is refreshed by GitHub Actions (`refresh-mia-roadworks.yml`, about every 6 hours; `workflow_dispatch` is also enabled). GitHub cron on a quiet repo can skip ticks. If the served snapshot is older than **8 hours**, `POST /api/check-route` fetches the MobiData BW DATEX feeds live (8s timeout, ~10 min in-memory cache). If that live refresh fails, the MIA layer is marked stale in the result instead of going silent.
 - **Rate limiting** is best-effort only: an in-memory per-instance token bucket on each serverless isolate. It does not run at the edge and will not reliably return HTTP 429 on Vercel Hobby. Do not treat it as a hard API quota.
-- **Free tier** — no email/SMS, jobs stored in this browser only.
+- **Dummy login** — fixed allowlist, no passwords. Anyone with the link can open any account.
+- **Free tier** — no email/SMS; per-user state lives in Redis when configured.
 
 ## License
 

@@ -138,6 +138,32 @@ function decodePdfStrings(buffer) {
   return { latin1, text: strings.join('\n'), compact: strings.join('') }
 }
 
+async function readHistoryLength(page) {
+  return page.evaluate(() => {
+    const fromHook = window.__HT_TEST__?.getHistory?.()
+    if (Array.isArray(fromHook)) return fromHook.length
+    const fromStore = window.__HT_TEST__?.getStore?.('htr-route-check-history')
+    return Array.isArray(fromStore) ? fromStore.length : 0
+  })
+}
+
+async function readHistory(page) {
+  return page.evaluate(() => {
+    const fromHook = window.__HT_TEST__?.getHistory?.()
+    if (Array.isArray(fromHook)) return fromHook
+    const fromStore = window.__HT_TEST__?.getStore?.('htr-route-check-history')
+    return Array.isArray(fromStore) ? fromStore : []
+  })
+}
+
+/** Flush debounced account saves before full navigations/reloads (pagehide beacon can race hydrate). */
+async function flushAccount(page) {
+  await page.evaluate(async () => {
+    await window.__HT_TEST__?.flushStore?.()
+  }).catch(() => {})
+  await page.waitForTimeout(50)
+}
+
 async function main() {
   const preview = spawn('pnpm', ['exec', 'tsx', 'scripts/qa-preview.ts'], {
     cwd: process.cwd(),
@@ -154,6 +180,17 @@ async function main() {
   await context.grantPermissions(['notifications'])
   const page = await context.newPage()
 
+  async function ensureLoggedIn(userName = 'Demo') {
+    const loginHeading = page.getByRole('heading', { name: "Who's checking routes?" })
+    if (await loginHeading.count()) {
+      await page.getByRole('button', { name: `Continue as ${userName}` }).click()
+      await page.getByRole('heading', { name: "Who's checking routes?" }).waitFor({ state: 'detached', timeout: 30000 }).catch(() => {})
+      await page.waitForFunction(() => !document.querySelector('.login-screen'), null, { timeout: 30000 }).catch(() => {})
+    }
+    const skip = page.getByRole('button', { name: /skip/i })
+    if (await skip.count()) await skip.first().click().catch(() => {})
+  }
+
   for (const iconPath of ['/favicon-32.png', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png']) {
     const res = await page.goto(base + iconPath, { timeout: 15000 })
     const buf = res ? Buffer.from(await res.body()) : Buffer.alloc(0)
@@ -166,7 +203,19 @@ async function main() {
     )
   }
 
+  // Clear any prior user so the login screen is visible for the first assertion.
   await page.goto(base + '/', { waitUntil: 'domcontentloaded', timeout: 60000 })
+  await page.evaluate(() => {
+    try { localStorage.removeItem('htr-current-user') } catch {}
+  })
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 })
+  await page.getByRole('heading', { name: "Who's checking routes?" }).waitFor({ timeout: 20000 })
+  const loginTiles = page.locator('button.login-user-tile')
+  const loginTileCount = await loginTiles.count()
+  record('Login screen renders 7 user tiles', loginTileCount === 7, `count=${loginTileCount}`)
+
+  await page.getByRole('button', { name: 'Continue as Demo' }).click()
+  await page.waitForFunction(() => !document.querySelector('.login-screen'), null, { timeout: 30000 })
   const skipOnboarding = page.getByRole('button', { name: /skip/i })
   if (await skipOnboarding.count()) {
     await skipOnboarding.first().click()
@@ -469,8 +518,7 @@ async function main() {
   await page.setViewportSize({ width: 1440, height: 900 })
 
   async function skipIfNeeded() {
-    const skip = page.getByRole('button', { name: /skip/i })
-    if (await skip.count()) await skip.first().click().catch(() => {})
+    await ensureLoggedIn('Demo')
   }
 
   const corridorViewports = [
@@ -884,6 +932,13 @@ async function main() {
   )
 
   await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded' })
+  await ensureLoggedIn('Demo')
+  await page.getByRole('heading', { name: /Route check/i }).first().waitFor({ timeout: 20000 })
+  await page.waitForFunction(
+    () => document.title === 'Route checks · HTR · Heavy transport route check',
+    null,
+    { timeout: 10000 },
+  ).catch(() => {})
   record(
     'Per-page title keeps HTR suffix',
     (await page.title()) === 'Route checks · HTR · Heavy transport route check',
@@ -960,6 +1015,7 @@ async function main() {
   await page.locator('[data-testid="save-job-form"]').waitFor()
   await page.getByRole('button', { name: 'Save job' }).click()
   await page.getByText(/Job saved and monitoring started/i).waitFor({ timeout: 10000 })
+  await flushAccount(page)
   record('Save as job after check', true)
 
   const savedJobMeta = await page.evaluate(() => {
@@ -1064,13 +1120,7 @@ async function main() {
   const csv = await downloadFile(page, 'Export CSV')
   record('Result CSV download is non-empty', csv.size > 50, `${csv.suggested} ${csv.size} bytes`)
 
-  const historyBeforeRecheck = await page.evaluate(() => {
-    try {
-      return JSON.parse(localStorage.getItem('htr-route-check-history') || '[]').length
-    } catch {
-      return 0
-    }
-  })
+  const historyBeforeRecheck = await readHistoryLength(page)
   const recheckRequest = page.waitForRequest(
     req => req.url().includes('/api/check-route') && req.method() === 'POST',
     { timeout: 30000 },
@@ -1085,13 +1135,7 @@ async function main() {
   }
   const stillOnResult = await page.locator('.verdict-banner').count()
   const importVisible = await page.getByRole('button', { name: /show sample permits/i }).count()
-  const historyAfterRecheck = await page.evaluate(() => {
-    try {
-      return JSON.parse(localStorage.getItem('htr-route-check-history') || '[]').length
-    } catch {
-      return 0
-    }
-  })
+  const historyAfterRecheck = await readHistoryLength(page)
   record(
     'Re-check re-runs check and stays on result (does not reset to Import)',
     Boolean(recheckPost) && stillOnResult > 0 && importVisible === 0 && historyAfterRecheck > historyBeforeRecheck,
@@ -1139,6 +1183,7 @@ async function main() {
   )
   await page.getByRole('button', { name: 'Save as job' }).click()
   await page.getByRole('button', { name: 'Save job' }).click()
+  await flushAccount(page)
   const scenarioJobMeta = await page.evaluate(() => {
     const jobs = window.__HT_TEST__?.getJobs() || []
     const match = jobs.find(job => job.scenario === 'hold-width' || /SCENARIO-HOLD-WIDTH|residual width|Duisburg/i.test(`${job.name} ${job.permitNumber}`))
@@ -1152,14 +1197,17 @@ async function main() {
     JSON.stringify(scenarioJobMeta),
   )
   if (scenarioJobMeta.id) {
+    await flushAccount(page)
     await page.goto(base + '/jobs', { waitUntil: 'domcontentloaded' })
+    await ensureLoggedIn('Demo')
+    await page.locator(`[data-job-id="${scenarioJobMeta.id}"]`).waitFor({ timeout: 15000 })
     const scenarioRerunRequest = page.waitForRequest(
       req => req.url().includes('/api/check-route') && req.method() === 'POST',
       { timeout: 30000 },
-    )
+    ).catch(() => null)
     await page.locator(`[data-job-id="${scenarioJobMeta.id}"]`).getByRole('button', { name: /Re-run check/i }).click()
     await page.waitForURL(/route-checks\?.*job=/, { timeout: 15000 })
-    const scenarioRerunPost = await scenarioRerunRequest.catch(() => null)
+    const scenarioRerunPost = await scenarioRerunRequest
     let scenarioRerunBody = null
     try {
       scenarioRerunBody = scenarioRerunPost ? scenarioRerunPost.postDataJSON() : null
@@ -1301,7 +1349,9 @@ async function main() {
     `csvImpact=${csvClearanceHits} pdfImpact=${pdfClearanceHits} csv=${csvImpactRow.slice(0, 180)} pdf=${pdfImpactText.slice(0, 180)}`,
   )
 
+  await flushAccount(page)
   await page.goto(base + '/jobs', { waitUntil: 'domcontentloaded' })
+  await ensureLoggedIn('Demo')
   const jobsCopy = await page.locator('.jobs-monitor-banner').innerText()
   record(
     'Jobs monitoring copy is plain language',
@@ -1369,10 +1419,11 @@ async function main() {
   const rerunVehicleMatch = await page.evaluate(({ expected, jobId }) => {
     let history = []
     try {
-      history = JSON.parse(localStorage.getItem('htr-route-check-history') || '[]')
+      history = window.__HT_TEST__?.getHistory?.() || window.__HT_TEST__?.getStore?.('htr-route-check-history') || []
     } catch {
       history = []
     }
+    if (!Array.isArray(history)) history = []
     const withJob = history.filter(item => item.jobId === jobId)
     const latest = withJob[0] || history.find(item => item.jobId) || history[0]
     const vehicle = latest?.vehicle || null
@@ -1428,7 +1479,9 @@ async function main() {
   }, liveJobMeta.id)
   record('Monitoring test hook created HOLD alert', Boolean(hookResult.ok && hookResult.holdAlert), JSON.stringify(hookResult))
 
+  await flushAccount(page)
   await page.reload({ waitUntil: 'domcontentloaded' })
+  await ensureLoggedIn('Demo')
   const badge = await page.locator('.notification-count').textContent().catch(() => null)
   record('Alert badge updates after verdict change', Number(badge || '0') > 0, `badge=${badge}`)
 
@@ -1436,12 +1489,12 @@ async function main() {
   const alertText = await page.locator('.route-alert-log').first().innerText()
   record('Alerts page includes verdict-change HOLD', /HOLD/.test(alertText), alertText.slice(0, 180).replace(/\s+/g, ' '))
 
-  await page.evaluate(() => {
-    const raw = window.localStorage.getItem('htr-monitor-alerts')
-    const alerts = raw ? JSON.parse(raw) : []
-    if (alerts[0]) {
+  await page.evaluate(async () => {
+    const alerts = window.__HT_TEST__?.getStore?.('htr-monitor-alerts') || window.__HT_TEST__?.getAlerts?.() || []
+    if (Array.isArray(alerts) && alerts[0]) {
       alerts[0].escalated = true
-      window.localStorage.setItem('htr-monitor-alerts', JSON.stringify(alerts))
+      window.__HT_TEST__?.setStore?.('htr-monitor-alerts', alerts)
+      await window.__HT_TEST__?.flushStore?.()
     }
   })
   await page.reload({ waitUntil: 'domcontentloaded' })
@@ -1606,10 +1659,11 @@ async function main() {
     const demoNote = document.querySelector('[data-testid="demo-departure-note"]')?.textContent || ''
     let history = []
     try {
-      history = JSON.parse(localStorage.getItem('htr-route-check-history') || '[]')
+      history = window.__HT_TEST__?.getHistory?.() || window.__HT_TEST__?.getStore?.('htr-route-check-history') || []
     } catch {
       history = []
     }
+    if (!Array.isArray(history)) history = []
     return {
       banner,
       demoNote,
@@ -1644,10 +1698,11 @@ async function main() {
     const width = document.querySelector('[data-testid="vehicle-width"]')
     let history = []
     try {
-      history = JSON.parse(localStorage.getItem('htr-route-check-history') || '[]')
+      history = window.__HT_TEST__?.getHistory?.() || window.__HT_TEST__?.getStore?.('htr-route-check-history') || []
     } catch {
       history = []
     }
+    if (!Array.isArray(history)) history = []
     return {
       fileErrorVisible: Boolean(fileError),
       fileErrorText: fileError?.textContent || '',
@@ -1816,10 +1871,15 @@ async function main() {
       viewport: { width: 1440, height: 900 },
       colorScheme,
     })
+    await context.addInitScript(() => {
+      try { localStorage.setItem('htr-current-user', 'demo') } catch {}
+    })
     const page = await context.newPage()
     await page.emulateMedia({ colorScheme })
     await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded', timeout: 60000 })
-    await page.getByRole('heading', { name: /Route check/i }).first().waitFor({ timeout: 15000 }).catch(() => {})
+    await page.getByRole('heading', { name: /Route check/i }).first().waitFor({ timeout: 20000 }).catch(() => {})
+    const login = page.getByRole('button', { name: 'Continue as Demo' })
+    if (await login.count()) await login.click().catch(() => {})
     const skip = page.getByRole('button', { name: /skip/i })
     if (await skip.count()) await skip.first().click({ timeout: 2000 }).catch(() => {})
     const later = page.getByRole('button', { name: /later|not now|continue without/i })
@@ -1834,6 +1894,101 @@ async function main() {
     await context.close()
     return contrast
   }
+
+  // Per-user isolation: Anna's job must not appear for Paul.
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.getByRole('button', { name: 'Switch user' }).first().click()
+  await page.getByRole('heading', { name: "Who's checking routes?" }).waitFor({ timeout: 15000 })
+  await page.getByRole('button', { name: 'Continue as Anna' }).click()
+  await page.waitForFunction(() => !document.querySelector('.login-screen'), null, { timeout: 30000 })
+  // Client-side: Router remounts on the current URL (likely /jobs or /). Prefer Jobs nav.
+  if (!(await page.getByRole('heading', { name: /Saved jobs|Jobs/i }).count())) {
+    await page.getByRole('link', { name: 'Jobs' }).first().click()
+  }
+  await page.getByRole('heading', { name: /Saved jobs|Jobs/i }).first().waitFor({ timeout: 15000 }).catch(() => {})
+  const annaJobName = `Anna isolation ${Date.now()}`
+  const annaSaved = await page.evaluate(async (name) => {
+    const job = {
+      id: `job-anna-${Date.now()}`,
+      name,
+      permitName: name,
+      permitNumber: 'ISO-ANNA',
+      corridor: 'A7',
+      permittedRoads: ['A7'],
+      plannedDeparture: new Date(Date.now() + 8 * 3600 * 1000).toISOString(),
+      vehicle: { width: 3, height: 4, length: 25, grossWeight: 52 },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      gpxText: '',
+      monitorIntervalMinutes: 15,
+      monitoringStoppedReason: null,
+    }
+    window.__HT_TEST__?.setStore?.('htr-saved-jobs', [job])
+    await window.__HT_TEST__?.flushStore?.()
+    const res = await fetch('/api/state?user=anna')
+    const payload = await res.json()
+    const raw = payload?.data?.['htr-saved-jobs']
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
+    return Array.isArray(parsed) && parsed.some(item => item?.name === name)
+  }, annaJobName)
+  // Remount providers from store without a full document reload race.
+  await page.getByRole('button', { name: 'Switch user' }).first().click()
+  await page.getByRole('button', { name: 'Continue as Anna' }).click()
+  await page.waitForFunction(() => !document.querySelector('.login-screen'), null, { timeout: 30000 })
+  if (!(await page.getByRole('heading', { name: /Saved jobs|Jobs/i }).count())) {
+    await page.getByRole('link', { name: 'Jobs' }).first().click()
+  }
+  await page.getByText(annaJobName).first().waitFor({ timeout: 15000 })
+  record('Anna can save a job to her account', annaSaved && await page.getByText(annaJobName).count() > 0, annaJobName)
+
+  await page.getByRole('button', { name: 'Switch user' }).first().click()
+  await page.getByRole('heading', { name: "Who's checking routes?" }).waitFor({ timeout: 15000 })
+  await page.getByRole('button', { name: 'Continue as Paul' }).click()
+  await page.waitForFunction(() => !document.querySelector('.login-screen'), null, { timeout: 30000 })
+  if (!(await page.getByRole('heading', { name: /Saved jobs|Jobs/i }).count())) {
+    await page.getByRole('link', { name: 'Jobs' }).first().click()
+  }
+  await page.waitForTimeout(400)
+  const paulSeesAnna = await page.getByText(annaJobName).count()
+  const paulApi = await page.evaluate(async (name) => {
+    const res = await fetch('/api/state?user=paul')
+    const payload = await res.json()
+    const raw = payload?.data?.['htr-saved-jobs']
+    const parsed = typeof raw === 'string' ? JSON.parse(raw || '[]') : (raw || [])
+    return Array.isArray(parsed) ? parsed.filter(item => item?.name === name).length : -1
+  }, annaJobName)
+  record('Paul does not see Anna’s job', paulSeesAnna === 0 && paulApi === 0, `ui=${paulSeesAnna} api=${paulApi}`)
+
+  await page.getByRole('button', { name: 'Switch user' }).first().click()
+  await page.getByRole('heading', { name: "Who's checking routes?" }).waitFor({ timeout: 15000 })
+  await page.getByRole('button', { name: 'Continue as Anna' }).click()
+  await page.waitForFunction(() => !document.querySelector('.login-screen'), null, { timeout: 30000 })
+  if (!(await page.getByRole('heading', { name: /Saved jobs|Jobs/i }).count())) {
+    await page.getByRole('link', { name: 'Jobs' }).first().click()
+  }
+  await page.getByText(annaJobName).first().waitFor({ timeout: 15000 }).catch(() => {})
+  const annaSeesAgain = await page.getByText(annaJobName).count()
+  const annaApiAgain = await page.evaluate(async (name) => {
+    const res = await fetch('/api/state?user=anna')
+    const payload = await res.json()
+    const raw = payload?.data?.['htr-saved-jobs']
+    const parsed = typeof raw === 'string' ? JSON.parse(raw || '[]') : (raw || [])
+    const jobs = window.__HT_TEST__?.getJobs?.() || []
+    return {
+      api: Array.isArray(parsed) ? parsed.filter(item => item?.name === name).length : -1,
+      hook: jobs.filter(item => item?.name === name).length,
+    }
+  }, annaJobName)
+  record(
+    'Switching back to Anna restores her job',
+    annaSeesAgain > 0 || annaApiAgain.api > 0 || annaApiAgain.hook > 0,
+    JSON.stringify({ ui: annaSeesAgain, ...annaApiAgain }),
+  )
+
+  // Return to Demo for any remaining checks.
+  await page.getByRole('button', { name: 'Switch user' }).first().click()
+  await page.getByRole('button', { name: 'Continue as Demo' }).click()
+  await page.waitForFunction(() => !document.querySelector('.login-screen'), null, { timeout: 30000 })
 
   // Dark-mode HOLD banner title must stay ≥4.5:1 (safety-critical).
   const holdContrast = await runContrastSample(
