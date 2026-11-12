@@ -70,7 +70,12 @@ export function rejectOversizedBody(req: VercelRequest, res: VercelResponse, ext
   return true
 }
 
-export function guardApi(req: VercelRequest, res: VercelResponse, methods: string): boolean {
+export function guardApi(
+  req: VercelRequest,
+  res: VercelResponse,
+  methods: string,
+  opts?: { rateLimit?: boolean },
+): boolean {
   applyCors(req, res, methods)
   if (req.method === 'OPTIONS') {
     res.status(204).end()
@@ -80,6 +85,7 @@ export function guardApi(req: VercelRequest, res: VercelResponse, methods: strin
     res.status(405).json({ error: 'Method not allowed' })
     return false
   }
+  if (opts?.rateLimit === false) return true
   if (!rateLimit(req, res)) return false
   return true
 }
