@@ -130,6 +130,79 @@ test('dark-mode verdict and button tokens meet WCAG AA contrast', () => {
   assert.ok(contrastRatio(border, bgCard) >= 3, `permit-map-badge border ${border} on glass/card ${bgCard}`)
 })
 
+function ruleDeclarations(css: string, selector: string) {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  // Exact selector before `{` (avoid `.alert-status` matching `.alert-status.escalated`).
+  const re = new RegExp(`${escaped}(?![\\w.-])\\s*\\{([^}]+)\\}`, 'i')
+  const match = re.exec(css)
+  assert.ok(match, `missing rule for ${selector}`)
+  const decls = new Map<string, string>()
+  for (const part of match[1].split(';')) {
+    const colon = part.indexOf(':')
+    if (colon < 0) continue
+    const prop = part.slice(0, colon).trim().toLowerCase()
+    const value = part.slice(colon + 1).trim()
+    if (prop && value) decls.set(prop, value)
+  }
+  return decls
+}
+
+function resolveColorValue(map: Map<string, string>, raw: string): string {
+  const trimmed = raw.trim()
+  if (/^#([0-9a-f]{6})$/i.test(trimmed)) return trimmed.toLowerCase()
+  if (/^(white|#fff)$/i.test(trimmed)) return '#ffffff'
+  if (/^black$/i.test(trimmed)) return '#000000'
+  const varMatch = /^var\((--[a-z0-9-]+)\)$/i.exec(trimmed)
+  assert.ok(varMatch, `expected hex or var() color, got ${raw}`)
+  const resolved = resolve(map, varMatch[1])
+  assert.ok(/^#([0-9a-f]{6})$/i.test(resolved), `resolved ${raw} to non-hex ${resolved}`)
+  return resolved.toLowerCase()
+}
+
+test('dark-mode alert-status escalated and solid danger fills meet WCAG AA', () => {
+  const css = readFileSync(new URL('../index.css', import.meta.url), 'utf8')
+  const tokens = darkModeTokens(css)
+
+  // Escalated used --red-text (#ffb4ae) + white (~1.69:1) after dark tinting; must stay on solid AA red.
+  const escalated = ruleDeclarations(css, '.alert-status.escalated')
+  const escFg = resolveColorValue(tokens, escalated.get('color') || '')
+  const escBg = resolveColorValue(
+    tokens,
+    escalated.get('background') || escalated.get('background-color') || '',
+  )
+  assert.ok(contrastRatio(escFg, escBg) >= 4.5, `Escalated badge ${escFg} on ${escBg}`)
+
+  // Sibling tinted statuses (New / Acknowledged / Resolved) keep text-on-tint pairs.
+  const tinted = [
+    ['.alert-status', '--blue-text', '--blue-bg'],
+    ['.alert-status.acknowledged', '--amber-text', '--amber-bg'],
+    ['.alert-status.resolved', '--green-text', '--green-bg'],
+  ] as const
+  for (const [selector, fgToken, bgToken] of tinted) {
+    const decls = ruleDeclarations(css, selector)
+    const fg = resolveColorValue(tokens, decls.get('color') || `var(${fgToken})`)
+    const bg = resolveColorValue(
+      tokens,
+      decls.get('background') || decls.get('background-color') || `var(${bgToken})`,
+    )
+    assert.ok(contrastRatio(fg, bg) >= 4.5, `${selector} ${fg} on ${bg}`)
+  }
+
+  // Danger solid fills shared the same white-on--red-text bug.
+  for (const selector of [
+    '.no-response-banner button.danger',
+    '.confirm-dialog-actions button.danger',
+    '.hold-action-dialog-buttons button.danger',
+  ]) {
+    const decls = ruleDeclarations(css, selector)
+    const bgRaw = decls.get('background') || decls.get('background-color')
+    assert.ok(bgRaw, `missing background on ${selector}`)
+    const bg = resolveColorValue(tokens, bgRaw)
+    const fg = resolveColorValue(tokens, decls.get('color') || 'var(--badge-fg)')
+    assert.ok(contrastRatio(fg, bg) >= 4.5, `${selector} ${fg} on ${bg}`)
+  }
+})
+
 test('light-mode verdict pills, Re-check, and badge meet WCAG AA contrast', () => {
   const css = readFileSync(new URL('../index.css', import.meta.url), 'utf8')
   const tokens = lightModeTokens(css)

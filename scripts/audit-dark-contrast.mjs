@@ -177,6 +177,8 @@ async function collectContrast(page, label, extraSelectors = []) {
       '.verdict-content p',
       '.notification-count',
       '.transport-source-list > div > span',
+      '.alert-status',
+      '.alert-status.escalated',
       'button', 'a', 'p', 'span', 'strong', 'small', 'label',
       ...extraSelectors,
     ]
@@ -518,6 +520,71 @@ async function main() {
         const ok = value != null && Number(value) >= 4.5
         console.log(`${name} Re-check contrast=${value} (need ≥4.5)`)
         report.push({ label: `${prefix}-banner-recheck-${name.toLowerCase()}-${vp.name}`, ratio: value, ok })
+        if (!ok) {
+          criticalCount += 1
+          violationCount += 1
+        }
+      }
+
+      // Probe Escalated alert-status badge (white-on--red-text regressed after dark tinting)
+      const escalatedCheck = await page.evaluate(() => {
+        const parse = (input) => {
+          if (!input || input === 'transparent') return null
+          const m = String(input).match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)/i)
+          if (!m) return null
+          const a = m[4] === undefined ? 1 : Number(m[4])
+          if (a <= 0.01) return null
+          return { r: Number(m[1]), g: Number(m[2]), b: Number(m[3]), a }
+        }
+        const luminance = (r, g, b) => {
+          const toLin = (c) => {
+            const s = c / 255
+            return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+          }
+          return 0.2126 * toLin(r) + 0.7152 * toLin(g) + 0.0722 * toLin(b)
+        }
+        const ratio = (fg, bg) => {
+          const a = fg.a ?? 1
+          const rr = fg.r * a + bg.r * (1 - a)
+          const gg = fg.g * a + bg.g * (1 - a)
+          const bb = fg.b * a + bg.b * (1 - a)
+          const L1 = luminance(rr, gg, bb)
+          const L2 = luminance(bg.r, bg.g, bg.b)
+          return (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05)
+        }
+        const host = document.createElement('div')
+        host.setAttribute('data-contrast-probe', 'alert-status-escalated')
+        host.style.cssText = 'position:fixed;left:-9999px;top:0;pointer-events:none;'
+        host.innerHTML = `
+          <span class="alert-status">New</span>
+          <span class="alert-status acknowledged">Acknowledged</span>
+          <span class="alert-status resolved">Resolved</span>
+          <span class="alert-status escalated">Escalated</span>
+        `
+        document.body.appendChild(host)
+        const measure = (sel) => {
+          const el = host.querySelector(sel)
+          if (!el) return null
+          const cs = getComputedStyle(el)
+          const fg = parse(cs.color)
+          const bg = parse(cs.backgroundColor)
+          if (!fg || !bg) return null
+          return Number(ratio(fg, bg).toFixed(2))
+        }
+        const result = {
+          New: measure('.alert-status:not(.acknowledged):not(.resolved):not(.escalated)'),
+          Acknowledged: measure('.alert-status.acknowledged'),
+          Resolved: measure('.alert-status.resolved'),
+          Escalated: measure('.alert-status.escalated'),
+        }
+        host.remove()
+        return result
+      })
+
+      for (const [name, value] of Object.entries(escalatedCheck)) {
+        const ok = value != null && Number(value) >= 4.5
+        console.log(`alert-status ${name} contrast=${value} (need ≥4.5)`)
+        report.push({ label: `${prefix}-alert-status-${name.toLowerCase()}-${vp.name}`, ratio: value, ok })
         if (!ok) {
           criticalCount += 1
           violationCount += 1
