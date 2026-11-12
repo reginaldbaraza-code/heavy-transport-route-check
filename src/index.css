@@ -5439,8 +5439,9 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
     --login-soft: #c1b8a8;
     --login-divider: rgba(243, 239, 230, 0.14);
     --login-accent: #6ec1ff;
-    --login-hero: #e2d6c2;
-    --login-hero-opacity: 0.88;
+    /* Light neutral stroke for convoy line art (≥3:1 on navy); full opacity */
+    --login-hero: #aeaeb2;
+    --login-hero-opacity: 1;
   }
 }
 
@@ -5729,8 +5730,13 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
 .login-convoy {
   grid-row: 2;
   width: min(100%, 760px);
+  aspect-ratio: 640 / 140;
   height: auto;
   display: block;
+  /* Mask so stroke color follows --login-hero (img currentColor is always black) */
+  background-color: currentColor;
+  -webkit-mask: url('/assets/convoy.svg') center / contain no-repeat;
+  mask: url('/assets/convoy.svg') center / contain no-repeat;
 }
 
 .login-hero-caption {
@@ -5874,8 +5880,7 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
     display: block;
     width: 100%;
     height: clamp(56px, 17vw, 72px);
-    object-fit: contain;
-    object-position: center;
+    aspect-ratio: auto;
   }
 
   .login-hero-caption {
@@ -5922,6 +5927,12 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
     margin-top: auto;
     padding-top: 16px;
     font-size: 14px !important;
+  }
+}
+
+@media (prefers-color-scheme: dark) and (max-width: 480px) {
+  .login-hero {
+    opacity: 1;
   }
 }
 

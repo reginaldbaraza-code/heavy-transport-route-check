@@ -173,7 +173,7 @@ export default function Login() {
         </div>
 
         <aside className="login-hero" aria-hidden="true">
-          <img className="login-convoy" src="/assets/convoy.svg" alt="" width={640} height={140} />
+          <span className="login-convoy" />
           <span className="login-hero-caption">Escort · low-loader · oversize</span>
         </aside>
       </div>
