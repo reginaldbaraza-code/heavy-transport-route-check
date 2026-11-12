@@ -39,7 +39,9 @@ import {
   MONITOR_INTERVAL_OPTIONS,
   defaultDepartureIso,
   defaultJobName,
+  demoDepartureIso,
   fromLocalInput,
+  isGpxFileProblemMessage,
   toLocalInput,
 } from '../lib/jobs'
 import {
@@ -90,6 +92,8 @@ export default function RouteIntelligencePolished() {
   const { savedProfile } = useOrgSettings()
   const [plannedDeparture, setPlannedDeparture] = useState('')
   const [departureExpiryError, setDepartureExpiryError] = useState('')
+  const [demoDepartureLabel, setDemoDepartureLabel] = useState('')
+  const [formError, setFormError] = useState('')
   const [jobName, setJobName] = useState('')
   const [jobInterval, setJobInterval] = useState(prefs.intervalMinutes)
   const [showSaveJob, setShowSaveJob] = useState(false)
@@ -158,6 +162,37 @@ export default function RouteIntelligencePolished() {
     setVehicleWeight(String(dims.grossWeight))
   }
 
+  /** Sample/demo only — never used for real GPX uploads. */
+  const applyDemoDeparture = (permit?: TestPermit | null, metadata?: { validFrom?: string; validUntil?: string } | null) => {
+    const iso = demoDepartureIso({
+      validFrom: metadata?.validFrom || permit?.validFrom,
+      validUntil: metadata?.validUntil || permit?.validUntil,
+    })
+    const local = toLocalInput(iso)
+    setPlannedDeparture(local)
+    setDemoDepartureLabel(`Demo departure: ${formatBerlinDateTime(iso)} — change it if needed`)
+    setDepartureExpiryError('')
+    setFormError('')
+    return iso
+  }
+
+  const clearDemoDeparture = () => {
+    setDemoDepartureLabel('')
+  }
+
+  const setFileError = (message: string, technical = '') => {
+    setError(message)
+    setErrorTechnical(technical)
+    setFormError('')
+  }
+
+  const setDepartureRequiredError = (message = 'Planned departure is required so restrictions are judged against the trip window.') => {
+    setFormError(message)
+    setError('')
+    setErrorTechnical('')
+    setToast('Enter a planned departure before checking the route.')
+  }
+
   const runCheck = async (
     content: string,
     metadata?: any,
@@ -173,13 +208,17 @@ export default function RouteIntelligencePolished() {
       || metadata?.permitNumber
       || permitNumber
     if (!(dims.width > 0 && dims.height > 0 && dims.length > 0 && dims.grossWeight > 0) || checking) return
-    const departureLocal = departureOverride
+    let departureLocal = departureOverride
       ? (departureOverride.includes('T') && departureOverride.length > 16 ? toLocalInput(departureOverride) : departureOverride)
       : plannedDeparture
     if (!departureLocal || !fromLocalInput(departureLocal)) {
-      setError('Planned departure is required so restrictions are judged against the trip window.')
-      setToast('Enter a planned departure before checking the route.')
-      return
+      if (activePermit) {
+        const demoIso = applyDemoDeparture(activePermit, metadata)
+        departureLocal = toLocalInput(demoIso)
+      } else {
+        setDepartureRequiredError()
+        return
+      }
     }
     const departureIso = fromLocalInput(departureLocal)
     const permitExpiry = metadata?.validUntil || activePermit?.validUntil
@@ -189,7 +228,9 @@ export default function RouteIntelligencePolished() {
       if (Number.isFinite(expiryMs) && Number.isFinite(departureMs) && departureMs > expiryMs) {
         const message = `Planned departure is after the permit expiry (${formatBerlinDateTime(permitExpiry)}). Choose an earlier departure.`
         setDepartureExpiryError(message)
-        setError(message)
+        setFormError(message)
+        setError('')
+        setErrorTechnical('')
         setToast(message)
         return
       }
@@ -199,6 +240,7 @@ export default function RouteIntelligencePolished() {
     setChecking(true)
     setError('')
     setErrorTechnical('')
+    setFormError('')
     
     try {
       if (metadata || activePermit) {
@@ -293,8 +335,13 @@ export default function RouteIntelligencePolished() {
       ))
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to check route'
-      setError(errorMsg)
-      setErrorTechnical(err instanceof GpxParseError ? err.technical : '')
+      if (isGpxFileProblemMessage(errorMsg) || err instanceof GpxParseError) {
+        setFileError(errorMsg, err instanceof GpxParseError ? err.technical : '')
+      } else {
+        setFormError(errorMsg)
+        setError('')
+        setErrorTechnical('')
+      }
       setToast(errorMsg)
     } finally {
       setChecking(false)
@@ -310,35 +357,40 @@ export default function RouteIntelligencePolished() {
     setShowTestPermits(false)
     setError('')
     setErrorTechnical('')
+    setFormError('')
     setStep('vehicle')
     applyPermitClearance(permit)
     applyPermitVehicle(permit)
     setPermitNumber(permit.permitNumber)
     setAcknowledgements([])
+    applyDemoDeparture(permit)
 
     try {
       const { gpxContent: content, metadata } = await loadTestPermit(permit)
       setGpxContent(content)
       applyPermitVehicle(permit, metadata)
       setPermitNumber(permit.kind === 'scenario' ? permit.permitNumber : (metadata?.permitNumber || permit.permitNumber))
+      applyDemoDeparture(permit, metadata)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load sample permit')
+      setFileError(err instanceof Error ? err.message : 'Failed to load sample permit')
     }
   }
 
   const handleFileUpload = async (file: File) => {
     setError('')
     setErrorTechnical('')
+    setFormError('')
     setActivePermitId(null)
+    setPlannedDeparture('')
+    clearDemoDeparture()
+    setDepartureExpiryError('')
 
     // Check for VEMAGS PDF/XML formats and provide helpful message
     const fileName = file.name.toLowerCase()
     if (fileName.endsWith('.pdf') || fileName.endsWith('.xml')) {
-      setError(
-        'VEMAGS PDF and XML formats are not yet supported. Please export your permitted route as GPX from VEMAGS and upload that file instead.'
-      )
-      setErrorTechnical(
-        'To export GPX from VEMAGS: Open your permit → Export → Select "GPX format" → Save the .gpx file → Upload here'
+      setFileError(
+        'VEMAGS PDF and XML formats are not yet supported. Please export your permitted route as GPX from VEMAGS and upload that file instead.',
+        'To export GPX from VEMAGS: Open your permit → Export → Select "GPX format" → Save the .gpx file → Upload here',
       )
       setRouteFile('')
       return
@@ -347,15 +399,19 @@ export default function RouteIntelligencePolished() {
     try {
       validateGpxFileSize(file.size)
     } catch (err) {
-      setError(err instanceof GpxParseError ? err.message : GPX_FRIENDLY_TOO_LARGE)
-      setErrorTechnical(err instanceof GpxParseError ? err.technical : '')
+      setFileError(
+        err instanceof GpxParseError ? err.message : GPX_FRIENDLY_TOO_LARGE,
+        err instanceof GpxParseError ? err.technical : '',
+      )
       setRouteFile('')
       return
     }
 
     if (!fileName.endsWith('.gpx')) {
-      setError("This file isn't a valid GPX route. Export the route from VEMAGS as GPX and try again.")
-      setErrorTechnical(`Unexpected file name: ${file.name}`)
+      setFileError(
+        "This file isn't a valid GPX route. Export the route from VEMAGS as GPX and try again.",
+        `Unexpected file name: ${file.name}`,
+      )
       setRouteFile('')
       return
     }
@@ -376,24 +432,36 @@ export default function RouteIntelligencePolished() {
       }
       setStep('vehicle')
     } catch (err) {
-      setError(err instanceof Error ? err.message : "This file isn't a valid GPX route. Export the route from VEMAGS as GPX and try again.")
-      setErrorTechnical(err instanceof GpxParseError ? err.technical : '')
+      setFileError(
+        err instanceof Error ? err.message : "This file isn't a valid GPX route. Export the route from VEMAGS as GPX and try again.",
+        err instanceof GpxParseError ? err.technical : '',
+      )
       setRouteFile('')
     }
   }
 
   const handleCheckRoute = () => {
     if (!departureValid) {
-      setError('Planned departure is required so restrictions are judged against the trip window.')
-      setToast('Enter a planned departure before checking the route.')
+      if (activePermitId) {
+        const permit = testPermits.find(item => item.id === activePermitId)
+        applyDemoDeparture(permit)
+        if (!gpxContent) {
+          setFormError('Route file is still loading. Wait a moment and try again.')
+          setToast('Route file is still loading.')
+          return
+        }
+        runCheck(gpxContent)
+        return
+      }
+      setDepartureRequiredError()
       return
     }
     if (!vehicleValid) {
-      setError('Enter valid vehicle dimensions before checking the route.')
+      setFormError('Enter valid vehicle dimensions before checking the route.')
       return
     }
     if (!gpxContent) {
-      setError('Route file is still loading. Wait a moment and try again.')
+      setFormError('Route file is still loading. Wait a moment and try again.')
       setToast('Route file is still loading.')
       return
     }
@@ -431,11 +499,13 @@ export default function RouteIntelligencePolished() {
         ? job.plannedDeparture
         : defaultDepartureIso(8)
       setPlannedDeparture(toLocalInput(jobDeparture))
+      clearDemoDeparture()
       setDepartureExpiryError('')
       setJobName(job.name)
       setJobInterval(job.monitorIntervalMinutes || prefs.intervalMinutes)
       setShowTestPermits(false)
       setError('')
+      setFormError('')
       setActivePermitId(null)
       setClearanceConfirmed(Boolean(job.bridgeClearanceConfirmed))
       setClearanceBy(job.clearanceConfirmedBy || '')
@@ -469,17 +539,19 @@ export default function RouteIntelligencePolished() {
         setGpxContent(content)
         setShowTestPermits(false)
         setError('')
+        setFormError('')
         setPermitNumber(permit.kind === 'scenario' ? permit.permitNumber : (metadata?.permitNumber || permit.permitNumber))
         applyPermitVehicle(permit, metadata)
         setActivePermitId(permit.id)
         applyPermitClearance(permit, metadata)
+        const demoIso = applyDemoDeparture(permit, metadata)
         if (autoRun) {
-          await runCheck(content, metadata, permit)
+          await runCheck(content, metadata, permit, [], demoIso)
         } else {
           setStep('vehicle')
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load sample permit')
+        setFileError(err instanceof Error ? err.message : 'Failed to load sample permit')
       }
     })()
   }, [getJob, prefs.intervalMinutes, searchParams])
@@ -491,8 +563,12 @@ export default function RouteIntelligencePolished() {
     setGpxContent('')
     setError('')
     setErrorTechnical('')
+    setFormError('')
     setGpxSimplifyNote('')
     setPermitNumber('')
+    setPlannedDeparture('')
+    clearDemoDeparture()
+    setDepartureExpiryError('')
     setShowSaveJob(false)
     loadedJob.current = null
     setActivePermitId(null)
@@ -790,6 +866,15 @@ export default function RouteIntelligencePolished() {
                 </div>
               </div>
             )}
+            {formError && step === 'import' && (
+              <div className="error-message" role="alert" data-testid="departure-required-error">
+                <AlertTriangle size={20} />
+                <div>
+                  <strong>Planned departure needed</strong>
+                  <p>{formError}</p>
+                </div>
+              </div>
+            )}
 
             <div className="divider-text">
               <span>or select a sample permit</span>
@@ -939,17 +1024,36 @@ export default function RouteIntelligencePolished() {
                   onChange={event => {
                     setPlannedDeparture(event.target.value)
                     setDepartureExpiryError('')
+                    if (demoDepartureLabel) clearDemoDeparture()
+                    setFormError('')
                   }}
                   required
                   aria-required="true"
-                  aria-invalid={Boolean(departureExpiryError) || undefined}
-                  aria-describedby={departureExpiryError ? 'planned-departure-error' : 'planned-departure-hint'}
+                  aria-invalid={Boolean(departureExpiryError || (formError && !departureValid)) || undefined}
+                  aria-describedby={
+                    departureExpiryError
+                      ? 'planned-departure-error'
+                      : demoDepartureLabel
+                        ? 'planned-departure-demo'
+                        : 'planned-departure-hint'
+                  }
                 />
               </label>
-              <p id="planned-departure-hint" className="storage-note">No default is filled in — enter the real planned departure. Each restriction is judged against this window. Also used when you save a job. Monitoring only runs while the tab is open and stops after this time.</p>
+              {demoDepartureLabel ? (
+                <p id="planned-departure-demo" className="storage-note" data-testid="demo-departure-note">
+                  {demoDepartureLabel}
+                </p>
+              ) : (
+                <p id="planned-departure-hint" className="storage-note">No default is filled in — enter the real planned departure. Each restriction is judged against this window. Also used when you save a job. Monitoring only runs while the tab is open and stops after this time.</p>
+              )}
               {departureExpiryError && (
                 <p id="planned-departure-error" className="field-error" role="alert" data-testid="departure-expiry-error">
                   {departureExpiryError}
+                </p>
+              )}
+              {formError && !departureExpiryError && (
+                <p className="field-error" role="alert" data-testid="departure-required-error">
+                  {formError}
                 </p>
               )}
             </div>

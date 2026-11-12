@@ -137,3 +137,32 @@ export function fromLocalInput(value: string) {
 export function defaultDepartureIso(hoursAhead = 8) {
   return new Date(Date.now() + hoursAhead * 60 * 60 * 1000).toISOString()
 }
+
+/** Demo/sample departure inside the permit window (or ~8h ahead when no window). */
+export function demoDepartureIso(
+  permit?: { validFrom?: string; validUntil?: string } | null,
+  nowMs = Date.now(),
+  hoursAhead = 8,
+) {
+  const candidate = nowMs + hoursAhead * 60 * 60 * 1000
+  const from = Date.parse(permit?.validFrom || '')
+  const until = Date.parse(permit?.validUntil || '')
+  const hasFrom = Number.isFinite(from)
+  const hasUntil = Number.isFinite(until)
+
+  let chosen = candidate
+  if (hasFrom && hasUntil) {
+    if (candidate < from) chosen = from + 60 * 60 * 1000
+    else if (candidate > until) chosen = Math.max(from, until - 60 * 60 * 1000)
+  } else if (hasFrom && candidate < from) {
+    chosen = from + 60 * 60 * 1000
+  } else if (hasUntil && candidate > until) {
+    chosen = until - 60 * 60 * 1000
+  }
+  return new Date(chosen).toISOString()
+}
+
+/** File-use errors only — missing departure must never use this heading. */
+export function isGpxFileProblemMessage(message: string) {
+  return /gpx|file|vemags|upload|too large|valid route|parse|xml|pdf/i.test(message)
+}
