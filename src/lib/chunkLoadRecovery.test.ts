@@ -7,9 +7,12 @@ import {
   importWithChunkRecovery,
   installChunkLoadRecovery,
   isChunkLoadError,
+  isMissingLazyModule,
   markChunkReload,
   readChunkReloadAt,
+  resetChunkReloadInitiatedForTests,
   tryReloadForChunkError,
+  wasChunkReloadInitiated,
   type ChunkReloadStorage,
 } from './chunkLoadRecovery.ts'
 
@@ -40,11 +43,28 @@ test('isChunkLoadError detects dynamic import and preload failures', () => {
   )
   assert.equal(isChunkLoadError(new TypeError('Importing a module script failed.')), true)
   assert.equal(isChunkLoadError(new Error('Unable to preload CSS for /assets/x.css')), true)
-  assert.equal(isChunkLoadError(new Error('Cannot read properties of undefined')), false)
+  assert.equal(
+    isChunkLoadError(new TypeError("Cannot read properties of undefined (reading 'default')")),
+    true,
+  )
+  assert.equal(
+    isChunkLoadError(new TypeError('Cannot read property of undefined (reading "default")')),
+    true,
+  )
+  // Unrelated undefined access should not be treated as a chunk failure.
+  assert.equal(isChunkLoadError(new Error('Cannot read properties of undefined (reading \'foo\')')), false)
   assert.equal(isChunkLoadError(null), false)
 })
 
+test('isMissingLazyModule detects preventDefault undefined resolves', () => {
+  assert.equal(isMissingLazyModule(undefined), true)
+  assert.equal(isMissingLazyModule(null), true)
+  assert.equal(isMissingLazyModule({ default: () => null }), false)
+  assert.equal(isMissingLazyModule({}), false)
+})
+
 test('tryReloadForChunkError reloads once and guards against loops', () => {
+  resetChunkReloadInitiatedForTests()
   const storage = memoryStorage()
   let reloads = 0
   const navigation = { reload: () => { reloads += 1 } }
@@ -59,6 +79,7 @@ test('tryReloadForChunkError reloads once and guards against loops', () => {
   assert.equal(first, true)
   assert.equal(reloads, 1)
   assert.equal(storage.data[CHUNK_RELOAD_STORAGE_KEY], '1000')
+  assert.equal(wasChunkReloadInitiated(), true)
 
   const second = tryReloadForChunkError({
     error: new TypeError('Failed to fetch dynamically imported module: https://x/a.js'),
@@ -69,6 +90,7 @@ test('tryReloadForChunkError reloads once and guards against loops', () => {
   assert.equal(second, false)
   assert.equal(reloads, 1)
 
+  resetChunkReloadInitiatedForTests()
   now += CHUNK_RELOAD_TTL_MS + 1
   const third = tryReloadForChunkError({
     error: new TypeError('Failed to fetch dynamically imported module: https://x/b.js'),
@@ -78,9 +100,11 @@ test('tryReloadForChunkError reloads once and guards against loops', () => {
   })
   assert.equal(third, true)
   assert.equal(reloads, 2)
+  assert.equal(wasChunkReloadInitiated(), true)
 })
 
 test('tryReloadForChunkError ignores non-chunk errors unless forced', () => {
+  resetChunkReloadInitiatedForTests()
   const storage = memoryStorage()
   let reloads = 0
   const navigation = { reload: () => { reloads += 1 } }
@@ -94,6 +118,7 @@ test('tryReloadForChunkError ignores non-chunk errors unless forced', () => {
     false,
   )
   assert.equal(reloads, 0)
+  assert.equal(wasChunkReloadInitiated(), false)
 
   assert.equal(
     tryReloadForChunkError({
@@ -106,6 +131,7 @@ test('tryReloadForChunkError ignores non-chunk errors unless forced', () => {
   )
   assert.equal(reloads, 1)
   assert.equal(storage.data[CHUNK_RELOAD_STORAGE_KEY], '42')
+  assert.equal(wasChunkReloadInitiated(), true)
 })
 
 test('readChunkReloadAt expires and clears stale markers', () => {
@@ -120,6 +146,7 @@ test('readChunkReloadAt expires and clears stale markers', () => {
 })
 
 test('importWithChunkRecovery reloads on chunk failure then rethrows after guard', async () => {
+  resetChunkReloadInitiatedForTests()
   const storage = memoryStorage()
   let reloads = 0
   const navigation = { reload: () => { reloads += 1 } }
@@ -138,7 +165,11 @@ test('importWithChunkRecovery reloads on chunk failure then rethrows after guard
     new Promise<void>(resolve => setTimeout(resolve, 20)),
   ])
   assert.equal(reloads, 1)
+  assert.equal(wasChunkReloadInitiated(), true)
 
+  // Simulate a fresh document after the recovery reload (new JS realm clears the flag;
+  // sessionStorage marker remains).
+  resetChunkReloadInitiatedForTests()
   await assert.rejects(
     () => importWithChunkRecovery(
       () => Promise.reject(chunkError),
@@ -147,14 +178,122 @@ test('importWithChunkRecovery reloads on chunk failure then rethrows after guard
     chunkError,
   )
   assert.equal(reloads, 1)
+  assert.equal(wasChunkReloadInitiated(), false)
+})
+
+test('importWithChunkRecovery keeps Suspense pending when vite listener already reloaded', async () => {
+  resetChunkReloadInitiatedForTests()
+  const storage = memoryStorage()
+  let reloads = 0
+  const navigation = { reload: () => { reloads += 1 } }
+
+  // vite:preloadError path marks + reloads before the import promise settles.
+  assert.equal(
+    tryReloadForChunkError({
+      force: true,
+      storage,
+      navigation,
+      now: () => 9,
+    }),
+    true,
+  )
+  assert.equal(reloads, 1)
+
+  const pending = importWithChunkRecovery(
+    () => Promise.reject(new TypeError('Failed to fetch dynamically imported module: https://x/Jobs.js')),
+    { storage, navigation, now: () => 9 },
+  )
+  await Promise.race([
+    pending.then(
+      () => { throw new Error('expected pending promise') },
+      () => { throw new Error('expected pending promise') },
+    ),
+    new Promise<void>(resolve => setTimeout(resolve, 20)),
+  ])
+  assert.equal(reloads, 1)
+})
+
+test('importWithChunkRecovery recovers when preventDefault resolves undefined module', async () => {
+  resetChunkReloadInitiatedForTests()
+  const storage = memoryStorage()
+  let reloads = 0
+  const navigation = { reload: () => { reloads += 1 } }
+
+  const pending = importWithChunkRecovery(
+    // Simulates Vite handlePreloadError after preventDefault: catch returns undefined.
+    async () => undefined as never,
+    { storage, navigation, now: () => 11 },
+  )
+  await Promise.race([
+    pending.then(
+      () => { throw new Error('expected pending promise') },
+      () => { throw new Error('expected pending promise') },
+    ),
+    new Promise<void>(resolve => setTimeout(resolve, 20)),
+  ])
+  assert.equal(reloads, 1)
+  assert.equal(wasChunkReloadInitiated(), true)
+  assert.equal(storage.data[CHUNK_RELOAD_STORAGE_KEY], '11')
+})
+
+test('importWithChunkRecovery undefined module stays pending when vite already reloaded', async () => {
+  resetChunkReloadInitiatedForTests()
+  const storage = memoryStorage()
+  let reloads = 0
+  const navigation = { reload: () => { reloads += 1 } }
+
+  assert.equal(
+    tryReloadForChunkError({
+      force: true,
+      storage,
+      navigation,
+      now: () => 13,
+    }),
+    true,
+  )
+  assert.equal(reloads, 1)
+
+  const pending = importWithChunkRecovery(
+    async () => undefined as never,
+    { storage, navigation, now: () => 13 },
+  )
+  await Promise.race([
+    pending.then(
+      () => { throw new Error('expected pending promise') },
+      () => { throw new Error('expected pending promise') },
+    ),
+    new Promise<void>(resolve => setTimeout(resolve, 20)),
+  ])
+  assert.equal(reloads, 1)
+})
+
+test('importWithChunkRecovery undefined module rethrows after guard on fresh document', async () => {
+  resetChunkReloadInitiatedForTests()
+  const storage = memoryStorage({ [CHUNK_RELOAD_STORAGE_KEY]: '13' })
+  let reloads = 0
+  const navigation = { reload: () => { reloads += 1 } }
+
+  await assert.rejects(
+    () => importWithChunkRecovery(
+      async () => undefined as never,
+      { storage, navigation, now: () => 13 },
+    ),
+    (err: unknown) =>
+      err instanceof TypeError &&
+      /Failed to fetch dynamically imported module/.test(err.message),
+  )
+  assert.equal(reloads, 0)
+  assert.equal(wasChunkReloadInitiated(), false)
 })
 
 test('importWithChunkRecovery resolves successful imports', async () => {
+  resetChunkReloadInitiatedForTests()
   const value = await importWithChunkRecovery(async () => ({ default: 1 }))
   assert.deepEqual(value, { default: 1 })
 })
 
 test('installChunkLoadRecovery preventDefault only when a reload starts', () => {
+  resetChunkReloadInitiatedForTests()
   const storage = memoryStorage()
   let reloads = 0
   const listeners = new Map<string, Set<EventListener>>()
@@ -182,6 +321,7 @@ test('installChunkLoadRecovery preventDefault only when a reload starts', () => 
   for (const listener of listeners.get('vite:preloadError') ?? []) listener(first)
   assert.equal(reloads, 1)
   assert.equal(prevented, 1)
+  assert.equal(wasChunkReloadInitiated(), true)
 
   prevented = 0
   const second = {

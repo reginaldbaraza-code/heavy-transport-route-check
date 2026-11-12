@@ -4,11 +4,16 @@ import {
   isChunkLoadError,
   readChunkReloadAt,
   tryReloadForChunkError,
+  wasChunkReloadInitiated,
 } from '../lib/chunkLoadRecovery'
 
 type State = {
   error: Error | null
   recovering: boolean
+}
+
+function sessionStore(): Storage | null {
+  return typeof sessionStorage === 'undefined' ? null : sessionStorage
 }
 
 export default class AppErrorBoundary extends Component<{ children: ReactNode }, State> {
@@ -19,7 +24,21 @@ export default class AppErrorBoundary extends Component<{ children: ReactNode },
   }
 
   static getDerivedStateFromError(error: Error): Partial<State> {
-    return { error }
+    if (isChunkLoadError(error)) {
+      // Reload already kicked off (vite listener or import wrapper) — keep the
+      // updating UI up while the document unloads; never flash the crash screen.
+      if (wasChunkReloadInitiated()) {
+        return { error: null, recovering: true }
+      }
+      const alreadyTried = readChunkReloadAt(sessionStore()) != null
+      if (!alreadyTried) {
+        // componentDidCatch will start the guarded reload.
+        return { error: null, recovering: true }
+      }
+      // Persistent failure after a prior reload — show the new-version message.
+      return { error, recovering: false }
+    }
+    return { error, recovering: false }
   }
 
   componentDidMount() {
@@ -27,10 +46,19 @@ export default class AppErrorBoundary extends Component<{ children: ReactNode },
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('HTR application error', error, info)
-    if (tryReloadForChunkError({ error })) {
-      this.setState({ error: null, recovering: true })
+    if (isChunkLoadError(error)) {
+      if (tryReloadForChunkError({ error })) {
+        this.setState({ error: null, recovering: true })
+        return
+      }
+      if (wasChunkReloadInitiated()) {
+        this.setState({ error: null, recovering: true })
+        return
+      }
+      // Guard already spent — surface the new-version UI without a spurious app-error log.
+      return
     }
+    console.error('HTR application error', error, info)
   }
 
   componentWillUnmount() {
@@ -53,9 +81,7 @@ export default class AppErrorBoundary extends Component<{ children: ReactNode },
     if (!this.state.error) return this.props.children
 
     const chunkFailure = isChunkLoadError(this.state.error)
-    const reloadAlreadyTried = chunkFailure && readChunkReloadAt(
-      typeof sessionStorage === 'undefined' ? null : sessionStorage,
-    ) != null
+    const reloadAlreadyTried = chunkFailure && readChunkReloadAt(sessionStore()) != null
 
     return (
       <main className="app-error-screen">

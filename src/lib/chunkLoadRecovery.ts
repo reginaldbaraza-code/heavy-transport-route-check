@@ -7,12 +7,32 @@ export const CHUNK_RELOAD_TTL_MS = 30_000
 const DYNAMIC_IMPORT_RE =
   /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed|Unable to preload CSS/i
 
+/** React.lazy crash when a prevented vite:preloadError resolves the import as undefined. */
+const UNDEFINED_LAZY_DEFAULT_RE =
+  /Cannot read propert(?:y|ies) of undefined \(reading ['"]default['"]\)/i
+
 export type ChunkReloadStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
 
 export type ChunkReloadClock = () => number
 
 export type ChunkReloadNavigation = {
   reload: () => void
+}
+
+/**
+ * True for this document after tryReloadForChunkError starts a reload.
+ * Resets on full navigation (new JS realm). Distinguishes an in-flight recovery
+ * reload from a sessionStorage marker left by a previous page load.
+ */
+let chunkReloadInitiatedThisDocument = false
+
+/** Test helper — reset the in-document reload flag between cases. */
+export function resetChunkReloadInitiatedForTests(): void {
+  chunkReloadInitiatedThisDocument = false
+}
+
+export function wasChunkReloadInitiated(): boolean {
+  return chunkReloadInitiatedThisDocument
 }
 
 export function isChunkLoadError(error: unknown): boolean {
@@ -26,9 +46,19 @@ export function isChunkLoadError(error: unknown): boolean {
           ? String((error as { message: unknown }).message)
           : ''
   if (DYNAMIC_IMPORT_RE.test(message)) return true
+  if (UNDEFINED_LAZY_DEFAULT_RE.test(message)) return true
   // Chromium sometimes surfaces a bare TypeError without a useful message for 404 chunks.
   if (error instanceof TypeError && /fetch|load|import/i.test(message || 'fetch')) return true
   return false
+}
+
+/**
+ * Vite's preload helper resolves the dynamic import with `undefined` when a
+ * `vite:preloadError` listener calls `preventDefault()` (see Vite handlePreloadError).
+ * React.lazy then crashes reading `.default`. Treat that as a failed chunk load.
+ */
+export function isMissingLazyModule(module: unknown): boolean {
+  return module == null
 }
 
 export function readChunkReloadAt(
@@ -99,8 +129,17 @@ export function tryReloadForChunkError(options: {
   if (!force && error !== undefined && !isChunkLoadError(error)) return false
   if (readChunkReloadAt(storage, now) != null) return false
   markChunkReload(storage, now)
+  chunkReloadInitiatedThisDocument = true
   navigation.reload()
   return true
+}
+
+/**
+ * Keep React.lazy / Suspense pending while a recovery reload unloads the document.
+ * Used when we started the reload, or when vite:preloadError already did.
+ */
+function pendingWhileReloading<T>(): Promise<T> {
+  return new Promise<T>(() => undefined)
 }
 
 export function installChunkLoadRecovery(options?: {
@@ -120,8 +159,10 @@ export function installChunkLoadRecovery(options?: {
       now: options?.now,
     })
     // Only swallow Vite's default throw when we are recovering with a reload.
-    // If the guard blocks another reload, let the failure surface to React.lazy /
-    // the error boundary (otherwise the import can resolve without a module).
+    // preventDefault makes the dynamic import resolve with `undefined` — callers
+    // must use importWithChunkRecovery (or equivalent) so React.lazy never sees it.
+    // If the guard blocks another reload, let the failure reject so the error
+    // boundary can show the new-version message.
     if (
       reloaded &&
       'preventDefault' in event &&
@@ -147,17 +188,35 @@ export function importWithChunkRecovery<T>(
     now?: ChunkReloadClock
   },
 ): Promise<T> {
-  return importer().catch(error => {
+  const storage = options?.storage
+  const navigation = options?.navigation
+  const now = options?.now
+
+  const recoverOrThrow = (error: unknown): Promise<T> => {
     const reloaded = tryReloadForChunkError({
       error,
-      storage: options?.storage,
-      navigation: options?.navigation,
-      now: options?.now,
+      storage,
+      navigation,
+      now,
     })
-    if (reloaded) {
-      // Keep the Suspense boundary pending while the document unloads.
-      return new Promise<T>(() => undefined)
+    if (reloaded || wasChunkReloadInitiated()) {
+      return pendingWhileReloading()
     }
-    throw error
-  })
+    throw error instanceof Error
+      ? error
+      : new TypeError('Failed to fetch dynamically imported module')
+  }
+
+  return importer().then(
+    (mod) => {
+      // preventDefault on vite:preloadError → import resolves undefined instead of rejecting.
+      if (isMissingLazyModule(mod)) {
+        return recoverOrThrow(
+          new TypeError('Failed to fetch dynamically imported module'),
+        )
+      }
+      return mod
+    },
+    (error: unknown) => recoverOrThrow(error),
+  )
 }
