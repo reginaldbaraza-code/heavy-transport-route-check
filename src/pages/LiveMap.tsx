@@ -403,11 +403,6 @@ export default function LiveMap() {
     if (stage) observer.observe(stage)
 
     mapRef.current = map
-    
-    // Expose map instance for testing (non-production only)
-    if (typeof window !== 'undefined' && import.meta.env.DEV === false) {
-      (window as any).__TEST_CORRIDOR_MAP__ = map;
-    }
 
     return () => {
       observer.disconnect()
