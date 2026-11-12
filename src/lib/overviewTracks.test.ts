@@ -11,6 +11,7 @@ import {
   VERDICT_TRACK_COLORS,
   getOverviewFeatured,
   getOverviewMonitorPermits,
+  overviewTallyCounts,
   overviewVerdictForPermit,
 } from './overviewTracks.ts'
 import { sampleTestPermits, scenarioTestPermits } from './routeCheck.ts'
@@ -19,24 +20,33 @@ test('overview hero uses four real test-permit GPX tracks with mixed verdicts', 
   const overview = getOverviewMonitorPermits()
   assert.equal(overview.length, 4)
   const overviewVerdicts = new Set(overview.map(item => item.verdict))
+  assert.ok(overviewVerdicts.has('READY'))
   assert.ok(overviewVerdicts.has('VERIFY'))
   assert.ok(overviewVerdicts.has('HOLD'))
-  // READY lives on scenario samples; live overview tracks mirror post-#27 outcomes.
-  const labelled = [...sampleTestPermits, ...scenarioTestPermits]
-  const allSampleVerdicts = new Set(labelled.map(permit => overviewVerdictForPermit(permit)))
-  assert.ok(allSampleVerdicts.has('READY'))
-  assert.ok(allSampleVerdicts.has('VERIFY'))
-  assert.ok(allSampleVerdicts.has('HOLD'))
+  const tallies = overviewTallyCounts(overview.map(item => item.permit))
+  assert.deepEqual(tallies, { total: 4, ready: 1, verify: 2, hold: 1 })
 
   for (const item of overview) {
     const configured = OVERVIEW_MONITOR_ROUTES.find(route => route.id === item.permit.id)
     assert.ok(configured, item.permit.id)
-    assert.equal(item.verdict, item.permit.expectedVerdict ?? configured.verdict)
+    assert.equal(item.verdict, configured.verdict)
     const xml = readFileSync(join('public', item.permit.gpxFile.replace(/^\//, '')), 'utf8')
     const points = parseGpxTrack(xml)
     assert.ok(points.length >= 200, `${item.permit.id} has ${points.length} points`)
     assert.notEqual(points.length, 6, `${item.permit.id} must not be the sparse fake overlay`)
   }
+})
+
+test('Overview demo tallies are Ready 1 | Verify 2 | Hold 1', () => {
+  const tallies = overviewTallyCounts()
+  assert.equal(tallies.total, 4)
+  assert.equal(tallies.ready, 1)
+  assert.equal(tallies.verify, 2)
+  assert.equal(tallies.hold, 1)
+  const ready = getOverviewMonitorPermits().find(item => item.verdict === 'READY')
+  assert.equal(ready?.permit.id, 'scenario-ready')
+  assert.equal(ready?.permit.expectedVerdict, 'READY')
+  assert.equal(ready?.permit.scenario, 'ready-clear')
 })
 
 test('Hamburg→Hannover sample GPX starts in Hamburg and ends in Hannover', () => {
@@ -59,9 +69,12 @@ test('Hamburg→Hannover sample GPX starts in Hamburg and ends in Hannover', () 
 test('overview verdicts prefer the labelled sample outcome', () => {
   const hamburg = sampleTestPermits.find(permit => permit.id === 'hamburg-hannover')
   const lubeck = sampleTestPermits.find(permit => permit.id === 'lubeck-rostock')
+  const ready = scenarioTestPermits.find(permit => permit.id === 'scenario-ready')
   const munich = sampleTestPermits.find(permit => permit.id === 'munchen-stuttgart')
   assert.equal(overviewVerdictForPermit(hamburg!), 'VERIFY')
+  // Live Lübeck sample stays VERIFY; overview READY comes from the ready-clear scenario track.
   assert.equal(overviewVerdictForPermit(lubeck!), 'VERIFY')
+  assert.equal(overviewVerdictForPermit(ready!), 'READY')
   // München omits a hardcoded expectedVerdict (live HOLD depends on Restbreite); overview still demos HOLD.
   assert.equal(munich!.expectedVerdict, undefined)
   assert.equal(overviewVerdictForPermit(munich!), 'HOLD')
