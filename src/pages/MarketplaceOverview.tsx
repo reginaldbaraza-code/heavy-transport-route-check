@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import LazyPermitMap from '../components/LazyPermitMap'
 import PageHeader from '../components/PageHeader'
-import OverviewMapWithTallies from '../components/OverviewMapWithTallies'
+import OverviewTallies from '../components/OverviewTallies'
 import SourceStatusPanel from '../components/SourceStatusPanel'
 import {
   defaultVehicleProfile, getRouteCheckResult, permittedRoutes,
@@ -275,6 +275,8 @@ export default function MarketplaceOverview() {
               </div>
             </section>
 
+            <OverviewTallies permits={overviewPermits} />
+
             <section className="transport-workflow" aria-label="Heavy transport route monitoring workflow">
               <div><span>1</span><FileJson size={18} /><strong>Import the permit</strong><p>Upload the exact VEMAGS route and approved transport dimensions.</p></div>
               <ArrowRight size={18} />
@@ -282,18 +284,6 @@ export default function MarketplaceOverview() {
               <ArrowRight size={18} />
               <div><span>3</span><ShieldCheck size={18} /><strong>Monitor until departure</strong><p>Receive early warnings when conditions change or evidence is uncertain.</p></div>
             </section>
-
-            <OverviewMapWithTallies
-              routes={permittedRoutes.map(route => {
-                const result = getRouteCheckResult(route, defaultVehicleProfile)
-                return {
-                  id: route.id,
-                  origin: route.originShort,
-                  destination: route.destinationShort,
-                  verdict: result.verdict,
-                }
-              })}
-            />
 
             <div className="market-two-column">
               <section className="market-section">
