@@ -236,7 +236,7 @@ export default function Home() {
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
               <span style={{ fontSize: 14, fontWeight: 600, color: 'rgba(255,255,255,0.85)', letterSpacing: '-0.01em' }}>Platform</span>
-              <TrendingUp size={14} style={{ color: '#f5c518' }} />
+              <TrendingUp size={14} style={{ color: 'var(--accent)' }} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, marginBottom: 18 }}>
               {[['134', 'Data Offers'], ['157', 'Members']].map(([num, lbl]) => (
@@ -264,7 +264,7 @@ export default function Home() {
                 <button key={name} onClick={() => navigate('/catalogue')}
                   style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 7, background: 'none', cursor: 'pointer' }}>
                   <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)' }}>{name}</span>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: '#f5c518', fontVariantNumeric: 'tabular-nums' }}>{n}</span>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--accent)', fontVariantNumeric: 'tabular-nums' }}>{n}</span>
                 </button>
               ))}
             </div>
