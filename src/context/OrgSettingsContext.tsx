@@ -1,5 +1,5 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'
-import { readJson, STORAGE_KEYS, writeJson } from '../lib/browserStore'
+import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
+import { getActiveUserId, readJson, STORAGE_KEYS, writeJson } from '../lib/browserStore'
 import { isValidWebsiteUrl, WEBSITE_URL_ERROR } from '../lib/urlValidation'
 
 export type OrgProfile = {
@@ -55,6 +55,9 @@ type OrgSettingsValue = {
 const OrgSettingsContext = createContext<OrgSettingsValue | null>(null)
 
 export function OrgSettingsProvider({ children }: { children: ReactNode }) {
+  const sessionUserIdRef = useRef<string | null>(getActiveUserId())
+  sessionUserIdRef.current = getActiveUserId()
+
   const stored = typeof window === 'undefined'
     ? null
     : readJson<StoredSettings | null>(STORAGE_KEYS.orgProfile, null)
@@ -71,7 +74,13 @@ export function OrgSettingsProvider({ children }: { children: ReactNode }) {
   )
 
   const persist = (nextProfile: OrgProfile, nextNotifications: NotificationPrefs) => {
-    writeJson(STORAGE_KEYS.orgProfile, { profile: nextProfile, notifications: nextNotifications } satisfies StoredSettings)
+    const userId = sessionUserIdRef.current
+    if (!userId || getActiveUserId() !== userId) return
+    writeJson(
+      STORAGE_KEYS.orgProfile,
+      { profile: nextProfile, notifications: nextNotifications } satisfies StoredSettings,
+      { userId },
+    )
   }
 
   const setProfile: OrgSettingsValue['setProfile'] = update => {

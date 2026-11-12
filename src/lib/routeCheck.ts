@@ -45,6 +45,8 @@ export type RouteCheckOptions = {
     acknowledgedBy: string;
     acknowledgedAt: string;
   }>;
+  /** Abort in-flight checks when the user switches accounts. */
+  signal?: AbortSignal;
 };
 
 export type TestPermitKind = 'live' | 'scenario';
@@ -466,6 +468,7 @@ export async function checkRoute(
   options: string | RouteCheckOptions = {},
 ): Promise<RouteCheckResult> {
   const opts: RouteCheckOptions = typeof options === 'string' ? { permitNumber: options } : options;
+  const { signal, ...bodyOpts } = opts;
   const response = await fetch('/api/check-route', {
     method: 'POST',
     headers: {
@@ -474,8 +477,9 @@ export async function checkRoute(
     body: JSON.stringify({
       gpxContent,
       vehicle,
-      ...opts,
+      ...bodyOpts,
     }),
+    signal,
   });
 
   if (!response.ok) {

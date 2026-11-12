@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { RouteVerdict } from '../data/routeChecks'
-import { flushPendingSaves, getCachedRaw, readJson, STORAGE_KEYS, writeJson } from '../lib/browserStore'
+import { flushPendingSaves, getActiveUserId, getCachedRaw, readJson, STORAGE_KEYS, writeJson } from '../lib/browserStore'
 import {
   applyCheckToJob,
   DEFAULT_MONITOR_PREFS,
@@ -71,11 +71,26 @@ export function JobsProvider({ children }: { children: ReactNode }) {
   const prefsRef = useRef(prefs)
   const alertsRef = useRef(alerts)
   const checkingRef = useRef<Set<string>>(new Set())
+  /** User this provider session belongs to — never read "current user" at flush/apply time. */
+  const sessionUserIdRef = useRef<string | null>(getActiveUserId())
+  const checkAbortRef = useRef<AbortController>(new AbortController())
   jobsRef.current = jobs
   prefsRef.current = prefs
   alertsRef.current = alerts
 
+  useEffect(() => {
+    sessionUserIdRef.current = getActiveUserId()
+    const controller = new AbortController()
+    checkAbortRef.current = controller
+    return () => {
+      controller.abort()
+      checkingRef.current.clear()
+    }
+  }, [])
+
   const persistJobs = (next: SavedJob[], opts?: { immediate?: boolean }) => {
+    const userId = sessionUserIdRef.current
+    if (!userId || getActiveUserId() !== userId) return
     const normalized = next.map(normalizeSavedJob)
     const prepared = prepareSavedJobsForPersist(normalized, {
       maxRecords: SAVED_JOBS_MAX_RECORDS,
@@ -91,7 +106,7 @@ export function JobsProvider({ children }: { children: ReactNode }) {
         },
       }))
     }
-    writeJson(STORAGE_KEYS.savedJobs, forMemory, { immediate: opts?.immediate })
+    writeJson(STORAGE_KEYS.savedJobs, forMemory, { immediate: opts?.immediate, userId })
     setJobs(forMemory)
   }
 
@@ -135,7 +150,10 @@ export function JobsProvider({ children }: { children: ReactNode }) {
   const setPrefs = useCallback<JobsValue['setPrefs']>(patch => {
     setPrefsState(current => {
       const next = { ...current, ...patch }
-      writeJson(STORAGE_KEYS.monitorPrefs, next)
+      const userId = sessionUserIdRef.current
+      if (userId && getActiveUserId() === userId) {
+        writeJson(STORAGE_KEYS.monitorPrefs, next, { userId })
+      }
       return next
     })
   }, [])
@@ -151,6 +169,8 @@ export function JobsProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const applyResult = useCallback((job: SavedJob, result: RouteCheckResult, kind: 'check' | 'verdict-change') => {
+    const userId = sessionUserIdRef.current
+    if (!userId || getActiveUserId() !== userId) return null
     const nowIso = new Date().toISOString()
     const previous = job.lastVerdict
     const nextJob = applyCheckToJob(job, result, nowIso)
@@ -205,6 +225,10 @@ export function JobsProvider({ children }: { children: ReactNode }) {
   const runJobCheck = useCallback<JobsValue['runJobCheck']>(async id => {
     const job = jobsRef.current.find(item => item.id === id)
     if (!job || checkingRef.current.has(id)) return null
+    const userId = sessionUserIdRef.current
+    if (!userId || getActiveUserId() !== userId) return null
+    const signal = checkAbortRef.current.signal
+    if (signal.aborted) return null
     checkingRef.current.add(id)
     setCheckingJobId(id)
     try {
@@ -212,10 +236,19 @@ export function JobsProvider({ children }: { children: ReactNode }) {
         ...jobCheckOptions(job),
         departureStart: job.plannedDeparture,
         acknowledgements: job.siteAcknowledgements,
+        signal,
       })
+      // Re-check results apply only if this session's user is still active.
+      if (signal.aborted || getActiveUserId() !== userId || sessionUserIdRef.current !== userId) {
+        return null
+      }
       applyResult(job, result, job.lastVerdict && job.lastVerdict !== result.verdict ? 'verdict-change' : 'check')
       return result
     } catch (error) {
+      if (signal.aborted || (error instanceof DOMException && error.name === 'AbortError') || (error instanceof Error && error.name === 'AbortError')) {
+        return null
+      }
+      if (getActiveUserId() !== userId || sessionUserIdRef.current !== userId) return null
       const nowIso = new Date().toISOString()
       updateJob(id, { lastCheckedAt: nowIso, lastSummary: error instanceof Error ? error.message : 'Check failed' })
       return null
@@ -332,9 +365,10 @@ export function JobsProvider({ children }: { children: ReactNode }) {
       },
       setStore: (key: string, value: unknown) => {
         // Immediate so QA multi-job saves mirror real job-save flushes (no debounce pile-up).
-        writeJson(key, value, { immediate: true })
+        const userId = sessionUserIdRef.current ?? getActiveUserId() ?? undefined
+        writeJson(key, value, { immediate: true, userId })
       },
-      flushStore: () => flushPendingSaves(),
+      flushStore: () => flushPendingSaves({ userId: sessionUserIdRef.current ?? undefined }),
       simulateVerdictChange: (jobId, verdict) => simulateVerdictChange(jobId, verdict),
       tickMs: window.__HT_TEST__?.tickMs,
       pdfBytesFromSnapshot: window.__HT_TEST__?.pdfBytesFromSnapshot ?? (() => {

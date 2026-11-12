@@ -2309,6 +2309,159 @@ async function main() {
     JSON.stringify({ ui: annaSeesAgain, ...annaApiAgain }),
   )
 
+  // Race: Anna has a job + delayed re-check / pending save; switch to Paul within ~1s.
+  // Paul must stay empty; Anna's job (same createdAt) must stay intact.
+  const raceJobName = `Anna race ${Date.now()}`
+  const raceCreatedAt = new Date().toISOString()
+  await page.getByRole('button', { name: 'Switch user' }).first().click()
+  await page.getByRole('heading', { name: "Who's checking routes?" }).waitFor({ timeout: 15000 })
+  // Switch user must clear htr-current-user so reload does not auto-sign Anna back in.
+  const storedAfterSwitch = await page.evaluate(() => {
+    try { return localStorage.getItem('htr-current-user') } catch { return 'err' }
+  })
+  record('Switch user clears htr-current-user', storedAfterSwitch == null, `stored=${storedAfterSwitch}`)
+  await page.getByRole('button', { name: 'Continue as Anna' }).click()
+  await page.waitForFunction(() => !document.querySelector('.login-screen'), null, { timeout: 30000 })
+  await page.waitForFunction(() => Boolean(window.__HT_TEST__?.setStore), null, { timeout: 20000 })
+
+  let releaseCheck = null
+  const checkGate = new Promise(resolve => { releaseCheck = resolve })
+  await page.route('**/api/check-route', async (route) => {
+    await checkGate
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        verdict: 'READY',
+        title: 'Route clear – race test',
+        summary: 'Delayed re-check for isolation race',
+        impact: 'n/a',
+        confidence: 'medium',
+        issueCount: 0,
+        evidence: [],
+        route: { coordinates: [], origin: 'A', destination: 'B', distance: 1, corridor: 'A7' },
+        degraded: false,
+        retrievedAt: new Date().toISOString(),
+        source: 'QA race',
+      }),
+    })
+  })
+
+  await page.evaluate(async ({ name, createdAt }) => {
+    const job = {
+      id: `job-anna-race-${Date.now()}`,
+      name,
+      permitName: name,
+      permitNumber: 'ISO-RACE',
+      corridor: 'A7',
+      permittedRoads: ['A7'],
+      origin: 'A',
+      destination: 'B',
+      plannedDeparture: new Date(Date.now() + 8 * 3600 * 1000).toISOString(),
+      vehicle: { width: 3, height: 4, length: 25, grossWeight: 52 },
+      createdAt,
+      updatedAt: createdAt,
+      gpxContent: '<gpx></gpx>',
+      gpxText: '<gpx></gpx>',
+      monitorIntervalMinutes: 1,
+      lastCheckedAt: null,
+      monitoringStoppedReason: null,
+    }
+    window.__HT_TEST__?.setStore?.('htr-saved-jobs', [job])
+    await window.__HT_TEST__?.flushStore?.()
+  }, { name: raceJobName, createdAt: raceCreatedAt })
+
+  // Trigger a monitor re-check that stays in-flight while we switch.
+  await page.evaluate(() => { window.__HT_TEST__.tickMs = 50 })
+  // Remount monitor interval by navigating; JobsProvider reads tickMs on mount.
+  await page.getByRole('button', { name: 'Switch user' }).first().click()
+  await page.getByRole('button', { name: 'Continue as Anna' }).click()
+  await page.waitForFunction(() => !document.querySelector('.login-screen'), null, { timeout: 30000 })
+  await page.waitForFunction(() => Boolean(window.__HT_TEST__?.getJobs), null, { timeout: 20000 })
+  await page.evaluate(async ({ name, createdAt }) => {
+    const job = {
+      id: `job-anna-race-${Date.now()}`,
+      name,
+      permitName: name,
+      permitNumber: 'ISO-RACE',
+      corridor: 'A7',
+      permittedRoads: ['A7'],
+      origin: 'A',
+      destination: 'B',
+      plannedDeparture: new Date(Date.now() + 8 * 3600 * 1000).toISOString(),
+      vehicle: { width: 3, height: 4, length: 25, grossWeight: 52 },
+      createdAt,
+      updatedAt: createdAt,
+      gpxContent: '<gpx></gpx>',
+      monitorIntervalMinutes: 1,
+      lastCheckedAt: null,
+      monitoringStoppedReason: null,
+    }
+    window.__HT_TEST__?.setStore?.('htr-saved-jobs', [job])
+    await window.__HT_TEST__?.flushStore?.()
+  }, { name: raceJobName, createdAt: raceCreatedAt })
+
+  // Wait briefly for the due-check tick to fire (held by route gate).
+  await page.waitForTimeout(200)
+  await page.getByRole('button', { name: 'Switch user' }).first().click()
+  await page.getByRole('heading', { name: "Who's checking routes?" }).waitFor({ timeout: 15000 })
+  await page.getByRole('button', { name: 'Continue as Paul' }).click()
+  await page.waitForFunction(() => !document.querySelector('.login-screen'), null, { timeout: 30000 })
+  // Release the delayed re-check after Paul is active — must not leak into Paul's store.
+  releaseCheck?.()
+  await page.waitForTimeout(800)
+  await page.unroute('**/api/check-route').catch(() => {})
+
+  if (!(await page.getByRole('heading', { name: /Saved jobs|Jobs/i }).count())) {
+    await page.getByRole('link', { name: 'Jobs' }).first().click()
+  }
+  await page.waitForTimeout(400)
+  const paulRaceUi = await page.getByText(raceJobName).count()
+  const paulRaceApi = await page.evaluate(async (name) => {
+    const res = await fetch('/api/state?user=paul')
+    const payload = await res.json()
+    const raw = payload?.data?.['htr-saved-jobs']
+    const parsed = typeof raw === 'string' ? JSON.parse(raw || '[]') : (raw || [])
+    const historyRaw = payload?.data?.['htr-route-check-history']
+    const history = typeof historyRaw === 'string' ? JSON.parse(historyRaw || '[]') : (historyRaw || [])
+    const hookJobs = window.__HT_TEST__?.getJobs?.() || []
+    return {
+      apiJobs: Array.isArray(parsed) ? parsed.filter(item => item?.name === name).length : -1,
+      hookJobs: hookJobs.filter(item => item?.name === name).length,
+      history: Array.isArray(history) ? history.filter(item => String(item?.permitName || '').includes('Anna race')).length : -1,
+    }
+  }, raceJobName)
+  record(
+    'Quick switch: Paul stays empty after Anna in-flight re-check',
+    paulRaceUi === 0 && paulRaceApi.apiJobs === 0 && paulRaceApi.hookJobs === 0 && paulRaceApi.history === 0,
+    JSON.stringify({ ui: paulRaceUi, ...paulRaceApi }),
+  )
+
+  await page.getByRole('button', { name: 'Switch user' }).first().click()
+  await page.getByRole('button', { name: 'Continue as Anna' }).click()
+  await page.waitForFunction(() => !document.querySelector('.login-screen'), null, { timeout: 30000 })
+  if (!(await page.getByRole('heading', { name: /Saved jobs|Jobs/i }).count())) {
+    await page.getByRole('link', { name: 'Jobs' }).first().click()
+  }
+  const annaRace = await page.evaluate(async ({ name, createdAt }) => {
+    const res = await fetch('/api/state?user=anna')
+    const payload = await res.json()
+    const raw = payload?.data?.['htr-saved-jobs']
+    const parsed = typeof raw === 'string' ? JSON.parse(raw || '[]') : (raw || [])
+    const match = Array.isArray(parsed) ? parsed.find(item => item?.name === name) : null
+    const hook = (window.__HT_TEST__?.getJobs?.() || []).find(item => item?.name === name)
+    return {
+      apiCreatedAt: match?.createdAt || null,
+      hookCreatedAt: hook?.createdAt || null,
+      expected: createdAt,
+    }
+  }, { name: raceJobName, createdAt: raceCreatedAt })
+  record(
+    'Quick switch: Anna job intact with same createdAt',
+    annaRace.apiCreatedAt === raceCreatedAt || annaRace.hookCreatedAt === raceCreatedAt,
+    JSON.stringify(annaRace),
+  )
+
   // Account check-history sync: Bremen sample must survive reload on Alerts & history.
   await page.getByRole('button', { name: 'Switch user' }).first().click()
   await page.getByRole('heading', { name: "Who's checking routes?" }).waitFor({ timeout: 15000 })
