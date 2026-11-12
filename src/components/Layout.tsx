@@ -12,6 +12,14 @@ import { useJobs } from '../context/JobsContext'
 import { useOrgSettings } from '../context/OrgSettingsContext'
 import { SEARCH_EMPTY_HELP, searchAppData } from '../lib/appSearch'
 import { formatBerlinDateTime, orgInitials } from '../lib/formatTime'
+import {
+  DRAWER_NAV_MAX_WIDTH_PX,
+  collapseControlLabel,
+  effectiveSidebarCollapsed,
+  reduceNavChromeCollapseToggle,
+  reduceNavChromeOpenMobile,
+  reduceNavChromeViewportChange,
+} from '../lib/layoutNavChrome'
 
 const navItems = [
   { path: '/', label: 'Overview', icon: Home, exact: true },
@@ -48,6 +56,9 @@ function documentTitleFor(pathname: string) {
 export default function Layout() {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth : 1440,
+  )
   const [notifOpen, setNotifOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -70,10 +81,31 @@ export default function Layout() {
     color: alert.escalated || alert.severity === 'HOLD' ? 'bg-red-500' : alert.severity === 'VERIFY' ? 'bg-amber-500' : 'bg-green-500',
     link: alert.jobId ? `/jobs` : '/activity',
   }))
+  const navChrome = { collapsed, mobileOpen }
+  const sidebarCollapsed = effectiveSidebarCollapsed(collapsed, viewportWidth)
+  const collapseLabel = collapseControlLabel(navChrome, viewportWidth)
 
   useEffect(() => {
     document.title = documentTitleFor(location.pathname)
   }, [location.pathname])
+
+  useEffect(() => {
+    const syncViewport = () => setViewportWidth(window.innerWidth)
+    syncViewport()
+    const mq = window.matchMedia(`(max-width: ${DRAWER_NAV_MAX_WIDTH_PX}px)`)
+    mq.addEventListener('change', syncViewport)
+    window.addEventListener('resize', syncViewport)
+    return () => {
+      mq.removeEventListener('change', syncViewport)
+      window.removeEventListener('resize', syncViewport)
+    }
+  }, [])
+
+  useEffect(() => {
+    const next = reduceNavChromeViewportChange({ collapsed, mobileOpen }, viewportWidth)
+    if (next.collapsed !== collapsed) setCollapsed(next.collapsed)
+    if (next.mobileOpen !== mobileOpen) setMobileOpen(next.mobileOpen)
+  }, [viewportWidth, collapsed, mobileOpen])
 
   useEffect(() => {
     const closeMenus = (event: KeyboardEvent) => {
@@ -102,6 +134,18 @@ export default function Layout() {
     }
   }
 
+  const onCollapseControl = () => {
+    const next = reduceNavChromeCollapseToggle({ collapsed, mobileOpen }, viewportWidth)
+    setCollapsed(next.collapsed)
+    setMobileOpen(next.mobileOpen)
+  }
+
+  const onOpenMobileNav = () => {
+    const next = reduceNavChromeOpenMobile({ collapsed, mobileOpen })
+    setCollapsed(next.collapsed)
+    setMobileOpen(next.mobileOpen)
+  }
+
   return (
     <div className="app-frame flex h-screen overflow-hidden" style={{ background: 'var(--bg-base)' }}>
 
@@ -109,7 +153,7 @@ export default function Layout() {
       <aside
         className={`app-sidebar ${mobileOpen ? 'mobile-open' : ''}`}
         style={{
-          width: collapsed ? 72 : 232,
+          width: sidebarCollapsed ? 72 : 232,
           transition: 'width 220ms var(--ease-out)',
           display: 'flex',
           flexDirection: 'column',
@@ -118,8 +162,8 @@ export default function Layout() {
         }}
       >
         {/* Logo row */}
-        <div className={`sidebar-brand ${collapsed ? 'is-collapsed' : ''}`}>
-          {collapsed ? (
+        <div className={`sidebar-brand ${sidebarCollapsed ? 'is-collapsed' : ''}`}>
+          {sidebarCollapsed ? (
             <button
               type="button"
               className="sidebar-htr"
@@ -152,8 +196,8 @@ export default function Layout() {
           <button
             type="button"
             className="sidebar-collapse"
-            onClick={() => setCollapsed(!collapsed)}
-            aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
+            onClick={onCollapseControl}
+            aria-label={collapseLabel}
           >
             <Menu size={16} strokeWidth={1.75} />
           </button>
@@ -161,26 +205,26 @@ export default function Layout() {
 
         {/* Nav */}
         <nav className="sidebar-nav">
-          {!collapsed && (
+          {!sidebarCollapsed && (
             <div className="sidebar-section-label">
               Heavy transport
             </div>
           )}
-          {collapsed && <div style={{ height: 8 }} />}
+          {sidebarCollapsed && <div style={{ height: 8 }} />}
 
           {navItems.map(({ path, label, icon: Icon, exact }) => (
             <NavLink
               key={path}
               to={path}
               end={exact}
-              title={collapsed ? label : undefined}
+              title={sidebarCollapsed ? label : undefined}
               className="sidebar-link"
               onClick={() => setMobileOpen(false)}
             >
               {({ isActive }) => (
-                <div className={`sidebar-link-row ${isActive ? 'is-active' : ''} ${collapsed ? 'is-collapsed' : ''}`}>
+                <div className={`sidebar-link-row ${isActive ? 'is-active' : ''} ${sidebarCollapsed ? 'is-collapsed' : ''}`}>
                   <Icon size={18} strokeWidth={isActive ? 2 : 1.75} style={{ flexShrink: 0 }} />
-                  {!collapsed && (
+                  {!sidebarCollapsed && (
                     <span>{label}</span>
                   )}
                 </div>
@@ -189,25 +233,25 @@ export default function Layout() {
           ))}
 
           <div style={{ height: 16 }} />
-          {!collapsed && (
+          {!sidebarCollapsed && (
             <div className="sidebar-section-label">
               Coming later
             </div>
           )}
-          {collapsed && <div className="sidebar-divider" />}
+          {sidebarCollapsed && <div className="sidebar-divider" />}
 
           {connectorItems.map(({ path, label, icon: Icon }) => (
             <NavLink
               key={path}
               to={path}
-              title={collapsed ? label : undefined}
+              title={sidebarCollapsed ? label : undefined}
               className="sidebar-link"
               onClick={() => setMobileOpen(false)}
             >
               {({ isActive }) => (
-                <div className={`sidebar-link-row ${isActive ? 'is-active' : ''} ${collapsed ? 'is-collapsed' : ''}`}>
+                <div className={`sidebar-link-row ${isActive ? 'is-active' : ''} ${sidebarCollapsed ? 'is-collapsed' : ''}`}>
                   <Icon size={18} strokeWidth={isActive ? 2 : 1.75} style={{ flexShrink: 0 }} />
-                  {!collapsed && (
+                  {!sidebarCollapsed && (
                     <span>{label}</span>
                   )}
                 </div>
@@ -218,11 +262,11 @@ export default function Layout() {
 
         {/* Settings */}
         <div className="sidebar-footer">
-          <NavLink to="/settings" title={collapsed ? 'Settings' : undefined} className="sidebar-link" onClick={() => setMobileOpen(false)}>
+          <NavLink to="/settings" title={sidebarCollapsed ? 'Settings' : undefined} className="sidebar-link" onClick={() => setMobileOpen(false)}>
             {({ isActive }) => (
-              <div className={`sidebar-link-row ${isActive ? 'is-active' : ''} ${collapsed ? 'is-collapsed' : ''}`}>
+              <div className={`sidebar-link-row ${isActive ? 'is-active' : ''} ${sidebarCollapsed ? 'is-collapsed' : ''}`}>
                 <Settings size={18} strokeWidth={isActive ? 2 : 1.75} />
-                {!collapsed && <span>Settings</span>}
+                {!sidebarCollapsed && <span>Settings</span>}
               </div>
             )}
           </NavLink>
@@ -248,7 +292,7 @@ export default function Layout() {
           position: 'relative',
           zIndex: 20,
         }}>
-          <button type="button" className="mobile-nav-trigger" aria-label="Open navigation" onClick={() => { setCollapsed(false); setMobileOpen(true) }}>
+          <button type="button" className="mobile-nav-trigger" aria-label="Open navigation" onClick={onOpenMobileNav}>
             <Menu size={18} />
           </button>
           {/* Search */}

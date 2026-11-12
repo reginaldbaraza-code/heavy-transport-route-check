@@ -193,6 +193,73 @@ async function main() {
   )
   await page.getByRole('button', { name: 'Expand navigation' }).click()
 
+  async function assertMobileNavChrome(width, height) {
+    await page.setViewportSize({ width, height })
+    await page.goto(base + '/', { waitUntil: 'domcontentloaded', timeout: 60000 })
+    const skip = page.getByRole('button', { name: /skip/i })
+    if (await skip.count()) await skip.first().click().catch(() => {})
+
+    const tabBar = page.locator('.mobile-tab-bar')
+    const tabDisplay = await tabBar.evaluate(el => getComputedStyle(el).display)
+    record(
+      `Mobile tab bar visible at ${width}×${height}`,
+      tabDisplay !== 'none',
+      tabDisplay,
+    )
+
+    await page.getByRole('button', { name: 'Open navigation' }).click()
+    record(
+      `Drawer opens at ${width}×${height}`,
+      await page.locator('.app-sidebar.mobile-open').count() === 1,
+    )
+
+    const closeInDrawer = page.locator('.app-sidebar.mobile-open').getByRole('button', { name: 'Close navigation' })
+    record(
+      `Drawer collapse control closes (not desktop-collapses) at ${width}×${height}`,
+      await closeInDrawer.count() === 1,
+    )
+    await closeInDrawer.click()
+
+    const after = await page.evaluate(() => {
+      const sidebar = document.querySelector('.app-sidebar')
+      const main = document.querySelector('.app-main')
+      const tabs = document.querySelector('.mobile-tab-bar')
+      if (!sidebar || !main || !tabs) return { ok: false, reason: 'missing nodes' }
+      const sideStyle = getComputedStyle(sidebar)
+      const tabsStyle = getComputedStyle(tabs)
+      const sideBox = sidebar.getBoundingClientRect()
+      const mainBox = main.getBoundingClientRect()
+      return {
+        ok: true,
+        hasMobileOpen: sidebar.classList.contains('mobile-open'),
+        tabDisplay: tabsStyle.display,
+        sidebarWidth: Math.round(sideBox.width),
+        mainLeft: Math.round(mainBox.left),
+        mainWidth: Math.round(mainBox.width),
+        transform: sideStyle.transform,
+        left: sideStyle.left,
+      }
+    })
+    record(
+      `After drawer close at ${width}×${height}: no collapsed rail, full-width main, tab bar on`,
+      Boolean(
+        after.ok
+        && !after.hasMobileOpen
+        && after.tabDisplay !== 'none'
+        && after.mainLeft <= 1
+        && after.mainWidth >= width - 2,
+      ),
+      JSON.stringify(after),
+    )
+  }
+
+  await assertMobileNavChrome(390, 844)
+  await assertMobileNavChrome(320, 720)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(base + '/', { waitUntil: 'domcontentloaded', timeout: 60000 })
+  const skipAfterMobileNav = page.getByRole('button', { name: /skip/i })
+  if (await skipAfterMobileNav.count()) await skipAfterMobileNav.first().click().catch(() => {})
+
   await page.locator('.overview-mode-panel').scrollIntoViewIfNeeded()
   await page.locator('.permit-leaflet-map.leaflet-container').waitFor({ timeout: 25000 })
   const demoMapCount = await page.locator('.permit-leaflet-map.leaflet-container').count()
