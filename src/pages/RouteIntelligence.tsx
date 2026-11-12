@@ -87,7 +87,8 @@ export default function RouteIntelligencePolished() {
   const debugTools = searchParams.has('debug')
   const { saveJob, getJob, updateJob, prefs, requestNotifications } = useJobs()
   const { savedProfile } = useOrgSettings()
-  const [plannedDeparture, setPlannedDeparture] = useState(toLocalInput(defaultDepartureIso(8)))
+  const [plannedDeparture, setPlannedDeparture] = useState('')
+  const [departureExpiryError, setDepartureExpiryError] = useState('')
   const [jobName, setJobName] = useState('')
   const [jobInterval, setJobInterval] = useState(prefs.intervalMinutes)
   const [showSaveJob, setShowSaveJob] = useState(false)
@@ -161,6 +162,8 @@ export default function RouteIntelligencePolished() {
     metadata?: any,
     permitOverride?: TestPermit,
     acks: SiteAcknowledgement[] = acknowledgements,
+    /** ISO or datetime-local; used when state has not flushed yet (e.g. job ?run=1). */
+    departureOverride?: string,
   ) => {
     const activePermit = permitOverride || testPermits.find(item => item.id === activePermitId)
     // Prefer the dimensions currently typed into the form so sample permits honour on-screen edits.
@@ -169,11 +172,28 @@ export default function RouteIntelligencePolished() {
       || metadata?.permitNumber
       || permitNumber
     if (!(dims.width > 0 && dims.height > 0 && dims.length > 0 && dims.grossWeight > 0) || checking) return
-    if (!plannedDeparture || !fromLocalInput(plannedDeparture)) {
+    const departureLocal = departureOverride
+      ? (departureOverride.includes('T') && departureOverride.length > 16 ? toLocalInput(departureOverride) : departureOverride)
+      : plannedDeparture
+    if (!departureLocal || !fromLocalInput(departureLocal)) {
       setError('Planned departure is required so restrictions are judged against the trip window.')
       setToast('Enter a planned departure before checking the route.')
       return
     }
+    const departureIso = fromLocalInput(departureLocal)
+    const permitExpiry = metadata?.validUntil || activePermit?.validUntil
+    if (permitExpiry) {
+      const expiryMs = Date.parse(permitExpiry)
+      const departureMs = Date.parse(departureIso)
+      if (Number.isFinite(expiryMs) && Number.isFinite(departureMs) && departureMs > expiryMs) {
+        const message = `Planned departure is after the permit expiry (${formatBerlinDateTime(permitExpiry)}). Choose an earlier departure.`
+        setDepartureExpiryError(message)
+        setError(message)
+        setToast(message)
+        return
+      }
+    }
+    setDepartureExpiryError('')
 
     setChecking(true)
     setError('')
@@ -184,7 +204,7 @@ export default function RouteIntelligencePolished() {
         setPermitNumber(activePermit?.kind === 'scenario' ? (activePermit.permitNumber || permit) : (metadata?.permitNumber || activePermit?.permitNumber || ''))
       }
 
-      const departureStart = fromLocalInput(plannedDeparture)
+      const departureStart = departureIso
       const checkResult = await checkRoute(content, dims, {
         permitNumber: permit,
         corridor: metadata?.corridor || activePermit?.corridor,
@@ -194,6 +214,8 @@ export default function RouteIntelligencePolished() {
         departureStart,
         validFrom: metadata?.validFrom || activePermit?.validFrom,
         validUntil: metadata?.validUntil || activePermit?.validUntil,
+        travelFrom: activePermit?.originShort || activePermit?.origin || metadata?.origin,
+        travelTo: activePermit?.destinationShort || activePermit?.destination || metadata?.destination,
         bridgeClearanceConfirmed: permitOverride
           ? Boolean(metadata?.bridgeClearanceConfirmed ?? permitOverride.bridgeClearanceConfirmed)
           : Boolean(metadata?.bridgeClearanceConfirmed ?? clearanceConfirmed),
@@ -365,9 +387,16 @@ export default function RouteIntelligencePolished() {
       setToast('Enter a planned departure before checking the route.')
       return
     }
-    if (gpxContent && vehicleValid) {
-      runCheck(gpxContent)
+    if (!vehicleValid) {
+      setError('Enter valid vehicle dimensions before checking the route.')
+      return
     }
+    if (!gpxContent) {
+      setError('Route file is still loading. Wait a moment and try again.')
+      setToast('Route file is still loading.')
+      return
+    }
+    runCheck(gpxContent)
   }
 
   useEffect(() => {
@@ -379,7 +408,9 @@ export default function RouteIntelligencePolished() {
   useEffect(() => {
     const jobId = searchParams.get('job')
     if (jobId) {
-      if (loadedJob.current === jobId) return
+      const autoRun = searchParams.get('run') === '1'
+      // Always honour ?run=1 even if this job is already loaded (e.g. after Save as job).
+      if (loadedJob.current === jobId && !autoRun) return
       const job = getJob(jobId)
       if (!job) {
         setError('That saved job was not found in this browser.')
@@ -395,7 +426,11 @@ export default function RouteIntelligencePolished() {
       setVehicleHeight(String(job.vehicle.height))
       setVehicleLength(String(job.vehicle.length))
       setVehicleWeight(String(job.vehicle.grossWeight))
-      setPlannedDeparture(toLocalInput(job.plannedDeparture || defaultDepartureIso(8)))
+      const jobDeparture = job.plannedDeparture && fromLocalInput(toLocalInput(job.plannedDeparture))
+        ? job.plannedDeparture
+        : defaultDepartureIso(8)
+      setPlannedDeparture(toLocalInput(jobDeparture))
+      setDepartureExpiryError('')
       setJobName(job.name)
       setJobInterval(job.monitorIntervalMinutes || prefs.intervalMinutes)
       setShowTestPermits(false)
@@ -405,7 +440,7 @@ export default function RouteIntelligencePolished() {
       setClearanceBy(job.clearanceConfirmedBy || '')
       setConfirmedAt(job.confirmedAt || '')
       setAcknowledgements(job.siteAcknowledgements || [])
-      if (searchParams.get('run') === '1') {
+      if (autoRun) {
         void runCheck(job.gpxContent, {
           permitNumber: job.permitNumber,
           vehicle: job.vehicle,
@@ -413,7 +448,7 @@ export default function RouteIntelligencePolished() {
           bridgeClearanceConfirmed: job.bridgeClearanceConfirmed,
           clearanceConfirmedBy: job.clearanceConfirmedBy,
           confirmedAt: job.confirmedAt,
-        }, undefined, job.siteAcknowledgements || [])
+        }, undefined, job.siteAcknowledgements || [], jobDeparture)
       } else {
         setStep('vehicle')
       }
@@ -899,12 +934,22 @@ export default function RouteIntelligencePolished() {
                   id="planned-departure"
                   type="datetime-local"
                   value={plannedDeparture}
-                  onChange={event => setPlannedDeparture(event.target.value)}
+                  onChange={event => {
+                    setPlannedDeparture(event.target.value)
+                    setDepartureExpiryError('')
+                  }}
                   required
                   aria-required="true"
+                  aria-invalid={Boolean(departureExpiryError) || undefined}
+                  aria-describedby={departureExpiryError ? 'planned-departure-error' : 'planned-departure-hint'}
                 />
               </label>
-              <p className="storage-note">Each restriction is judged against this departure window. Also used when you save a job. Monitoring only runs while the tab is open and stops after this time.</p>
+              <p id="planned-departure-hint" className="storage-note">No default is filled in — enter the real planned departure. Each restriction is judged against this window. Also used when you save a job. Monitoring only runs while the tab is open and stops after this time.</p>
+              {departureExpiryError && (
+                <p id="planned-departure-error" className="field-error" role="alert" data-testid="departure-expiry-error">
+                  {departureExpiryError}
+                </p>
+              )}
             </div>
 
             <label className="clearance-tick">
@@ -999,7 +1044,7 @@ export default function RouteIntelligencePolished() {
               </div>
               {/* Dynamic CTA based on verdict */}
               {displayed.verdict === 'READY' && (
-                <button type="button" className="btn-primary verdict-cta" onClick={() => setToast('Proceed with departure')}>
+                <button type="button" className="btn-primary verdict-cta" onClick={() => logDemoAction('Proceed with departure')}>
                   <CheckCircle2 size={16} />
                   Proceed with departure
                 </button>
@@ -1148,7 +1193,7 @@ export default function RouteIntelligencePolished() {
                         />
                     </label>
                     {!confirmerName && pendingVerify.length > 0 && (
-                      <p className="field-hint" data-testid="bulk-confirm-disabled-hint">
+                      <p id="bulk-confirm-disabled-hint" className="field-hint" data-testid="bulk-confirm-disabled-hint">
                         Enter a confirmer name to enable bulk confirmation. HOLD / restriction items can never be bulk-confirmed.
                       </p>
                     )}
@@ -1169,6 +1214,7 @@ export default function RouteIntelligencePolished() {
                         className="btn-primary"
                         disabled={!confirmerName}
                         title={!confirmerName ? 'Enter a confirmer name first' : undefined}
+                        aria-describedby={!confirmerName ? 'bulk-confirm-disabled-hint' : undefined}
                         onClick={() => openBulkConfirm(pendingVerify.map(item => item.id))}
                       >
                         Confirm remaining VERIFY on site ({pendingVerify.length})

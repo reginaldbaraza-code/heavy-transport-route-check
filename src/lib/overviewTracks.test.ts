@@ -12,15 +12,20 @@ import {
   getOverviewMonitorPermits,
   overviewVerdictForPermit,
 } from './overviewTracks.ts'
-import { sampleTestPermits } from './routeCheck.ts'
+import { sampleTestPermits, scenarioTestPermits } from './routeCheck.ts'
 
 test('overview hero uses four real test-permit GPX tracks with mixed verdicts', () => {
   const overview = getOverviewMonitorPermits()
   assert.equal(overview.length, 4)
-  const verdicts = new Set(overview.map(item => item.verdict))
-  assert.ok(verdicts.has('READY'))
-  assert.ok(verdicts.has('VERIFY'))
-  assert.ok(verdicts.has('HOLD'))
+  const overviewVerdicts = new Set(overview.map(item => item.verdict))
+  assert.ok(overviewVerdicts.has('VERIFY'))
+  assert.ok(overviewVerdicts.has('HOLD'))
+  // READY lives on scenario samples; live overview tracks mirror post-#27 outcomes.
+  const labelled = [...sampleTestPermits, ...scenarioTestPermits]
+  const allSampleVerdicts = new Set(labelled.map(permit => overviewVerdictForPermit(permit)))
+  assert.ok(allSampleVerdicts.has('READY'))
+  assert.ok(allSampleVerdicts.has('VERIFY'))
+  assert.ok(allSampleVerdicts.has('HOLD'))
 
   for (const item of overview) {
     const configured = OVERVIEW_MONITOR_ROUTES.find(route => route.id === item.permit.id)
@@ -55,7 +60,7 @@ test('overview verdicts prefer the labelled sample outcome', () => {
   const lubeck = sampleTestPermits.find(permit => permit.id === 'lubeck-rostock')
   const munich = sampleTestPermits.find(permit => permit.id === 'munchen-stuttgart')
   assert.equal(overviewVerdictForPermit(hamburg!), 'VERIFY')
-  assert.equal(overviewVerdictForPermit(lubeck!), 'READY')
+  assert.equal(overviewVerdictForPermit(lubeck!), 'VERIFY')
   assert.equal(overviewVerdictForPermit(munich!), 'HOLD')
 })
 

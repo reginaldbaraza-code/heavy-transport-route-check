@@ -344,7 +344,9 @@ export function classifyCandidate(input: CandidateInput, ctx: ClassifyContext): 
   }
 
   const kind = classifyLocationKind(text)
-  const direction = parseTravelDirection(text)
+  const direction = parseTravelDirection(text, { from: ctx.travelFrom, to: ctx.travelTo })
+  // Junction-ramp closures opposite the travel direction must not count (not even VERIFY).
+  if ((kind === 'ramp' || kind === 'parking') && direction === 'against') return null
   const { road, offPermit } = roadMatchesPermit(input, ctx.permittedRoads)
   const nearby = distanceKm != null && distanceKm > HOLD_DISTANCE_KM
   const unclearGeometry = distanceKm == null
@@ -430,10 +432,10 @@ export function classifyCandidate(input: CandidateInput, ctx: ClassifyContext): 
     const unit = dims.type === 'weight' ? 't' : 'm'
     reason = `Hard ${dims.type} limit ${dims.restriction} ${unit} vs vehicle ${vehicleValue} ${unit} on the mainline carriageway.`
     title = dims.type === 'width'
-      ? `Width restriction ${dims.restriction} m vs vehicle ${ctx.vehicle.width} m`
+      ? `Width limit ${dims.restriction} m vs vehicle ${ctx.vehicle.width} m`
       : dims.type === 'height'
-        ? `Height restriction ${dims.restriction} m vs vehicle ${ctx.vehicle.height} m`
-        : `Weight restriction ${dims.restriction} t vs vehicle ${ctx.vehicle.grossWeight} t`
+        ? `Height limit ${dims.restriction} m vs vehicle ${ctx.vehicle.height} m`
+        : `Weight limit ${dims.restriction} t vs vehicle ${ctx.vehicle.grossWeight} t`
     category = 'roadworks'
   } else if (dims.hold) {
     state = 'warning'

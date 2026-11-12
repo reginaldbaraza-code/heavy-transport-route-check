@@ -268,7 +268,7 @@ test('item 3: A1 ramp mentioning A7 cannot HOLD an A7 corridor', () => {
 test('item 3: primary road mismatch is off-permit even when permitted road is mentioned', () => {
   const item = classifyCandidate(candidate({
     road: 'A1',
-    title: 'A1 Vollsperrung near Zubringer A7',
+    title: 'A1 Vollsperrung near A7 junction',
     description: 'Vollsperrung beide Richtungen Richtung A7',
     category: 'closures',
     isBlocked: true,
@@ -694,4 +694,56 @@ test('genuine A1 width restriction with MIA Ak code still HOLDs', () => {
   assert.ok(width)
   assert.equal(width.locationKind, 'mainline')
   assert.equal(width.state, 'danger', 'Hard width on permitted A1 mainline must HOLD')
+})
+
+test('item 3 follow-up: HH→HAN junction-ramp closures are VERIFY in travel direction, never HOLD', () => {
+  const hhHan = { ...baseCtx, travelFrom: 'Hamburg', travelTo: 'Hannover' }
+
+  const evendorf = classifyCandidate(candidate({
+    title: 'Sperrung Abfahrt Evendorf',
+    description: 'Sperrung Abfahrt Evendorf',
+    category: 'closures',
+    isBlocked: true,
+  }), hhHan)
+  assert.ok(evendorf)
+  assert.equal(evendorf.locationKind, 'ramp')
+  assert.equal(evendorf.state, 'warning')
+  assert.notEqual(evendorf.state, 'danger')
+  assert.equal(determineVerdict([evendorf], { clearanceConfirmed: true }).verdict, 'VERIFY')
+
+  const westenholzExit = classifyCandidate(candidate({
+    title: 'nach Abfahrt von der A7: AS Westenholz',
+    description: 'nach Abfahrt von der A7: AS Westenholz',
+    category: 'closures',
+    isBlocked: true,
+  }), hhHan)
+  assert.ok(westenholzExit)
+  assert.equal(westenholzExit.locationKind, 'ramp')
+  assert.equal(westenholzExit.state, 'warning')
+  assert.notEqual(westenholzExit.state, 'danger')
+})
+
+test('item 3 follow-up: opposite-direction ramp closure must not count on HH→HAN', () => {
+  const hhHan = { ...baseCtx, travelFrom: 'Hamburg', travelTo: 'Hannover' }
+  const opposite = classifyCandidate(candidate({
+    title: 'Von Auffahrt auf die A7: AS Westenholz',
+    description: 'Von Auffahrt auf die A7: AS Westenholz Hannover -> Hamburg Vollsperrung AS Westenholz',
+    category: 'closures',
+    isBlocked: true,
+  }), hhHan)
+  assert.equal(opposite, null, 'Opposite-direction junction ramp must not count')
+})
+
+test('item 3 follow-up control: genuine full mainline closure on permitted road still HOLDs', () => {
+  const hhHan = { ...baseCtx, travelFrom: 'Hamburg', travelTo: 'Hannover' }
+  const mainline = classifyCandidate(candidate({
+    title: 'A7 Vollsperrung',
+    description: 'Vollsperrung beide Richtungen A7 Fahrbahn',
+    category: 'closures',
+    isBlocked: true,
+  }), hhHan)
+  assert.ok(mainline)
+  assert.equal(mainline.locationKind, 'mainline')
+  assert.equal(mainline.state, 'danger')
+  assert.equal(determineVerdict([mainline], { clearanceConfirmed: true }).verdict, 'HOLD')
 })

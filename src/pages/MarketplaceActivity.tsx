@@ -96,7 +96,7 @@ export default function MarketplaceActivity() {
                 evidenceCount: 2,
                 retrievedAt: new Date(now.getTime() - 45 * 60000).toISOString(),
                 source: 'Autobahn GmbH MIA',
-                summary: 'Width restriction requires verification',
+                summary: 'Width limit requires verification',
                 alertEligible: true,
               })
               

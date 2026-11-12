@@ -22,7 +22,7 @@ test('English summary keeps the original German aside and names type/road/dates'
     endTimestamp: '2026-11-10T05:00:00Z',
   }
   const summary = evidenceEnglishSummary(item)
-  assert.match(summary, /Closure/)
+  assert.match(summary, /Width limit/)
   assert.match(summary, /A9/)
   assert.match(summary, /Bayreuth – Kulmbach/)
   assert.match(summary, /southbound|towards/)
@@ -47,6 +47,35 @@ test('English summary applies to HOLD items whose title is already English', () 
   assert.equal(splitConcatenatedPlaces(item.detail).includes('Bayreuth – Kulmbach'), true)
   assert.match(displayEvidenceTitle(item), /Closure/)
   assert.match(displayEvidenceTitle(item), /Bayreuth – Kulmbach/)
+})
+
+test('width and height HOLDs are titled as limits, not Closure', () => {
+  const width: RouteEvidence = {
+    id: 'w1',
+    title: 'Width limit 3.5 m vs vehicle 3.8 m',
+    detail: 'Hard width limit 3.5 m vs vehicle 3.8 m on the mainline carriageway.',
+    source: 'Autobahn GmbH',
+    age: '',
+    confidence: 'high',
+    state: 'danger',
+    category: 'roadworks',
+  }
+  const height: RouteEvidence = {
+    id: 'h1',
+    title: 'Height limit 4.00 m vs vehicle 4.30 m',
+    detail: 'Hard height limit 4 m vs vehicle 4.3 m on the mainline carriageway.',
+    source: 'Autobahn GmbH',
+    age: '',
+    confidence: 'high',
+    state: 'danger',
+    category: 'roadworks',
+  }
+  assert.match(evidenceEnglishSummary(width), /Width limit/)
+  assert.doesNotMatch(evidenceEnglishSummary(width), /^Closure/)
+  assert.match(displayEvidenceTitle(width), /Width limit/)
+  assert.match(evidenceEnglishSummary(height), /Height limit/)
+  assert.doesNotMatch(evidenceEnglishSummary(height), /^Closure/)
+  assert.match(displayEvidenceTitle(height), /Height limit/)
 })
 
 test('dispatcher confirmation cards keep their title instead of a type summary', () => {

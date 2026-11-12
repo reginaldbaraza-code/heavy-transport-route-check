@@ -371,6 +371,7 @@ button, a, input, select, textarea {
 .saved-checks-empty { margin-bottom: 18px; }
 .storage-note { margin: 10px 0 0; color: var(--text-tertiary); font-size: 13px; line-height: 1.4; }
 .field-hint { margin: 6px 0 0; color: var(--text-secondary); font-size: 13px; line-height: 1.4; }
+.field-error { margin: 6px 0 0; color: #b42318; font-size: 13px; line-height: 1.4; }
 .bulk-confirm-summary { margin: 0 0 12px; padding: 12px; background: var(--bg-grouped); border-radius: 8px; }
 .bulk-confirm-summary ul { margin: 8px 0 0; padding-left: 18px; max-height: 160px; overflow: auto; }
 .bulk-confirm-summary li { margin: 4px 0; font-size: 13px; line-height: 1.35; }

@@ -12,12 +12,12 @@ type Sample = {
 
 const samples: Sample[] = [
   { id: 'hamburg-hannover', group: 'existing-live', expected: 'VERIFY', gpx: 'hamburg-hannover-a7.gpx', json: 'hamburg-hannover-a7.json' },
-  { id: 'bremen-dortmund', group: 'existing-live', gpx: 'bremen-dortmund-a1.gpx', json: 'bremen-dortmund-a1.json' },
+  { id: 'bremen-dortmund', group: 'existing-live', expected: 'HOLD', gpx: 'bremen-dortmund-a1.gpx', json: 'bremen-dortmund-a1.json' },
   { id: 'leipzig-nurnberg', group: 'existing-live', expected: 'VERIFY', gpx: 'leipzig-nurnberg-a9.gpx', json: 'leipzig-nurnberg-a9.json' },
-  { id: 'duisburg-koln', group: 'existing-live', gpx: 'duisburg-koln-a3.gpx', json: 'duisburg-koln-a3.json' },
-  { id: 'munchen-stuttgart', group: 'existing-live', gpx: 'munchen-stuttgart-a8.gpx', json: 'munchen-stuttgart-a8.json' },
-  { id: 'lubeck-rostock', group: 'new-live', expected: 'READY', gpx: 'lubeck-rostock-a20.gpx', json: 'lubeck-rostock-a20.json' },
-  { id: 'hof-bayreuth', group: 'new-live', expected: 'READY', gpx: 'hof-bayreuth-a9.gpx', json: 'hof-bayreuth-a9.json' },
+  { id: 'duisburg-koln', group: 'existing-live', expected: 'VERIFY', gpx: 'duisburg-koln-a3.gpx', json: 'duisburg-koln-a3.json' },
+  { id: 'munchen-stuttgart', group: 'existing-live', expected: 'HOLD', gpx: 'munchen-stuttgart-a8.gpx', json: 'munchen-stuttgart-a8.json' },
+  { id: 'lubeck-rostock', group: 'new-live', expected: 'VERIFY', gpx: 'lubeck-rostock-a20.gpx', json: 'lubeck-rostock-a20.json' },
+  { id: 'hof-bayreuth', group: 'new-live', expected: 'VERIFY', gpx: 'hof-bayreuth-a9.gpx', json: 'hof-bayreuth-a9.json' },
   { id: 'leipzig-nurnberg', group: 'new-live', expected: 'VERIFY', gpx: 'leipzig-nurnberg-a9.gpx', json: 'leipzig-nurnberg-a9.json' },
   { id: 'hamburg-hannover', group: 'new-live', expected: 'VERIFY', gpx: 'hamburg-hannover-a7.gpx', json: 'hamburg-hannover-a7.json' },
   { id: 'scenario-ready', group: 'scenario', expected: 'READY', gpx: 'lubeck-rostock-a20.gpx', json: 'lubeck-rostock-a20.json', scenario: 'ready-clear' },

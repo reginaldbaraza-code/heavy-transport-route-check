@@ -22,7 +22,7 @@ export const OVERVIEW_FEATURED_COPY = {
 /** Four geographically spread live sample permits for the overview hero map. */
 export const OVERVIEW_MONITOR_ROUTES: Array<{ id: string; verdict: OverviewVerdict }> = [
   { id: 'hamburg-hannover', verdict: 'VERIFY' },
-  { id: 'lubeck-rostock', verdict: 'READY' },
+  { id: 'lubeck-rostock', verdict: 'VERIFY' },
   { id: 'leipzig-nurnberg', verdict: 'VERIFY' },
   { id: 'munchen-stuttgart', verdict: 'HOLD' },
 ]

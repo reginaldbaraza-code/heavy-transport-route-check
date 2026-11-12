@@ -19,10 +19,12 @@ export function joinLocationParts(parts: unknown): string {
 }
 
 function typeLabel(item: RouteEvidence): string {
+  const blob = `${item.title} ${item.detail}`
+  // Dimension limits must win over generic "Closure" — danger width/height HOLDs are not closures.
+  if (/height|Durchfahrtshöhe|lichte Höhe|clearance|Height limit/i.test(blob)) return 'Height limit'
+  if (/width|Restbreite|Breite|Width limit/i.test(blob)) return 'Width limit'
+  if (/weight|Gewicht|t vs|Weight limit/i.test(blob)) return 'Weight limit'
   if (item.category === 'closures' || item.state === 'danger') return 'Closure'
-  if (/height|Durchfahrtshöhe|lichte Höhe|clearance/i.test(`${item.title} ${item.detail}`)) return 'Height restriction'
-  if (/weight|Gewicht|t vs/i.test(`${item.title} ${item.detail}`)) return 'Weight restriction'
-  if (/width|Restbreite|Breite/i.test(`${item.title} ${item.detail}`)) return 'Width restriction'
   if (item.category === 'observations') return 'On-site report'
   return 'Roadworks'
 }

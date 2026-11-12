@@ -373,6 +373,8 @@ export default async function handler(
       confirmedAt,
       scenario,
       acknowledgements,
+      travelFrom,
+      travelTo,
     } = req.body;
 
     const gpxBytes = typeof gpxContent === 'string' ? Buffer.byteLength(gpxContent, 'utf8') : 0
@@ -432,6 +434,8 @@ export default async function handler(
       windowStartMs: window.startMs,
       windowEndMs: window.endMs,
       nowMs: Date.now(),
+      travelFrom: typeof travelFrom === 'string' ? travelFrom : undefined,
+      travelTo: typeof travelTo === 'string' ? travelTo : undefined,
     };
     const clearanceConfirmed = Boolean(bridgeClearanceConfirmed);
     const siteAcknowledgements = parseAcknowledgements(acknowledgements);

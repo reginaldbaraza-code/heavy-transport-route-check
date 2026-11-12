@@ -102,6 +102,25 @@ async function downloadFile(page, buttonName) {
   return { size, suggested: download.suggestedFilename(), path, buffer }
 }
 
+/** Planned departure is intentionally empty (no silent default). Fill a near-future value for checks. */
+async function fillPlannedDeparture(page, hoursAhead = 8) {
+  const input = page.locator('#planned-departure')
+  await input.waitFor({ timeout: 15000 })
+  // Sample GPX load is async after selecting a permit — wait until Check route can run.
+  await page.getByRole('button', { name: 'Check route' }).waitFor({ state: 'visible', timeout: 15000 })
+  const value = await page.evaluate(hours => {
+    const date = new Date(Date.now() + hours * 60 * 60 * 1000)
+    const pad = n => String(n).padStart(2, '0')
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+  }, hoursAhead)
+  await input.fill(value)
+  await page.getByRole('button', { name: 'Check route' }).waitFor({ state: 'attached', timeout: 5000 })
+  await page.waitForFunction(() => {
+    const btn = [...document.querySelectorAll('button')].find(el => /Check route/i.test(el.textContent || ''))
+    return Boolean(btn && !btn.disabled)
+  }, null, { timeout: 15000 })
+}
+
 function decodePdfStrings(buffer) {
   const latin1 = Buffer.from(buffer).toString('latin1')
   const strings = []
@@ -454,6 +473,7 @@ async function main() {
   if (await page.locator('.clearance-tick input').isChecked()) {
     await page.locator('.clearance-tick input').uncheck()
   }
+  await fillPlannedDeparture(page)
   await page.getByRole('button', { name: 'Check route' }).click()
   await page.locator('.verdict-banner').waitFor({ timeout: 90000 })
   record('Route check finished', true, (await page.locator('.verdict-banner').innerText()).replace(/\s+/g, ' ').slice(0, 120))
@@ -593,6 +613,7 @@ async function main() {
   await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded' })
   await page.getByRole('button', { name: /show sample permits/i }).click()
   await page.getByRole('button', { name: /Simulated VERIFY/ }).click()
+  await fillPlannedDeparture(page)
   await page.getByRole('button', { name: 'Check route' }).click()
   await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
 
@@ -706,7 +727,15 @@ async function main() {
 
   const lastCheckedBefore = await page.evaluate(() => window.__HT_TEST__?.getJobs()?.[0]?.lastCheckedAt || '')
   await page.getByRole('button', { name: /Re-run check/i }).click()
-  await page.locator('.verdict-banner').waitFor({ timeout: 90000 })
+  await page.waitForURL(/route-checks\?.*job=/, { timeout: 15000 })
+  // Prefer a finished verdict; if the live Autobahn call is slow, still accept the checking→result path.
+  const rerunState = page.locator('.verdict-banner, .checking-state, [data-testid="gpx-upload-error"], .field-error')
+  await rerunState.first().waitFor({ timeout: 15000 })
+  if (await page.locator('.checking-state').count()) {
+    await page.locator('.verdict-banner').waitFor({ timeout: 120000 })
+  } else {
+    await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
+  }
   await page.goto(base + '/jobs', { waitUntil: 'domcontentloaded' })
   await page.locator('[data-testid="job-last-check"]').waitFor({ timeout: 15000 })
   const lastCheckAfter = await page.evaluate(() => {
@@ -797,6 +826,7 @@ async function main() {
   await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded' })
   await page.getByRole('button', { name: /show sample permits/i }).click()
   await page.getByRole('button', { name: /München → Stuttgart|Munchen → Stuttgart/ }).click()
+  await fillPlannedDeparture(page)
   await page.getByRole('button', { name: 'Check route' }).click()
   await page.locator('.verdict-banner').waitFor({ timeout: 90000 })
   await page.locator('.nearby-off-route-group').evaluateAll(nodes => nodes.forEach(node => { node.open = true })).catch(() => {})
@@ -816,6 +846,7 @@ async function main() {
     await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded' })
     await page.getByRole('button', { name: /show sample permits/i }).click()
     await page.getByRole('button', { name: nameRe }).click()
+    await fillPlannedDeparture(page)
     await page.getByRole('button', { name: 'Check route' }).click()
     await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
     const banner = (await page.locator('.verdict-banner').innerText()).replace(/\s+/g, ' ')
@@ -849,6 +880,7 @@ async function main() {
   await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded' })
   await page.getByRole('button', { name: /show sample permits/i }).click()
   await page.getByRole('button', { name: /Simulated HOLD — A7 Vollsperrung/ }).click()
+  await fillPlannedDeparture(page)
   await page.getByRole('button', { name: 'Check route' }).click()
   await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
   await page.getByRole('button', { name: /Take action/i }).first().click()
