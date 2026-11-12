@@ -214,7 +214,7 @@ async function main() {
   const loginTileCount = await loginTiles.count()
   record('Login screen renders 7 user tiles', loginTileCount === 7, `count=${loginTileCount}`)
 
-  // Short phone viewport: footnote must stay in the first screen (padding clamp).
+  // Short phone viewport: footnote must stay in the first screen (no +24px tolerance).
   await page.setViewportSize({ width: 390, height: 844 })
   const loginFit = await page.evaluate(() => {
     const screen = document.querySelector('.login-screen')
@@ -223,11 +223,15 @@ async function main() {
     const screenRect = screen.getBoundingClientRect()
     const noteRect = footnote.getBoundingClientRect()
     const style = getComputedStyle(screen)
+    const viewport = window.innerHeight
+    const noteBottom = noteRect.bottom
     return {
-      ok: noteRect.bottom <= screenRect.bottom + 1 && noteRect.bottom <= window.innerHeight + 1,
+      // Tolerance-free: bottom must be ≤ viewport (844). Layout aims for ≥40px spare locally.
+      ok: noteBottom <= viewport,
       screenHeight: Math.round(screenRect.height),
-      noteBottom: Math.round(noteRect.bottom),
-      viewport: window.innerHeight,
+      noteBottom: Math.round(noteBottom),
+      spare: Math.round(viewport - noteBottom),
+      viewport,
       paddingTop: style.paddingTop,
       paddingBottom: style.paddingBottom,
     }

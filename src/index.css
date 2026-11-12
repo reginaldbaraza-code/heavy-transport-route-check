@@ -214,6 +214,12 @@
     --sidebar-active-text: #64d2ff;
     --sidebar-divider: rgba(84, 84, 88, 0.55);
   }
+
+  /* Keep section eyebrows on --accent in dark (light uses --blue-text for AA). */
+  .market-eyebrow,
+  .settings-heading > span {
+    color: var(--accent);
+  }
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -830,7 +836,7 @@ button, a, input, select, textarea {
 /* Organization settings */
 .settings-page { width: min(1120px, 100%); margin: 0 auto; padding: 30px 32px 48px; }
 .settings-heading { margin-bottom: 24px; }
-.settings-heading > span { color: var(--accent); font-size: var(--text-caption); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.settings-heading > span { color: var(--blue-text); font-size: var(--text-caption); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
 .settings-heading h1 { margin-top: 4px; font-size: var(--text-title1); font-weight: 700; line-height: 1.15; letter-spacing: var(--tracking-display); }
 .settings-heading p { max-width: 700px; margin-top: 8px; color: var(--text-secondary); font-size: var(--text-subhead); line-height: 1.47; }
 .settings-workspace { display: grid; grid-template-columns: 230px minmax(0, 1fr); align-items: start; gap: 22px; }
@@ -1087,7 +1093,7 @@ button, a, input, select, textarea {
 .market-page-header p, .market-form-page > header p, .publish-page > header p, .request-market-page > header p {
   margin-top: 10px; color: var(--text-secondary); font-size: 17px; line-height: 1.4; max-width: 46ch;
 }
-.market-eyebrow { color: var(--accent); font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.market-eyebrow { color: var(--blue-text); font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
 @media (min-width: 1440px) {
   .market-page-header h1 { white-space: nowrap; }
 }
@@ -5381,14 +5387,6 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
     linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 88%, var(--navy) 12%) 0%, var(--bg-base) 280px, var(--bg-base) 100%);
   overflow-x: clip;
 }
-/* Short viewports (e.g. 390×844): keep the footnote above the fold. */
-@media (max-height: 900px) {
-  .login-screen {
-    padding-top: calc(12px + var(--safe-area-inset-top));
-    padding-bottom: calc(16px + var(--safe-area-inset-bottom));
-  }
-}
-
 .login-shell {
   width: min(100%, 720px);
   display: flex;
@@ -5564,6 +5562,57 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   color: var(--text-tertiary);
   font-size: var(--text-footnote);
   line-height: 1.4;
+}
+
+/* Short viewports (e.g. 390×844): keep the footnote above the fold.
+   Cap at 899px so 1440×900 keeps the ~40/60 top bias padding.
+   Keep these AFTER base .login-* rules so they win cascade order. */
+@media (max-height: 899px) {
+  .login-screen {
+    padding-top: calc(12px + var(--safe-area-inset-top));
+    padding-bottom: calc(16px + var(--safe-area-inset-bottom));
+  }
+}
+
+/* Narrow phones: tighten vertical rhythm so CI-taller fonts still fit 844px
+   with ≥40px spare locally (CI fonts run taller than local). */
+@media (max-width: 480px) {
+  .login-screen {
+    padding-top: calc(8px + var(--safe-area-inset-top));
+    padding-bottom: calc(12px + var(--safe-area-inset-bottom));
+  }
+  .login-shell {
+    gap: 8px;
+  }
+  .login-picker {
+    gap: 6px;
+  }
+  .login-brand {
+    gap: 4px;
+  }
+  .login-grid {
+    gap: 8px;
+  }
+  .login-user-tile {
+    flex-direction: row;
+    align-items: center;
+    min-height: 96px;
+    gap: 10px;
+    padding: 12px;
+  }
+  .login-user-copy {
+    gap: 2px;
+  }
+  .login-last-used {
+    top: 8px;
+    right: 8px;
+  }
+  .login-demo-divider {
+    gap: 8px;
+  }
+  .login-footnote {
+    margin-top: 0;
+  }
 }
 
 /* ── Signed-in user chip ───────────────────────────────────────── */

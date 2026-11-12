@@ -176,7 +176,7 @@ export default function MarketplaceOverview() {
               </Link>
             ))}
           </div>
-          <p className="storage-note">Jobs are stored in this browser only. Monitoring runs only while the tab is open.</p>
+          <p className="storage-note">Jobs are saved to your account. Monitoring runs only while the tab is open.</p>
         </section>
       )}
 
