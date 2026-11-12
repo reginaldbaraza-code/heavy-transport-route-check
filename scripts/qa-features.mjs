@@ -795,6 +795,10 @@ async function main() {
   record('Jobs list shows saved job', jobVisible >= 1, `jobs=${jobVisible}`)
 
   const lastCheckedBefore = await page.evaluate(() => window.__HT_TEST__?.getJobs()?.[0]?.lastCheckedAt || '')
+  const jobVehicleBefore = await page.evaluate(() => {
+    const job = window.__HT_TEST__?.getJobs()?.[0]
+    return job?.vehicle || null
+  })
   await page.getByRole('button', { name: /Re-run check/i }).click()
   await page.waitForURL(/route-checks\?.*job=/, { timeout: 15000 })
   // Prefer a finished verdict; if the live Autobahn call is slow, still accept the checking→result path.
@@ -805,6 +809,36 @@ async function main() {
   } else {
     await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
   }
+  const rerunVehicleMatch = await page.evaluate(expected => {
+    let history = []
+    try {
+      history = JSON.parse(localStorage.getItem('htr-route-check-history') || '[]')
+    } catch {
+      history = []
+    }
+    const withJob = history.filter(item => item.jobId)
+    const latest = withJob[0] || history[0]
+    const vehicle = latest?.vehicle || null
+    const match = Boolean(
+      expected
+      && vehicle
+      && Number(vehicle.width) === Number(expected.width)
+      && Number(vehicle.height) === Number(expected.height)
+      && Number(vehicle.length) === Number(expected.length)
+      && Number(vehicle.grossWeight) === Number(expected.grossWeight),
+    )
+    const staleDefaults = vehicle
+      && Number(vehicle.width) === 3
+      && Number(vehicle.height) === 4
+      && Number(vehicle.length) === 25
+      && Number(vehicle.grossWeight) === 52
+    return { match, staleDefaults, expected, vehicle }
+  }, jobVehicleBefore)
+  record(
+    'Job re-run history vehicle matches saved job (not form defaults)',
+    Boolean(rerunVehicleMatch.match) && !rerunVehicleMatch.staleDefaults,
+    JSON.stringify(rerunVehicleMatch),
+  )
   await page.goto(base + '/jobs', { waitUntil: 'domcontentloaded' })
   await page.locator('[data-testid="job-last-check"]').waitFor({ timeout: 15000 })
   const lastCheckAfter = await page.evaluate(() => {
@@ -980,6 +1014,97 @@ async function main() {
     'Item 4: demo actions appear in check history',
     /Logged locally \(demo\), not sent/i.test(historyActions),
     historyActions.slice(0, 220),
+  )
+
+  // Sample ?run=1: labelled demo departure + permit vehicle dims (not Standard 3.0×4.0×25×52).
+  const bremenPayloadPromise = page.waitForRequest(
+    req => req.url().includes('/api/check-route') && req.method() === 'POST',
+    { timeout: 120000 },
+  )
+  await page.goto(base + '/route-checks?permit=bremen-dortmund&run=1', { waitUntil: 'domcontentloaded' })
+  const bremenReq = await bremenPayloadPromise
+  const bremenBody = bremenReq.postDataJSON()
+  const bremenVehicle = bremenBody?.vehicle || {}
+  record(
+    'bremen-dortmund&run=1 sends permit vehicle 3.5×4.2×32×72',
+    Number(bremenVehicle.width) === 3.5
+      && Number(bremenVehicle.height) === 4.2
+      && Number(bremenVehicle.length) === 32
+      && Number(bremenVehicle.grossWeight) === 72,
+    JSON.stringify(bremenVehicle),
+  )
+  await page.locator('.verdict-banner, .checking-state').first().waitFor({ timeout: 15000 })
+  if (await page.locator('.checking-state').count()) {
+    await page.locator('.verdict-banner').waitFor({ timeout: 120000 })
+  } else {
+    await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
+  }
+  const bremenResult = await page.evaluate(() => {
+    const banner = document.querySelector('.verdict-banner')?.textContent || ''
+    const demoNote = document.querySelector('[data-testid="demo-departure-note"]')?.textContent || ''
+    let history = []
+    try {
+      history = JSON.parse(localStorage.getItem('htr-route-check-history') || '[]')
+    } catch {
+      history = []
+    }
+    return {
+      banner,
+      demoNote,
+      vehicle: history[0]?.vehicle || null,
+      verdict: history[0]?.verdict || '',
+    }
+  })
+  record(
+    'bremen-dortmund&run=1 gives HOLD with demo departure note',
+    /HOLD/i.test(bremenResult.banner)
+      && bremenResult.verdict === 'HOLD'
+      && /Demo departure:/i.test(bremenResult.demoNote)
+      && /change it and re-check/i.test(bremenResult.demoNote)
+      && Number(bremenResult.vehicle?.width) === 3.5
+      && Number(bremenResult.vehicle?.grossWeight) === 72,
+    JSON.stringify({
+      verdict: bremenResult.verdict,
+      demoNote: bremenResult.demoNote.slice(0, 120),
+      vehicle: bremenResult.vehicle,
+      banner: bremenResult.banner.replace(/\s+/g, ' ').slice(0, 160),
+    }),
+  )
+
+  await page.goto(base + '/route-checks?permit=hamburg-hannover&run=1', { waitUntil: 'domcontentloaded' })
+  await page.locator('.verdict-banner, .checking-state, #planned-departure').first().waitFor({ timeout: 15000 })
+  if (await page.locator('.checking-state').count()) {
+    await page.locator('.verdict-banner').waitFor({ timeout: 120000 })
+  }
+  const permitAutorun = await page.evaluate(() => {
+    const fileError = document.querySelector('[data-testid="gpx-upload-error"]')
+    const demoNote = document.querySelector('[data-testid="demo-departure-note"]')?.textContent || ''
+    const width = document.querySelector('[data-testid="vehicle-width"]')
+    let history = []
+    try {
+      history = JSON.parse(localStorage.getItem('htr-route-check-history') || '[]')
+    } catch {
+      history = []
+    }
+    return {
+      fileErrorVisible: Boolean(fileError),
+      fileErrorText: fileError?.textContent || '',
+      demoNote,
+      width: width?.value || '',
+      historyVehicle: history[0]?.vehicle || null,
+      hasVerdict: Boolean(document.querySelector('.verdict-banner')),
+    }
+  })
+  record(
+    'Permit ?run=1 applies demo departure and permit vehicle (no file error)',
+    !permitAutorun.fileErrorVisible
+      && /Demo departure:/i.test(permitAutorun.demoNote)
+      && permitAutorun.hasVerdict
+      && Number(permitAutorun.historyVehicle?.width) === 3.2
+      && Number(permitAutorun.historyVehicle?.height) === 4.5
+      && Number(permitAutorun.historyVehicle?.length) === 28.5
+      && Number(permitAutorun.historyVehicle?.grossWeight) === 60,
+    JSON.stringify(permitAutorun),
   )
 
   await page.goto(base + '/route-checks?debug=1', { waitUntil: 'networkidle', timeout: 60000 }).catch(() =>

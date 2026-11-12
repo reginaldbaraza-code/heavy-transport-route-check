@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { demoDepartureIso, isGpxFileProblemMessage } from './jobs.ts'
+import { resolveCheckVehicle } from './routeCheck.ts'
 
 test('demo departure stays inside the permit validity window', () => {
   const now = Date.parse('2026-11-12T10:00:00+01:00')
@@ -48,9 +49,12 @@ test('sample auto-run applies a demo departure instead of the file-error heading
   assert.match(source, /Demo departure:/)
   assert.match(source, /data-testid="demo-departure-note"/)
   assert.match(source, /data-testid="departure-required-error"/)
-  // Sample ?run=1 must pass the demo ISO into runCheck — never leave departure empty.
+  // Sample ?run=1 must pass the demo ISO and permit dims into runCheck — never leave
+  // departure empty, and never send stale Standard form defaults (3.0×4.0×25×52).
   assert.match(source, /const demoIso = applyDemoDeparture\(permit, metadata\)/)
-  assert.match(source, /await runCheck\(content, metadata, permit, \[\], demoIso\)/)
+  assert.match(source, /const permitDims = permitVehicleDims\(permit, metadata\)/)
+  assert.match(source, /await runCheck\(content, metadata, permit, \[\], demoIso, permitDims\)/)
+  assert.match(source, /change it and re-check/)
   // Real uploads clear any demo departure and leave the field empty.
   assert.match(source, /setActivePermitId\(null\)[\s\S]*setPlannedDeparture\(''\)[\s\S]*clearDemoDeparture\(\)/)
   // Real upload without departure: Check route stays disabled; departure copy is the block message.
@@ -63,4 +67,20 @@ test('sample auto-run applies a demo departure instead of the file-error heading
     source,
     /formError &&[\s\S]{0,80}Could not use this file/,
   )
+})
+
+test('bremen-dortmund run=1 override uses permit 3.5×4.2×32×72 (not Standard defaults)', () => {
+  const staleFormDefaults = { width: 3.0, height: 4.0, length: 25.0, grossWeight: 52 }
+  const bremenDortmund = {
+    kind: 'live' as const,
+    vehicle: { width: 3.5, height: 4.2, length: 32.0, grossWeight: 72 },
+  }
+  const dims = resolveCheckVehicle(
+    staleFormDefaults,
+    bremenDortmund,
+    { vehicle: bremenDortmund.vehicle },
+    bremenDortmund.vehicle,
+  )
+  assert.deepEqual(dims, bremenDortmund.vehicle)
+  assert.notDeepEqual(dims, staleFormDefaults)
 })
