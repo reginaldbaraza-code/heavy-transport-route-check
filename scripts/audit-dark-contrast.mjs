@@ -171,8 +171,11 @@ async function collectContrast(page, label, extraSelectors = []) {
       '.verdict-banner p',
       '.verdict-banner .scenario-banner',
       '.verdict-banner .outcome-match',
+      '.verdict-banner .btn-text',
+      '.verdict-banner .verdict-label',
       '.verdict-content h2',
       '.verdict-content p',
+      '.notification-count',
       '.transport-source-list > div > span',
       'button', 'a', 'p', 'span', 'strong', 'small', 'label',
       ...extraSelectors,
@@ -276,6 +279,9 @@ async function runRouteSample(page, sample, vpName) {
     '.verdict-banner p',
     '.verdict-banner .scenario-banner',
     '.verdict-banner .outcome-match',
+    '.verdict-banner .btn-text',
+    '.verdict-banner .verdict-label',
+    '.notification-count',
   ])
 }
 
