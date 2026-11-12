@@ -5733,10 +5733,24 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   aspect-ratio: 640 / 140;
   height: auto;
   display: block;
-  /* Mask so stroke color follows --login-hero (img currentColor is always black) */
-  background-color: currentColor;
-  -webkit-mask: url('/assets/convoy.svg') center / contain no-repeat;
-  mask: url('/assets/convoy.svg') center / contain no-repeat;
+}
+
+/* Light: original multi-tone SVG via <img>. Dark: single-colour mask stroke. */
+.login-convoy--stroke {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  .login-convoy--tone {
+    display: none;
+  }
+
+  .login-convoy--stroke {
+    display: block;
+    background-color: currentColor;
+    -webkit-mask: url('/assets/convoy.svg') center / contain no-repeat;
+    mask: url('/assets/convoy.svg') center / contain no-repeat;
+  }
 }
 
 .login-hero-caption {
@@ -5877,7 +5891,6 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   }
 
   .login-convoy {
-    display: block;
     width: 100%;
     height: clamp(56px, 17vw, 72px);
     aspect-ratio: auto;
