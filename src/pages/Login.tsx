@@ -53,10 +53,11 @@ export default function Login() {
   const demoUser = useMemo(() => users.find(user => user.id === 'demo')!, [users])
 
   useEffect(() => {
-    const grid = gridRef.current
-    if (!grid) return
+    const root = gridRef.current
+    if (!root) return
     const onKeyDown = (event: KeyboardEvent) => {
-      const buttons = [...grid.querySelectorAll<HTMLButtonElement>('button.login-user-tile:not(:disabled)')]
+      // Include named tiles and the Demo tile so arrow keys can reach Demo.
+      const buttons = [...root.querySelectorAll<HTMLButtonElement>('button.login-user-tile:not(:disabled)')]
       if (buttons.length === 0) return
       const currentIndex = buttons.indexOf(document.activeElement as HTMLButtonElement)
       if (currentIndex < 0) return
@@ -70,8 +71,8 @@ export default function Login() {
       event.preventDefault()
       buttons[next]?.focus()
     }
-    grid.addEventListener('keydown', onKeyDown)
-    return () => grid.removeEventListener('keydown', onKeyDown)
+    root.addEventListener('keydown', onKeyDown)
+    return () => root.removeEventListener('keydown', onKeyDown)
   }, [])
 
   return (
@@ -83,31 +84,33 @@ export default function Login() {
           <p>Pick your name. Your jobs, checks and alerts are saved to your account.</p>
         </header>
 
-        <div className="login-grid" ref={gridRef} role="group" aria-label="Choose an account">
-          {namedUsers.map((user, index) => (
+        <div className="login-picker" ref={gridRef}>
+          <div className="login-grid" role="group" aria-label="Choose an account">
+            {namedUsers.map((user, index) => (
+              <UserTile
+                key={user.id}
+                user={user}
+                lastUsed={lastUsedId === user.id}
+                loading={selectingId === user.id}
+                autoFocus={lastUsedId ? lastUsedId === user.id : index === 0}
+                onSelect={() => { void selectUser(user.id) }}
+              />
+            ))}
+          </div>
+
+          <div className="login-demo-divider" role="separator">
+            <span>Or explore</span>
+          </div>
+
+          <div className="login-demo-row">
             <UserTile
-              key={user.id}
-              user={user}
-              lastUsed={lastUsedId === user.id}
-              loading={selectingId === user.id}
-              autoFocus={lastUsedId ? lastUsedId === user.id : index === 0}
-              onSelect={() => { void selectUser(user.id) }}
+              user={demoUser}
+              lastUsed={lastUsedId === demoUser.id}
+              loading={selectingId === demoUser.id}
+              autoFocus={lastUsedId === demoUser.id}
+              onSelect={() => { void selectUser(demoUser.id) }}
             />
-          ))}
-        </div>
-
-        <div className="login-demo-divider" role="separator">
-          <span>Or explore</span>
-        </div>
-
-        <div className="login-demo-row">
-          <UserTile
-            user={demoUser}
-            lastUsed={lastUsedId === demoUser.id}
-            loading={selectingId === demoUser.id}
-            autoFocus={lastUsedId === demoUser.id}
-            onSelect={() => { void selectUser(demoUser.id) }}
-          />
+          </div>
         </div>
 
         <p className="login-footnote">

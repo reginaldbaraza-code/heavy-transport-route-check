@@ -5614,7 +5614,7 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   align-self: flex-start;
   border: 0;
   background: transparent;
-  color: var(--accent);
+  color: var(--blue-text);
   font-size: 12px;
   font-weight: 600;
   padding: 2px 0;
@@ -5622,8 +5622,13 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   cursor: pointer;
 }
 
+.user-chip-switch:hover,
 .user-chip-switch:focus-visible {
-  outline: 2px solid var(--accent);
+  color: var(--blue-text);
+}
+
+.user-chip-switch:focus-visible {
+  outline: 2px solid var(--blue-text);
   outline-offset: 2px;
   border-radius: 4px;
 }

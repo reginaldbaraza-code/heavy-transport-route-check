@@ -32,7 +32,7 @@ export default function MarketplaceActivity() {
       <PageHeader
         eyebrow="Live route monitoring"
         title="Alerts & history"
-        description="Alerts and history come only from route checks you actually ran in this browser, plus their Autobahn GmbH results."
+        description="Alerts and history come only from route checks you ran with this account, plus their Autobahn GmbH results."
       />
       <p className="storage-note activity-storage-note">History is saved to your account.</p>
 
@@ -219,7 +219,7 @@ export default function MarketplaceActivity() {
         {!history.length && (
           <div className="market-empty">
             <History size={30} />
-            <h2>No checks in this browser</h2>
+            <h2>No checks yet</h2>
             <p>When a route check finishes, a record is saved here with the permit name, time, verdict, evidence count, and data retrieved-at.</p>
           </div>
         )}
