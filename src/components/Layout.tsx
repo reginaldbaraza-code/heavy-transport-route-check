@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   Home, Settings, Map, DatabaseZap, Route, ShieldAlert,
   Bell, Search, ChevronDown, X, Menu,
@@ -18,6 +18,8 @@ import {
   DRAWER_NAV_MAX_WIDTH_PX,
   collapseControlLabel,
   effectiveSidebarCollapsed,
+  isClosedDrawerInert,
+  isDrawerViewport,
   reduceNavChromeCollapseToggle,
   reduceNavChromeOpenMobile,
   reduceNavChromeViewportChange,
@@ -66,6 +68,9 @@ export default function Layout() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
+  const sidebarRef = useRef<HTMLElement>(null)
+  const mobileNavTriggerRef = useRef<HTMLButtonElement>(null)
+  const wasMobileOpenRef = useRef(false)
   const navigate = useNavigate()
   const location = useLocation()
   const { alerts, history, unreadCount, acknowledgeAlert } = useRouteMonitoring()
@@ -86,6 +91,7 @@ export default function Layout() {
   const navChrome = { collapsed, mobileOpen }
   const sidebarCollapsed = effectiveSidebarCollapsed(collapsed, viewportWidth)
   const collapseLabel = collapseControlLabel(navChrome, viewportWidth)
+  const drawerInert = isClosedDrawerInert(navChrome, viewportWidth)
 
   useEffect(() => {
     document.title = documentTitleFor(location.pathname)
@@ -126,6 +132,22 @@ export default function Layout() {
     return () => document.removeEventListener('keydown', closeMenus)
   }, [])
 
+  useLayoutEffect(() => {
+    const justOpened = mobileOpen && !wasMobileOpenRef.current
+    const justClosed = !mobileOpen && wasMobileOpenRef.current
+    wasMobileOpenRef.current = mobileOpen
+
+    if (justOpened) {
+      const closeBtn = sidebarRef.current?.querySelector<HTMLElement>('.sidebar-collapse')
+      closeBtn?.focus()
+      return
+    }
+
+    if (justClosed && isDrawerViewport(viewportWidth)) {
+      mobileNavTriggerRef.current?.focus()
+    }
+  }, [mobileOpen, viewportWidth])
+
   const goSearch = (href?: string) => {
     const q = searchQuery.trim()
     if (href) navigate(href)
@@ -157,7 +179,9 @@ export default function Layout() {
 
       {/* ── Sidebar ───────────────────────────────────────────────── */}
       <aside
+        ref={sidebarRef}
         className={`app-sidebar${mobileOpen ? ' mobile-open' : ''}${sidebarCollapsed ? ' is-collapsed-rail' : ''}`}
+        inert={drawerInert || undefined}
         style={{
           width: sidebarCollapsed ? 72 : 232,
           transition: 'width 220ms var(--ease-out)',
@@ -310,7 +334,13 @@ export default function Layout() {
           position: 'relative',
           zIndex: 20,
         }}>
-          <button type="button" className="mobile-nav-trigger" aria-label="Open navigation" onClick={onOpenMobileNav}>
+          <button
+            ref={mobileNavTriggerRef}
+            type="button"
+            className="mobile-nav-trigger"
+            aria-label="Open navigation"
+            onClick={onOpenMobileNav}
+          >
             <Menu size={18} />
           </button>
           <div className="mobile-user-chip">
