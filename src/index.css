@@ -3763,6 +3763,12 @@ select:focus-visible {
   text-align: left;
   color: var(--sidebar-text);
 }
+.sidebar-htr svg {
+  display: block;
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
 .rc-logo-auto .rc-logo-dark {
   display: none;
 }

@@ -126,7 +126,7 @@ export default function Layout() {
               onClick={() => navigate('/')}
               aria-label="Heavy transport route check"
             >
-              <RouteCheckLogo size={24} tone="auto" decorative />
+              <RouteCheckLogo size={20} tone="auto" decorative />
             </button>
           ) : (
             <div className="sidebar-lockup">
