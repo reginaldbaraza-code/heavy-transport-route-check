@@ -100,6 +100,10 @@ export default function Login() {
         next = (currentIndex + 1) % buttons.length
       } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
         next = (currentIndex - 1 + buttons.length) % buttons.length
+      } else if (event.key === 'Home') {
+        next = 0
+      } else if (event.key === 'End') {
+        next = buttons.length - 1
       } else {
         return
       }
@@ -131,6 +135,7 @@ export default function Login() {
           Your jobs, checks and alerts are saved to your account.
         </p>
 
+        {/* display:contents so names/tail participate in the parent grid with the hero. */}
         <div className="login-picker" ref={pickerRef}>
           <div className="login-names" role="group" aria-label="Choose an account">
             {namedUsers.map((user, index) => (
@@ -145,24 +150,26 @@ export default function Login() {
             ))}
           </div>
 
-          <div className="login-demo-divider" role="separator">
-            <span>Or explore</span>
-          </div>
+          <div className="login-tail">
+            <div className="login-demo-divider" role="separator">
+              <span>Or explore</span>
+            </div>
 
-          <div className="login-demo-row">
-            <UserRow
-              user={demoUser}
-              compact
-              lastUsed={lastUsedId === demoUser.id}
-              loading={selectingId === demoUser.id}
-              autoFocus={lastUsedId === demoUser.id}
-              onSelect={() => { void selectUser(demoUser.id) }}
-            />
-          </div>
+            <div className="login-demo-row">
+              <UserRow
+                user={demoUser}
+                compact
+                lastUsed={lastUsedId === demoUser.id}
+                loading={selectingId === demoUser.id}
+                autoFocus={lastUsedId === demoUser.id}
+                onSelect={() => { void selectUser(demoUser.id) }}
+              />
+            </div>
 
-          <p className="login-footnote">
-            Demo login — no password. Anyone with the link can open any account.
-          </p>
+            <p className="login-footnote">
+              Demo login — no password. Anyone with the link can open any account.
+            </p>
+          </div>
         </div>
 
         <aside className="login-hero" aria-hidden="true">
