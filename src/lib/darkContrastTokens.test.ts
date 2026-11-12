@@ -53,6 +53,10 @@ function tokenMap(block: string) {
   return map
 }
 
+function lightModeTokens(css: string) {
+  return tokenMap(rootBlockAt(css, 0))
+}
+
 function darkModeTokens(css: string) {
   const light = tokenMap(rootBlockAt(css, 0))
   const darkMarker = css.indexOf('@media (prefers-color-scheme: dark)')
@@ -70,6 +74,13 @@ function resolve(map: Map<string, string>, name: string, depth = 0): string {
   return raw
 }
 
+/** Average of polished light-mode verdict banner gradient stops (see index.css). */
+const lightBannerSurfaces = {
+  ready: '#eefaf3', // avg(#f4fcf7, #e8f8ef)
+  hold: '#fff5f4', // avg(#fff7f6, #fef2f2)
+  verify: '#fff9ee', // avg(#fffbf3, #fff7e8)
+} as const
+
 test('dark-mode verdict and button tokens meet WCAG AA contrast', () => {
   const css = readFileSync(new URL('../index.css', import.meta.url), 'utf8')
   const tokens = darkModeTokens(css)
@@ -85,6 +96,11 @@ test('dark-mode verdict and button tokens meet WCAG AA contrast', () => {
   const textOnAccent = resolve(tokens, '--text-on-accent')
   const hold = resolve(tokens, '--hold')
   const ready = resolve(tokens, '--ready')
+  const verify = resolve(tokens, '--verify')
+  const blueText = resolve(tokens, '--blue-text')
+  const pillInk = resolve(tokens, '--verdict-pill-ink')
+  const badgeBg = resolve(tokens, '--badge-bg')
+  const badgeFg = resolve(tokens, '--badge-fg')
 
   assert.ok(contrastRatio(textPrimary, holdBg) >= 4.5, `HOLD banner title ${textPrimary} on ${holdBg}`)
   assert.ok(contrastRatio(textPrimary, readyBg) >= 4.5, `READY banner title on ${readyBg}`)
@@ -94,6 +110,43 @@ test('dark-mode verdict and button tokens meet WCAG AA contrast', () => {
   assert.ok(contrastRatio(verifyText, verifyBg) >= 4.5, `VERIFY tint text on ${verifyBg}`)
   assert.ok(contrastRatio(textOnAccent, accentButton) >= 4.5, `primary button ${textOnAccent} on ${accentButton}`)
   // Verdict pills use dark ink on the bright semantic fill in dark mode
-  assert.ok(contrastRatio('#1c1c1e', hold) >= 4.5, `Hold departure pill on ${hold}`)
-  assert.ok(contrastRatio('#1c1c1e', ready) >= 4.5, `Ready pill on ${ready}`)
+  assert.ok(contrastRatio(pillInk, hold) >= 4.5, `Hold departure pill on ${hold}`)
+  assert.ok(contrastRatio(pillInk, ready) >= 4.5, `Ready pill on ${ready}`)
+  assert.ok(contrastRatio(pillInk, verify) >= 4.5, `Verify pill on ${verify}`)
+  // Re-check text button on tinted banner washes
+  assert.ok(contrastRatio(blueText, holdBg) >= 4.5, `Re-check on HOLD ${blueText} / ${holdBg}`)
+  assert.ok(contrastRatio(blueText, readyBg) >= 4.5, `Re-check on READY ${blueText} / ${readyBg}`)
+  assert.ok(contrastRatio(blueText, verifyBg) >= 4.5, `Re-check on VERIFY ${blueText} / ${verifyBg}`)
+  // Top-bar notification count badge
+  assert.ok(contrastRatio(badgeFg, badgeBg) >= 4.5, `notification badge ${badgeFg} on ${badgeBg}`)
+})
+
+test('light-mode verdict pills, Re-check, and badge meet WCAG AA contrast', () => {
+  const css = readFileSync(new URL('../index.css', import.meta.url), 'utf8')
+  const tokens = lightModeTokens(css)
+
+  const hold = resolve(tokens, '--hold')
+  const ready = resolve(tokens, '--ready')
+  const verify = resolve(tokens, '--verify')
+  const blueText = resolve(tokens, '--blue-text')
+  const pillInk = resolve(tokens, '--verdict-pill-ink')
+  const badgeBg = resolve(tokens, '--badge-bg')
+  const badgeFg = resolve(tokens, '--badge-fg')
+
+  assert.ok(contrastRatio(pillInk, hold) >= 4.5, `Hold departure pill ${pillInk} on ${hold}`)
+  assert.ok(contrastRatio(pillInk, ready) >= 4.5, `Ready to depart pill ${pillInk} on ${ready}`)
+  assert.ok(contrastRatio(pillInk, verify) >= 4.5, `Verify on site pill ${pillInk} on ${verify}`)
+  assert.ok(
+    contrastRatio(blueText, lightBannerSurfaces.hold) >= 4.5,
+    `Re-check on HOLD gradient ${blueText} / ${lightBannerSurfaces.hold}`,
+  )
+  assert.ok(
+    contrastRatio(blueText, lightBannerSurfaces.ready) >= 4.5,
+    `Re-check on READY gradient ${blueText} / ${lightBannerSurfaces.ready}`,
+  )
+  assert.ok(
+    contrastRatio(blueText, lightBannerSurfaces.verify) >= 4.5,
+    `Re-check on VERIFY gradient ${blueText} / ${lightBannerSurfaces.verify}`,
+  )
+  assert.ok(contrastRatio(badgeFg, badgeBg) >= 4.5, `notification badge ${badgeFg} on ${badgeBg}`)
 })
