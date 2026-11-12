@@ -81,8 +81,10 @@ export default function RouteIntelligencePolished() {
   const [gpxSimplifyNote, setGpxSimplifyNote] = useState('')
   const [showTestPermits, setShowTestPermits] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+  const departureInputRef = useRef<HTMLInputElement>(null)
   const mapRef = useRef<RouteMapHandle>(null)
   const loadedPermit = useRef<string | null>(null)
+  const pendingDepartureFocus = useRef(false)
   const [searchParams] = useSearchParams()
   const { recordCheck, patchHistory, addAlert, history } = useRouteMonitoring()
   const debugTools = searchParams.has('debug')
@@ -165,10 +167,12 @@ export default function RouteIntelligencePolished() {
     acks: SiteAcknowledgement[] = acknowledgements,
     /** ISO or datetime-local; used when state has not flushed yet (e.g. job ?run=1). */
     departureOverride?: string,
+    /** Explicit dims for auto-run before React flushes setVehicle* (e.g. job.vehicle). */
+    vehicleOverride?: { width: number; height: number; length: number; grossWeight: number } | null,
   ) => {
     const activePermit = permitOverride || testPermits.find(item => item.id === activePermitId)
-    // Prefer the dimensions currently typed into the form so sample permits honour on-screen edits.
-    const dims = resolveCheckVehicle(vehicle, activePermit, metadata) || vehicle
+    // explicitOverride beats stale form defaults on ?run=1; form still wins for manual checks.
+    const dims = resolveCheckVehicle(vehicle, activePermit, metadata, vehicleOverride) || vehicle
     const permit = (activePermit?.kind === 'scenario' ? activePermit.permitNumber : null)
       || metadata?.permitNumber
       || permitNumber
@@ -177,7 +181,9 @@ export default function RouteIntelligencePolished() {
       ? (departureOverride.includes('T') && departureOverride.length > 16 ? toLocalInput(departureOverride) : departureOverride)
       : plannedDeparture
     if (!departureLocal || !fromLocalInput(departureLocal)) {
-      setError('Planned departure is required so restrictions are judged against the trip window.')
+      // Never surface this as a GPX "Could not use this file" error on the import step.
+      pendingDepartureFocus.current = true
+      setStep('vehicle')
       setToast('Enter a planned departure before checking the route.')
       return
     }
@@ -442,14 +448,22 @@ export default function RouteIntelligencePolished() {
       setConfirmedAt(job.confirmedAt || '')
       setAcknowledgements(job.siteAcknowledgements || [])
       if (autoRun) {
-        void runCheck(job.gpxContent, {
-          permitNumber: job.permitNumber,
-          vehicle: job.vehicle,
-          corridor: job.corridor,
-          bridgeClearanceConfirmed: job.bridgeClearanceConfirmed,
-          clearanceConfirmedBy: job.clearanceConfirmedBy,
-          confirmedAt: job.confirmedAt,
-        }, undefined, job.siteAcknowledgements || [], jobDeparture)
+        // Pass job.vehicle explicitly — form setState has not flushed in this tick.
+        void runCheck(
+          job.gpxContent,
+          {
+            permitNumber: job.permitNumber,
+            vehicle: job.vehicle,
+            corridor: job.corridor,
+            bridgeClearanceConfirmed: job.bridgeClearanceConfirmed,
+            clearanceConfirmedBy: job.clearanceConfirmedBy,
+            confirmedAt: job.confirmedAt,
+          },
+          undefined,
+          job.siteAcknowledgements || [],
+          jobDeparture,
+          job.vehicle,
+        )
       } else {
         setStep('vehicle')
       }
@@ -473,9 +487,16 @@ export default function RouteIntelligencePolished() {
         applyPermitVehicle(permit, metadata)
         setActivePermitId(permit.id)
         applyPermitClearance(permit, metadata)
-        if (autoRun) {
-          await runCheck(content, metadata, permit)
+        const permitDims = permitVehicleDims(permit, metadata)
+        // Departure is intentionally not prefilled. ?permit=&run=1 without a departure
+        // must land on the vehicle step (not import with a misleading file error).
+        if (autoRun && plannedDeparture && fromLocalInput(plannedDeparture)) {
+          await runCheck(content, metadata, permit, [], plannedDeparture, permitDims)
         } else {
+          if (autoRun) {
+            pendingDepartureFocus.current = true
+            setToast('Enter a planned departure, then check the route.')
+          }
           setStep('vehicle')
         }
       } catch (err) {
@@ -483,6 +504,15 @@ export default function RouteIntelligencePolished() {
       }
     })()
   }, [getJob, prefs.intervalMinutes, searchParams])
+
+  useEffect(() => {
+    if (step !== 'vehicle' || !pendingDepartureFocus.current) return
+    pendingDepartureFocus.current = false
+    const id = window.requestAnimationFrame(() => {
+      departureInputRef.current?.focus()
+    })
+    return () => window.cancelAnimationFrame(id)
+  }, [step])
 
   const resetFlow = () => {
     setStep('import')
@@ -933,6 +963,7 @@ export default function RouteIntelligencePolished() {
               <label htmlFor="planned-departure">
                 <span>Planned departure (required)</span>
                 <input
+                  ref={departureInputRef}
                   id="planned-departure"
                   type="datetime-local"
                   value={plannedDeparture}

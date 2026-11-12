@@ -795,6 +795,10 @@ async function main() {
   record('Jobs list shows saved job', jobVisible >= 1, `jobs=${jobVisible}`)
 
   const lastCheckedBefore = await page.evaluate(() => window.__HT_TEST__?.getJobs()?.[0]?.lastCheckedAt || '')
+  const jobVehicleBefore = await page.evaluate(() => {
+    const job = window.__HT_TEST__?.getJobs()?.[0]
+    return job?.vehicle || null
+  })
   await page.getByRole('button', { name: /Re-run check/i }).click()
   await page.waitForURL(/route-checks\?.*job=/, { timeout: 15000 })
   // Prefer a finished verdict; if the live Autobahn call is slow, still accept the checking→result path.
@@ -805,6 +809,36 @@ async function main() {
   } else {
     await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
   }
+  const rerunVehicleMatch = await page.evaluate(expected => {
+    let history = []
+    try {
+      history = JSON.parse(localStorage.getItem('htr-route-check-history') || '[]')
+    } catch {
+      history = []
+    }
+    const withJob = history.filter(item => item.jobId)
+    const latest = withJob[0] || history[0]
+    const vehicle = latest?.vehicle || null
+    const match = Boolean(
+      expected
+      && vehicle
+      && Number(vehicle.width) === Number(expected.width)
+      && Number(vehicle.height) === Number(expected.height)
+      && Number(vehicle.length) === Number(expected.length)
+      && Number(vehicle.grossWeight) === Number(expected.grossWeight),
+    )
+    const staleDefaults = vehicle
+      && Number(vehicle.width) === 3
+      && Number(vehicle.height) === 4
+      && Number(vehicle.length) === 25
+      && Number(vehicle.grossWeight) === 52
+    return { match, staleDefaults, expected, vehicle }
+  }, jobVehicleBefore)
+  record(
+    'Job re-run history vehicle matches saved job (not form defaults)',
+    Boolean(rerunVehicleMatch.match) && !rerunVehicleMatch.staleDefaults,
+    JSON.stringify(rerunVehicleMatch),
+  )
   await page.goto(base + '/jobs', { waitUntil: 'domcontentloaded' })
   await page.locator('[data-testid="job-last-check"]').waitFor({ timeout: 15000 })
   const lastCheckAfter = await page.evaluate(() => {
@@ -980,6 +1014,30 @@ async function main() {
     'Item 4: demo actions appear in check history',
     /Logged locally \(demo\), not sent/i.test(historyActions),
     historyActions.slice(0, 220),
+  )
+
+  await page.goto(base + '/route-checks?permit=hamburg-hannover&run=1', { waitUntil: 'domcontentloaded' })
+  await page.locator('#planned-departure').waitFor({ timeout: 15000 })
+  const permitAutorun = await page.evaluate(() => {
+    const departure = document.getElementById('planned-departure')
+    const fileError = document.querySelector('[data-testid="gpx-upload-error"]')
+    const width = document.querySelector('[data-testid="vehicle-width"]')
+    return {
+      departureVisible: Boolean(departure && departure.offsetParent !== null),
+      departureValue: departure?.value || '',
+      fileErrorVisible: Boolean(fileError),
+      fileErrorText: fileError?.textContent || '',
+      width: width?.value || '',
+      focused: document.activeElement?.id === 'planned-departure',
+    }
+  })
+  record(
+    'Permit ?run=1 without departure lands on vehicle step (no file error)',
+    permitAutorun.departureVisible
+      && !permitAutorun.fileErrorVisible
+      && permitAutorun.departureValue === ''
+      && permitAutorun.width === '3.2',
+    JSON.stringify(permitAutorun),
   )
 
   await page.goto(base + '/route-checks?debug=1', { waitUntil: 'networkidle', timeout: 60000 }).catch(() =>
