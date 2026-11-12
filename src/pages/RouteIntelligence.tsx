@@ -1303,7 +1303,11 @@ export default function RouteIntelligencePolished() {
                 {displayed.degraded && (
                   <div className="degraded-notice">
                     <AlertTriangle size={16} />
-                    <span>Data source temporarily unavailable – verify manually</span>
+                    <span>
+                      {displayed.degradedPartial
+                        ? 'Some Autobahn feeds unavailable – verify manually'
+                        : 'Data source temporarily unavailable – verify manually'}
+                    </span>
                   </div>
                 )}
                 {displayed.mode === 'simulated' && (

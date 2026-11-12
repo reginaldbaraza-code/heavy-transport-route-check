@@ -6,6 +6,12 @@ import {
   isoNow,
   splitConcatenatedPlaces,
 } from './_lib/autobahnTimes.js';
+import {
+  fetchAutobahnRoadFeeds,
+  formatAutobahnFailureDetail,
+  summarizeAutobahnFetchHealth,
+  type AutobahnFetchHealth,
+} from './_lib/autobahnFetch.js';
 import { prepareRouteGeometry } from './_lib/corridor.js';
 import { GpxParseError, parseGpxDocument } from './_lib/gpxParse.js';
 import { guardApi, rejectOversizedBody } from './_lib/httpGuard.js';
@@ -90,6 +96,8 @@ type RouteCheckResult = {
     corridor: string;
   };
   degraded: boolean;
+  /** True when some Autobahn feeds succeeded and others failed. */
+  degradedPartial?: boolean;
   retrievedAt: string;
   source: string;
   mode?: 'live' | 'simulated';
@@ -167,33 +175,6 @@ function determineAffectedRoads(points: GPXPoint[]): string[] {
   return [...new Set(roads)];
 }
 
-async function fetchRoadEvents(
-  road: string,
-  type: 'roadworks' | 'closure' | 'warning' | 'parking_lorry',
-): Promise<any[]> {
-  try {
-    const response = await fetch(
-      `https://verkehr.autobahn.de/o/autobahn/${road}/services/${type}`,
-      {
-        headers: { 'Accept': 'application/json' },
-        signal: AbortSignal.timeout(5000),
-      }
-    );
-    
-    if (!response.ok) return [];
-    
-    const data = await response.json();
-    const key = type === 'roadworks' ? 'roadworks'
-      : type === 'closure' ? 'closure'
-      : type === 'warning' ? 'warning'
-      : 'parking_lorry';
-    return data[key] || [];
-  } catch (error) {
-    console.error(`Error fetching ${type} for ${road}:`, error);
-    return [];
-  }
-}
-
 function processAutobahnItem(
   item: any,
   fallbackTitle: string,
@@ -233,22 +214,24 @@ function isUsableEvent(item: { lat: number; lng: number; expired: boolean }) {
   return !Number.isNaN(item.lat) && !Number.isNaN(item.lng) && !item.expired;
 }
 
-async function fetchAutobahnEventsForRoute(roads: string[], retrievedAt: string): Promise<any> {
+async function fetchAutobahnEventsForRoute(
+  roads: string[],
+  retrievedAt: string,
+): Promise<{
+  roadworks: any[]
+  closures: any[]
+  warnings: any[]
+  parking: any[]
+  source: string
+  roads: string
+  retrievedAt: string
+  health: AutobahnFetchHealth
+} | null> {
   try {
     const unique = uniqueRoads(roads)
-    const allEvents = await Promise.all(
-      unique.map(async (road) => {
-        const [roadworks, closures, warnings, parking] = await Promise.all([
-          fetchRoadEvents(road, 'roadworks'),
-          fetchRoadEvents(road, 'closure'),
-          fetchRoadEvents(road, 'warning'),
-          fetchRoadEvents(road, 'parking_lorry'),
-        ]);
-        
-        return { road, roadworks, closures, warnings, parking };
-      })
-    );
-    
+    const allEvents = await Promise.all(unique.map(road => fetchAutobahnRoadFeeds(road)))
+    const health = summarizeAutobahnFetchHealth(allEvents)
+
     const processedRoadworks = allEvents.flatMap(({ road, roadworks }) =>
       roadworks.map((item: any) => {
         const processed = processAutobahnItem(item, 'Roadworks', 'Roadworks in progress', retrievedAt);
@@ -298,9 +281,12 @@ async function fetchAutobahnEventsForRoute(roads: string[], retrievedAt: string)
       closures: processedClosures,
       warnings: processedWarnings,
       parking: processedParking,
-      source: 'Autobahn GmbH (verkehr.autobahn.de)',
+      source: health.degraded
+        ? 'Autobahn GmbH (verkehr.autobahn.de) – degraded'
+        : 'Autobahn GmbH (verkehr.autobahn.de)',
       roads: roads.join(', '),
       retrievedAt,
+      health,
     };
   } catch (error) {
     console.error('Error fetching Autobahn events:', error);
@@ -520,8 +506,26 @@ export default async function handler(
         })),
       resolveMiaSnapshot(),
     ]);
-    const degraded = !autobahnData;
-    const source = 'Autobahn GmbH + MobiData BW';
+    const autobahnHealth: AutobahnFetchHealth = autobahnData?.health || {
+      degraded: true,
+      partial: false,
+      failures: affectedRoads.flatMap(road =>
+        (['roadworks', 'closure', 'warning'] as const).map(type => ({
+          road,
+          type,
+          error: 'Autobahn fetch unavailable',
+        })),
+      ),
+      criticalAttempted: affectedRoads.length * 3,
+      criticalSucceeded: 0,
+    };
+    const degraded = !autobahnData || autobahnHealth.degraded;
+    const degradedPartial = Boolean(autobahnData) && autobahnHealth.partial;
+    const source = degraded
+      ? (degradedPartial
+        ? 'Autobahn GmbH (partial) + MobiData BW'
+        : 'Autobahn GmbH unavailable + MobiData BW')
+      : 'Autobahn GmbH + MobiData BW';
     
     const classified: ClassifiedEvidence[] = [];
     const src = `Autobahn GmbH · ${affectedRoads.join(', ')}`;
@@ -597,6 +601,25 @@ export default async function handler(
         }, classifyCtx);
         if (classified.length > before) parkingAdded += 1;
       }
+    }
+
+    if (degraded) {
+      classified.push({
+        id: 'autobahn-feed-unavailable',
+        title: degradedPartial
+          ? 'Some Autobahn GmbH feeds unavailable'
+          : 'Autobahn GmbH live feeds unavailable',
+        detail: formatAutobahnFailureDetail(autobahnHealth) || 'Live Autobahn source unavailable.',
+        source: 'Autobahn GmbH (verkehr.autobahn.de)',
+        confidence: 'medium',
+        state: 'warning',
+        category: 'observations',
+        distanceKm: null,
+        reason: degradedPartial ? 'Partial Autobahn outage.' : 'Autobahn feed unavailable.',
+        locationKind: 'unknown',
+        blocker: false,
+        retrievedAt,
+      });
     }
 
     for (const item of bwResult.items) {
@@ -758,6 +781,7 @@ export default async function handler(
     const issueCount = uniqueEvidence.filter(item => item.state === 'danger').length;
     const copy = verdictCopy(decided.verdict, {
       degraded,
+      degradedPartial,
       issueCount,
       distanceKm: distance,
       clearanceConfirmed,
@@ -780,6 +804,7 @@ export default async function handler(
         corridor: `${(permittedRoads.length ? permittedRoads : affectedRoads).join(', ')} · ±0.5 km HOLD / ±1.5 km VERIFY`,
       },
       degraded,
+      degradedPartial,
       retrievedAt,
       source,
       mode: 'live',
