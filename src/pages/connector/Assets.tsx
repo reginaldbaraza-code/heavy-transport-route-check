@@ -43,7 +43,7 @@ export default function Assets() {
               <button type="button" onClick={() => setSelectedAsset(null)} className="text-sm font-semibold text-[var(--accent)]">Close</button>
             </div>
           )}
-          <div className="data-table-shell bg-white rounded-xl border border-[var(--border)] overflow-hidden">
+          <div className="data-table-shell bg-[var(--bg-card)] rounded-xl border border-[var(--border)] overflow-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--border)] bg-[var(--muted)]">

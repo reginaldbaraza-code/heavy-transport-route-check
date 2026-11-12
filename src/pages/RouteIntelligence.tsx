@@ -6,11 +6,22 @@ import {
 } from 'lucide-react'
 import type { RouteMapHandle } from '../components/RouteMapGL'
 import { Toast } from '../components/Feedback'
+import StatusTimeline from '../components/StatusTimeline'
+import TakeActionSheet from '../components/TakeActionSheet'
+import EscalateDialog from '../components/EscalateDialog'
+import HoldDepartureDialog from '../components/HoldDepartureDialog'
+import RequestOnSiteCheckDialog from '../components/RequestOnSiteCheckDialog'
+import OnSiteConfirmDialog from '../components/OnSiteConfirmDialog'
+import InformationCheckedPanel from '../components/InformationCheckedPanel'
+import MonitoringControls from '../components/MonitoringControls'
+import TestScenariosDrawer from '../components/TestScenariosDrawer'
+import SourceChip from '../components/SourceChip'
 import {
   checkRoute,
   loadTestPermit,
   permitVehicleDims,
   readFileAsText,
+  resolveCheckVehicle,
   sampleTestPermits,
   scenarioTestPermits,
   testPermits,
@@ -21,6 +32,7 @@ import { useRouteMonitoring } from '../context/RouteMonitoringContext'
 import { useJobs } from '../context/JobsContext'
 import { useOrgSettings } from '../context/OrgSettingsContext'
 import { formatBerlinDateTime } from '../lib/formatTime'
+import { importWithChunkRecovery } from '../lib/chunkLoadRecovery'
 import type { RouteEvidence } from '../data/routeChecks'
 import { confirmOnSiteTitles, downloadSnapshot, formatStartLabel, pdfBytesFromSnapshot, sanitizePdfText, snapshotFromResult } from '../lib/exportCheck'
 import {
@@ -28,7 +40,12 @@ import {
   MONITOR_INTERVAL_OPTIONS,
   defaultDepartureIso,
   defaultJobName,
+  demoDepartureIso,
+  extractPermittedRoads,
   fromLocalInput,
+  isGpxFileProblemMessage,
+  jobCheckOptions,
+  sanitizeCorridor,
   toLocalInput,
 } from '../lib/jobs'
 import {
@@ -36,12 +53,13 @@ import {
   isAcknowledgeable,
   isHoldItem,
   isNearbyOffRoute,
+  isOppositeDirectionNote,
   type SiteAcknowledgement,
 } from '../lib/siteAcknowledgements'
 import { displayEvidenceTitle, evidenceOriginalGerman, looksGerman, looksTechnical, splitConcatenatedPlaces } from '../lib/evidenceSummary'
 import { GPX_FRIENDLY_TOO_LARGE, GpxParseError, parseGpxDocument, serializeGpxTrack, validateGpxFileSize } from '../lib/gpxParse'
 
-const RouteMapGL = lazy(() => import('../components/RouteMapGL'))
+const RouteMapGL = lazy(() => importWithChunkRecovery(() => import('../components/RouteMapGL')))
 
 const routeLayers = [
   { id: 'roadworks', label: 'Roadworks' },
@@ -69,17 +87,39 @@ export default function RouteIntelligencePolished() {
   const [gpxSimplifyNote, setGpxSimplifyNote] = useState('')
   const [showTestPermits, setShowTestPermits] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+  const departureInputRef = useRef<HTMLInputElement>(null)
   const mapRef = useRef<RouteMapHandle>(null)
   const loadedPermit = useRef<string | null>(null)
+  const pendingDepartureFocus = useRef(false)
   const [searchParams] = useSearchParams()
-  const { recordCheck, patchHistory } = useRouteMonitoring()
+  const { recordCheck, patchHistory, addAlert, history } = useRouteMonitoring()
+  const debugTools = searchParams.has('debug')
   const { saveJob, getJob, updateJob, prefs, requestNotifications } = useJobs()
   const { savedProfile } = useOrgSettings()
-  const [plannedDeparture, setPlannedDeparture] = useState(toLocalInput(defaultDepartureIso(8)))
+  const [plannedDeparture, setPlannedDeparture] = useState('')
+  const [departureExpiryError, setDepartureExpiryError] = useState('')
+  const [demoDepartureLabel, setDemoDepartureLabel] = useState('')
+  const [formError, setFormError] = useState('')
   const [jobName, setJobName] = useState('')
   const [jobInterval, setJobInterval] = useState(prefs.intervalMinutes)
   const [showSaveJob, setShowSaveJob] = useState(false)
   const loadedJob = useRef<string | null>(null)
+  /** Permit fields from the last sample/job load — used for Save as job and Re-check. */
+  const lastPermitMeta = useRef<{
+    corridor?: string
+    permittedRoads?: string[]
+    validFrom?: string
+    validUntil?: string
+    travelFrom?: string
+    travelTo?: string
+    origin?: string
+    destination?: string
+    permitNumber?: string
+    bridgeClearanceConfirmed?: boolean
+    clearanceConfirmedBy?: string
+    confirmedAt?: string
+    scenario?: string
+  } | null>(null)
   const [activePermitId, setActivePermitId] = useState<string | null>(null)
   const [clearanceConfirmed, setClearanceConfirmed] = useState(false)
   const [clearanceBy, setClearanceBy] = useState('')
@@ -93,6 +133,18 @@ export default function RouteIntelligencePolished() {
   clearanceByRef.current = clearanceBy
   confirmedAtRef.current = confirmedAt
 
+  // New dialog state
+  const [showTakeAction, setShowTakeAction] = useState(false)
+  const [showEscalate, setShowEscalate] = useState(false)
+  const [showHoldDeparture, setShowHoldDeparture] = useState(false)
+  const [showRequestOnSite, setShowRequestOnSite] = useState(false)
+  const [showOnSiteConfirm, setShowOnSiteConfirm] = useState(false)
+  const [pendingConfirmIds, setPendingConfirmIds] = useState<string[]>([])
+  const [confirmLocation, setConfirmLocation] = useState<string>()
+  const [showInfoChecked, setShowInfoChecked] = useState(false)
+  const [showTestScenarios, setShowTestScenarios] = useState(false)
+  const [monitoring, setMonitoring] = useState(false)
+
   const vehicle = {
     width: parseFloat(vehicleWidth) || 0,
     height: parseFloat(vehicleHeight) || 0,
@@ -101,6 +153,19 @@ export default function RouteIntelligencePolished() {
   }
 
   const vehicleValid = vehicle.width > 0 && vehicle.height > 0 && vehicle.length > 0 && vehicle.grossWeight > 0
+  const departureValid = Boolean(plannedDeparture && fromLocalInput(plannedDeparture))
+  const confirmerName = clearanceBy.trim()
+  const DEMO_NOT_SENT = 'Logged locally (demo), not sent'
+
+  const logDemoAction = (label: string) => {
+    const line = `${label}: ${DEMO_NOT_SENT}`
+    setToast(DEMO_NOT_SENT)
+    const id = lastHistoryId.current
+    if (!id) return
+    const record = history.find(item => item.id === id)
+    const prior = record?.actionsLog || []
+    patchHistory(id, { actionsLog: [...prior, line] })
+  }
 
   const applyPermitClearance = (permit?: TestPermit | null, metadata?: any) => {
     const confirmed = Boolean(permit?.bridgeClearanceConfirmed ?? metadata?.bridgeClearanceConfirmed)
@@ -119,37 +184,182 @@ export default function RouteIntelligencePolished() {
     setVehicleWeight(String(dims.grossWeight))
   }
 
+  /** Sample/demo only — never used for real GPX uploads. */
+  const applyDemoDeparture = (permit?: TestPermit | null, metadata?: { validFrom?: string; validUntil?: string } | null) => {
+    const iso = demoDepartureIso({
+      validFrom: metadata?.validFrom || permit?.validFrom,
+      validUntil: metadata?.validUntil || permit?.validUntil,
+    })
+    const local = toLocalInput(iso)
+    setPlannedDeparture(local)
+    setDemoDepartureLabel(`Demo departure: ${formatBerlinDateTime(iso)} — change it and re-check`)
+    setDepartureExpiryError('')
+    setFormError('')
+    return iso
+  }
+
+  const clearDemoDeparture = () => {
+    setDemoDepartureLabel('')
+  }
+
+  const setFileError = (message: string, technical = '') => {
+    setError(message)
+    setErrorTechnical(technical)
+    setFormError('')
+  }
+
+  const setDepartureRequiredError = (message = 'Planned departure is required so restrictions are judged against the trip window.') => {
+    setFormError(message)
+    setError('')
+    setErrorTechnical('')
+    setToast('Enter a planned departure before checking the route.')
+  }
+
+  const rememberPermitMeta = (
+    permit?: TestPermit | null,
+    metadata?: {
+      corridor?: string
+      permittedRoads?: string[]
+      validFrom?: string
+      validUntil?: string
+      travelFrom?: string
+      travelTo?: string
+      origin?: string
+      destination?: string
+      permitNumber?: string
+      bridgeClearanceConfirmed?: boolean
+      clearanceConfirmedBy?: string
+      confirmedAt?: string
+      scenario?: string
+    } | null,
+  ) => {
+    const corridor = sanitizeCorridor(
+      metadata?.corridor,
+      metadata?.permittedRoads,
+      permit?.corridor,
+    )
+    const roads = extractPermittedRoads(corridor, metadata?.permittedRoads, permit?.corridor)
+    lastPermitMeta.current = {
+      corridor: corridor || undefined,
+      permittedRoads: roads.length ? roads : undefined,
+      validFrom: metadata?.validFrom || permit?.validFrom,
+      validUntil: metadata?.validUntil || permit?.validUntil,
+      travelFrom: metadata?.travelFrom
+        || permit?.originShort
+        || permit?.origin
+        || metadata?.origin,
+      travelTo: metadata?.travelTo
+        || permit?.destinationShort
+        || permit?.destination
+        || metadata?.destination,
+      origin: metadata?.origin || permit?.origin,
+      destination: metadata?.destination || permit?.destination,
+      permitNumber: metadata?.permitNumber || permit?.permitNumber,
+      bridgeClearanceConfirmed: metadata?.bridgeClearanceConfirmed ?? permit?.bridgeClearanceConfirmed,
+      clearanceConfirmedBy: metadata?.clearanceConfirmedBy || permit?.clearanceConfirmedBy,
+      confirmedAt: metadata?.confirmedAt || permit?.confirmedAt,
+      scenario: metadata?.scenario || permit?.scenario,
+    }
+  }
+
   const runCheck = async (
     content: string,
     metadata?: any,
     permitOverride?: TestPermit,
     acks: SiteAcknowledgement[] = acknowledgements,
+    /** ISO or datetime-local; used when state has not flushed yet (e.g. job ?run=1). */
+    departureOverride?: string,
+    /** Explicit dims for auto-run before React flushes setVehicle* (e.g. job.vehicle). */
+    vehicleOverride?: { width: number; height: number; length: number; grossWeight: number } | null,
   ) => {
     const activePermit = permitOverride || testPermits.find(item => item.id === activePermitId)
-    const dims = permitVehicleDims(activePermit, metadata) || vehicle
+    // explicitOverride beats stale form defaults on ?run=1; form still wins for manual checks.
+    const dims = resolveCheckVehicle(vehicle, activePermit, metadata, vehicleOverride) || vehicle
     const permit = (activePermit?.kind === 'scenario' ? activePermit.permitNumber : null)
       || metadata?.permitNumber
       || permitNumber
     if (!(dims.width > 0 && dims.height > 0 && dims.length > 0 && dims.grossWeight > 0) || checking) return
+    let departureLocal = departureOverride
+      ? (departureOverride.includes('T') && departureOverride.length > 16 ? toLocalInput(departureOverride) : departureOverride)
+      : plannedDeparture
+    if (!departureLocal || !fromLocalInput(departureLocal)) {
+      // Sample/?run=1: labelled demo departure. Real uploads: require an explicit departure
+      // (never surface as a GPX "Could not use this file" error on the import step).
+      if (activePermit) {
+        const demoIso = applyDemoDeparture(activePermit, metadata)
+        departureLocal = toLocalInput(demoIso)
+      } else {
+        pendingDepartureFocus.current = true
+        setStep('vehicle')
+        setDepartureRequiredError()
+        return
+      }
+    }
+    const departureIso = fromLocalInput(departureLocal)
+    const permitExpiry = metadata?.validUntil || activePermit?.validUntil || lastPermitMeta.current?.validUntil
+    if (permitExpiry) {
+      const expiryMs = Date.parse(permitExpiry)
+      const departureMs = Date.parse(departureIso)
+      if (Number.isFinite(expiryMs) && Number.isFinite(departureMs) && departureMs > expiryMs) {
+        const message = `Planned departure is after the permit expiry (${formatBerlinDateTime(permitExpiry)}). Choose an earlier departure.`
+        setDepartureExpiryError(message)
+        setFormError(message)
+        setError('')
+        setErrorTechnical('')
+        setToast(message)
+        return
+      }
+    }
+    setDepartureExpiryError('')
 
     setChecking(true)
     setError('')
     setErrorTechnical('')
+    setFormError('')
     
     try {
       if (metadata || activePermit) {
         setPermitNumber(activePermit?.kind === 'scenario' ? (activePermit.permitNumber || permit) : (metadata?.permitNumber || activePermit?.permitNumber || ''))
-        applyPermitVehicle(activePermit, metadata)
+        rememberPermitMeta(activePermit, metadata)
       }
 
+      const remembered = lastPermitMeta.current
+      const corridor = sanitizeCorridor(
+        metadata?.corridor,
+        metadata?.permittedRoads,
+        activePermit?.corridor,
+        remembered?.corridor,
+        remembered?.permittedRoads,
+      )
+      const roads = extractPermittedRoads(
+        corridor,
+        metadata?.permittedRoads,
+        activePermit?.corridor,
+        remembered?.permittedRoads,
+      )
+      const validFrom = metadata?.validFrom || activePermit?.validFrom || remembered?.validFrom
+      const validUntil = metadata?.validUntil || activePermit?.validUntil || remembered?.validUntil
+      const travelFrom = metadata?.travelFrom
+        || activePermit?.originShort
+        || activePermit?.origin
+        || metadata?.origin
+        || remembered?.travelFrom
+      const travelTo = metadata?.travelTo
+        || activePermit?.destinationShort
+        || activePermit?.destination
+        || metadata?.destination
+        || remembered?.travelTo
+
+      const departureStart = departureIso
       const checkResult = await checkRoute(content, dims, {
         permitNumber: permit,
-        corridor: metadata?.corridor || activePermit?.corridor,
-        permittedRoads: (metadata?.corridor || activePermit?.corridor)
-          ? [String(metadata?.corridor || activePermit?.corridor).replace(/\s+/g, '')]
-          : undefined,
-        validFrom: metadata?.validFrom || activePermit?.validFrom,
-        validUntil: metadata?.validUntil || activePermit?.validUntil,
+        corridor: corridor || undefined,
+        permittedRoads: roads.length ? roads : undefined,
+        departureStart,
+        validFrom,
+        validUntil,
+        travelFrom,
+        travelTo,
         bridgeClearanceConfirmed: permitOverride
           ? Boolean(metadata?.bridgeClearanceConfirmed ?? permitOverride.bridgeClearanceConfirmed)
           : Boolean(metadata?.bridgeClearanceConfirmed ?? clearanceConfirmed),
@@ -159,9 +369,22 @@ export default function RouteIntelligencePolished() {
         confirmedAt: permitOverride
           ? (metadata?.confirmedAt || permitOverride.confirmedAt)
           : (metadata?.confirmedAt || confirmedAt || undefined),
-        scenario: activePermit?.scenario,
+        // Prefer the active sample permit; fall back to job/meta so re-runs keep the scenario.
+        scenario: activePermit?.scenario || metadata?.scenario || remembered?.scenario,
         acknowledgements: acks,
       })
+      const scenarioId = activePermit?.scenario || metadata?.scenario || remembered?.scenario
+      lastPermitMeta.current = {
+        ...(lastPermitMeta.current || {}),
+        corridor: corridor || lastPermitMeta.current?.corridor,
+        permittedRoads: roads.length ? roads : lastPermitMeta.current?.permittedRoads,
+        validFrom,
+        validUntil,
+        travelFrom,
+        travelTo,
+        permitNumber: permit,
+        scenario: scenarioId || lastPermitMeta.current?.scenario,
+      }
       setResult(checkResult)
       setActiveLayer('roadworks')
       setStep('result')
@@ -185,10 +408,28 @@ export default function RouteIntelligencePolished() {
         evidence: checkResult.evidence,
         confirmOnSite: confirmOnSiteTitles(checkResult.evidence),
         jobId: loadedJob.current || undefined,
-        alertEligible: !activePermit,
+        alertEligible: true,
         siteAcknowledgements: acks,
       })
       lastHistoryId.current = history.id
+      
+      // Create alert for HOLD verdict on manual checks (not from jobs)
+      if (!loadedJob.current && checkResult.verdict === 'HOLD' && history.alertEligible) {
+        const isDemo = activePermit?.kind === 'scenario'
+          || Boolean(activePermit?.scenario || metadata?.scenario || lastPermitMeta.current?.scenario)
+          || checkResult.mode === 'simulated'
+        addAlert({
+          runAt,
+          routeId: history.id,
+          routeLabel: history.routeLabel,
+          change: isDemo ? `Demo: ${checkResult.verdict}` : `Route check: ${checkResult.verdict}`,
+          detail: checkResult.summary || 'Route requires attention',
+          severity: checkResult.verdict,
+          status: 'New',
+          source: checkResult.source || 'Autobahn GmbH',
+        })
+      }
+      
       if (loadedJob.current) {
         updateJob(loadedJob.current, {
           lastCheckedAt: runAt,
@@ -198,7 +439,15 @@ export default function RouteIntelligencePolished() {
           lastSource: checkResult.source,
           origin: checkResult.route.origin,
           destination: checkResult.route.destination,
-          corridor: checkResult.route.corridor,
+          // Keep clean Autobahn codes — never the API buffer display label.
+          corridor: corridor || sanitizeCorridor(checkResult.route.corridor),
+          permittedRoads: roads.length ? roads : extractPermittedRoads(checkResult.route.corridor),
+          validFrom,
+          validUntil,
+          travelFrom,
+          travelTo,
+          // Preserve simulated scenario across job updates from re-runs.
+          scenario: scenarioId || getJob(loadedJob.current)?.scenario,
           siteAcknowledgements: acks,
         })
       }
@@ -210,8 +459,13 @@ export default function RouteIntelligencePolished() {
       ))
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to check route'
-      setError(errorMsg)
-      setErrorTechnical(err instanceof GpxParseError ? err.technical : '')
+      if (isGpxFileProblemMessage(errorMsg) || err instanceof GpxParseError) {
+        setFileError(errorMsg, err instanceof GpxParseError ? err.technical : '')
+      } else {
+        setFormError(errorMsg)
+        setError('')
+        setErrorTechnical('')
+      }
       setToast(errorMsg)
     } finally {
       setChecking(false)
@@ -227,39 +481,66 @@ export default function RouteIntelligencePolished() {
     setShowTestPermits(false)
     setError('')
     setErrorTechnical('')
+    setFormError('')
     setStep('vehicle')
     applyPermitClearance(permit)
     applyPermitVehicle(permit)
     setPermitNumber(permit.permitNumber)
     setAcknowledgements([])
+    applyDemoDeparture(permit)
+    rememberPermitMeta(permit)
+    loadedJob.current = null
 
     try {
       const { gpxContent: content, metadata } = await loadTestPermit(permit)
       setGpxContent(content)
       applyPermitVehicle(permit, metadata)
       setPermitNumber(permit.kind === 'scenario' ? permit.permitNumber : (metadata?.permitNumber || permit.permitNumber))
+      applyDemoDeparture(permit, metadata)
+      rememberPermitMeta(permit, metadata)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load sample permit')
+      setFileError(err instanceof Error ? err.message : 'Failed to load sample permit')
     }
   }
 
   const handleFileUpload = async (file: File) => {
     setError('')
     setErrorTechnical('')
+    setFormError('')
     setActivePermitId(null)
+    setPlannedDeparture('')
+    clearDemoDeparture()
+    setDepartureExpiryError('')
+    lastPermitMeta.current = null
+    loadedJob.current = null
 
-    try {
-      validateGpxFileSize(file.size)
-    } catch (err) {
-      setError(err instanceof GpxParseError ? err.message : GPX_FRIENDLY_TOO_LARGE)
-      setErrorTechnical(err instanceof GpxParseError ? err.technical : '')
+    // Check for VEMAGS PDF/XML formats and provide helpful message
+    const fileName = file.name.toLowerCase()
+    if (fileName.endsWith('.pdf') || fileName.endsWith('.xml')) {
+      setFileError(
+        'VEMAGS PDF and XML formats are not yet supported. Please export your permitted route as GPX from VEMAGS and upload that file instead.',
+        'To export GPX from VEMAGS: Open your permit → Export → Select "GPX format" → Save the .gpx file → Upload here',
+      )
       setRouteFile('')
       return
     }
 
-    if (!file.name.toLowerCase().endsWith('.gpx')) {
-      setError("This file isn't a valid GPX route. Export the route from VEMAGS as GPX and try again.")
-      setErrorTechnical(`Unexpected file name: ${file.name}`)
+    try {
+      validateGpxFileSize(file.size)
+    } catch (err) {
+      setFileError(
+        err instanceof GpxParseError ? err.message : GPX_FRIENDLY_TOO_LARGE,
+        err instanceof GpxParseError ? err.technical : '',
+      )
+      setRouteFile('')
+      return
+    }
+
+    if (!fileName.endsWith('.gpx')) {
+      setFileError(
+        "This file isn't a valid GPX route. Export the route from VEMAGS as GPX and try again.",
+        `Unexpected file name: ${file.name}`,
+      )
       setRouteFile('')
       return
     }
@@ -280,16 +561,40 @@ export default function RouteIntelligencePolished() {
       }
       setStep('vehicle')
     } catch (err) {
-      setError(err instanceof Error ? err.message : "This file isn't a valid GPX route. Export the route from VEMAGS as GPX and try again.")
-      setErrorTechnical(err instanceof GpxParseError ? err.technical : '')
+      setFileError(
+        err instanceof Error ? err.message : "This file isn't a valid GPX route. Export the route from VEMAGS as GPX and try again.",
+        err instanceof GpxParseError ? err.technical : '',
+      )
       setRouteFile('')
     }
   }
 
   const handleCheckRoute = () => {
-    if (gpxContent && vehicleValid) {
-      runCheck(gpxContent)
+    if (!departureValid) {
+      if (activePermitId) {
+        const permit = testPermits.find(item => item.id === activePermitId)
+        applyDemoDeparture(permit)
+        if (!gpxContent) {
+          setFormError('Route file is still loading. Wait a moment and try again.')
+          setToast('Route file is still loading.')
+          return
+        }
+        runCheck(gpxContent)
+        return
+      }
+      setDepartureRequiredError()
+      return
     }
+    if (!vehicleValid) {
+      setFormError('Enter valid vehicle dimensions before checking the route.')
+      return
+    }
+    if (!gpxContent) {
+      setFormError('Route file is still loading. Wait a moment and try again.')
+      setToast('Route file is still loading.')
+      return
+    }
+    runCheck(gpxContent)
   }
 
   useEffect(() => {
@@ -301,7 +606,9 @@ export default function RouteIntelligencePolished() {
   useEffect(() => {
     const jobId = searchParams.get('job')
     if (jobId) {
-      if (loadedJob.current === jobId) return
+      const autoRun = searchParams.get('run') === '1'
+      // Always honour ?run=1 even if this job is already loaded (e.g. after Save as job).
+      if (loadedJob.current === jobId && !autoRun) return
       const job = getJob(jobId)
       if (!job) {
         setError('That saved job was not found in this browser.')
@@ -317,25 +624,38 @@ export default function RouteIntelligencePolished() {
       setVehicleHeight(String(job.vehicle.height))
       setVehicleLength(String(job.vehicle.length))
       setVehicleWeight(String(job.vehicle.grossWeight))
-      setPlannedDeparture(toLocalInput(job.plannedDeparture || defaultDepartureIso(8)))
+      const jobDeparture = job.plannedDeparture && fromLocalInput(toLocalInput(job.plannedDeparture))
+        ? job.plannedDeparture
+        : defaultDepartureIso(8)
+      setPlannedDeparture(toLocalInput(jobDeparture))
+      clearDemoDeparture()
+      setDepartureExpiryError('')
       setJobName(job.name)
       setJobInterval(job.monitorIntervalMinutes || prefs.intervalMinutes)
       setShowTestPermits(false)
       setError('')
+      setFormError('')
       setActivePermitId(null)
       setClearanceConfirmed(Boolean(job.bridgeClearanceConfirmed))
       setClearanceBy(job.clearanceConfirmedBy || '')
       setConfirmedAt(job.confirmedAt || '')
       setAcknowledgements(job.siteAcknowledgements || [])
-      if (searchParams.get('run') === '1') {
-        void runCheck(job.gpxContent, {
-          permitNumber: job.permitNumber,
-          vehicle: job.vehicle,
-          corridor: job.corridor,
-          bridgeClearanceConfirmed: job.bridgeClearanceConfirmed,
-          clearanceConfirmedBy: job.clearanceConfirmedBy,
-          confirmedAt: job.confirmedAt,
-        }, undefined, job.siteAcknowledgements || [])
+      const jobMeta = jobCheckOptions(job)
+      rememberPermitMeta(null, jobMeta)
+      if (autoRun) {
+        // Pass job.vehicle explicitly — form setState has not flushed in this tick.
+        // jobCheckOptions sanitizes polluted corridors and restores validity/travel fields.
+        void runCheck(
+          job.gpxContent,
+          {
+            ...jobMeta,
+            vehicle: job.vehicle,
+          },
+          undefined,
+          job.siteAcknowledgements || [],
+          jobDeparture,
+          job.vehicle,
+        )
       } else {
         setStep('vehicle')
       }
@@ -355,20 +675,34 @@ export default function RouteIntelligencePolished() {
         setGpxContent(content)
         setShowTestPermits(false)
         setError('')
+        setFormError('')
         setPermitNumber(permit.kind === 'scenario' ? permit.permitNumber : (metadata?.permitNumber || permit.permitNumber))
         applyPermitVehicle(permit, metadata)
         setActivePermitId(permit.id)
         applyPermitClearance(permit, metadata)
+        const demoIso = applyDemoDeparture(permit, metadata)
+        rememberPermitMeta(permit, metadata)
+        const permitDims = permitVehicleDims(permit, metadata)
+        // Pass permitDims explicitly — form setState has not flushed in this tick.
         if (autoRun) {
-          await runCheck(content, metadata, permit)
+          await runCheck(content, metadata, permit, [], demoIso, permitDims)
         } else {
           setStep('vehicle')
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load sample permit')
+        setFileError(err instanceof Error ? err.message : 'Failed to load sample permit')
       }
     })()
   }, [getJob, prefs.intervalMinutes, searchParams])
+
+  useEffect(() => {
+    if (step !== 'vehicle' || !pendingDepartureFocus.current) return
+    pendingDepartureFocus.current = false
+    const id = window.requestAnimationFrame(() => {
+      departureInputRef.current?.focus()
+    })
+    return () => window.cancelAnimationFrame(id)
+  }, [step])
 
   const resetFlow = () => {
     setStep('import')
@@ -377,10 +711,15 @@ export default function RouteIntelligencePolished() {
     setGpxContent('')
     setError('')
     setErrorTechnical('')
+    setFormError('')
     setGpxSimplifyNote('')
     setPermitNumber('')
+    setPlannedDeparture('')
+    clearDemoDeparture()
+    setDepartureExpiryError('')
     setShowSaveJob(false)
     loadedJob.current = null
+    lastPermitMeta.current = null
     setActivePermitId(null)
     setClearanceConfirmed(false)
     setClearanceBy('')
@@ -389,17 +728,39 @@ export default function RouteIntelligencePolished() {
     lastHistoryId.current = null
   }
 
+  /** Re-run the same route/vehicle/departure (and permit window) — do not reset to Import. */
+  const handleRecheck = () => {
+    if (!gpxContent || checking) return
+    const job = loadedJob.current ? getJob(loadedJob.current) : undefined
+    const permit = activePermitId ? testPermits.find(item => item.id === activePermitId) : undefined
+    const meta = job
+      ? { ...jobCheckOptions(job), vehicle: job.vehicle }
+      : (lastPermitMeta.current || undefined)
+    void runCheck(gpxContent, meta, permit, acknowledgements)
+  }
+
   const handleSaveJob = () => {
     if (!gpxContent) return
     const name = jobName.trim() || defaultJobName(routeFile, result?.route.origin, result?.route.destination, permitNumber)
+    const meta = lastPermitMeta.current
+    const activePermit = activePermitId ? testPermits.find(item => item.id === activePermitId) : undefined
+    const scenario = meta?.scenario || activePermit?.scenario
+    const corridor = sanitizeCorridor(meta?.corridor, meta?.permittedRoads, result?.route.corridor)
+    const roads = extractPermittedRoads(corridor, meta?.permittedRoads)
     const saved = saveJob({
       name,
       permitNumber,
       routeFileName: routeFile || name,
       gpxContent,
-      origin: result?.route.origin || '',
-      destination: result?.route.destination || '',
-      corridor: result?.route.corridor || '',
+      origin: result?.route.origin || meta?.origin || '',
+      destination: result?.route.destination || meta?.destination || '',
+      corridor,
+      permittedRoads: roads.length ? roads : undefined,
+      validFrom: meta?.validFrom,
+      validUntil: meta?.validUntil,
+      travelFrom: meta?.travelFrom || result?.route.origin,
+      travelTo: meta?.travelTo || result?.route.destination,
+      scenario,
       vehicle,
       plannedDeparture: fromLocalInput(plannedDeparture),
       monitorIntervalMinutes: jobInterval || prefs.intervalMinutes,
@@ -415,8 +776,10 @@ export default function RouteIntelligencePolished() {
       siteAcknowledgements: acknowledgements,
     }, loadedJob.current || undefined)
     loadedJob.current = saved.id
+    rememberPermitMeta(null, jobCheckOptions(saved))
     setShowSaveJob(false)
-    setToast('Job saved in this browser only.')
+    setMonitoring(true)
+    setToast('Job saved and monitoring started.')
   }
 
   const displayed = result
@@ -478,13 +841,36 @@ export default function RouteIntelligencePolished() {
     persistOverlay(acknowledgements, next, by, at)
   }
 
-  const confirmOnSite = (ids: string[]) => {
+  const openBulkConfirm = (ids: string[]) => {
     if (!result) return
-    const name = clearanceByRef.current.trim() || clearanceBy.trim() || 'Dispatcher'
-    if (!clearanceByRef.current.trim()) {
-      clearanceByRef.current = name
-      setClearanceBy(name)
+    const verifyIds = ids.filter(id => {
+      const item = result.evidence.find(entry => entry.id === id)
+      return item && !isHoldItem(item) && isAcknowledgeable(item)
+    })
+    if (!verifyIds.length) {
+      setToast(displayed?.verdict === 'HOLD' ? 'HOLD items cannot be acknowledged away.' : 'No VERIFY items left to confirm.')
+      return
     }
+    if (!confirmerName) {
+      setToast('Enter a confirmer name before bulk confirming VERIFY items.')
+      return
+    }
+    setPendingConfirmIds(verifyIds)
+    setConfirmLocation(verifyIds.length === 1
+      ? (result.evidence.find(item => item.id === verifyIds[0])?.title || undefined)
+      : `${verifyIds.length} VERIFY items`)
+    setShowOnSiteConfirm(true)
+  }
+
+  const confirmOnSite = (ids: string[], confirmedBy?: string) => {
+    if (!result) return
+    const name = (confirmedBy || clearanceByRef.current || clearanceBy).trim()
+    if (!name) {
+      setToast('Enter a confirmer name before confirming VERIFY items.')
+      return
+    }
+    clearanceByRef.current = name
+    setClearanceBy(name)
     const at = new Date().toISOString()
     const next = [...acknowledgements]
     let skippedHold = 0
@@ -547,6 +933,7 @@ export default function RouteIntelligencePolished() {
   const currentVerdict = displayed ? verdictConfig[displayed.verdict] : null
   const primaryEvidence = displayed?.evidence.filter(item => !isNearbyOffRoute(item)) || []
   const nearbyOffRoute = displayed?.evidence.filter(isNearbyOffRoute) || []
+  const oppositeDirectionNotes = primaryEvidence.filter(isOppositeDirectionNote)
   const pendingVerify = primaryEvidence.filter(item => isAcknowledgeable(item) && !item.acknowledgedAt)
 
   return (
@@ -600,7 +987,7 @@ export default function RouteIntelligencePolished() {
               <input
                 ref={fileInput}
                 type="file"
-                accept=".gpx,application/gpx+xml,text/xml"
+                accept=".gpx,application/gpx+xml,text/xml,.pdf,application/pdf,.xml,application/xml"
                 onChange={e => {
                   const file = e.target.files?.[0]
                   if (file) {
@@ -648,6 +1035,15 @@ export default function RouteIntelligencePolished() {
                       <pre>{errorTechnical}</pre>
                     </details>
                   )}
+                </div>
+              </div>
+            )}
+            {formError && step === 'import' && (
+              <div className="error-message" role="alert" data-testid="departure-required-error">
+                <AlertTriangle size={20} />
+                <div>
+                  <strong>Planned departure needed</strong>
+                  <p>{formError}</p>
                 </div>
               </div>
             )}
@@ -792,15 +1188,47 @@ export default function RouteIntelligencePolished() {
 
             <div className="form-group">
               <label htmlFor="planned-departure">
-                <span>Planned departure</span>
+                <span>Planned departure (required)</span>
                 <input
+                  ref={departureInputRef}
                   id="planned-departure"
                   type="datetime-local"
                   value={plannedDeparture}
-                  onChange={event => setPlannedDeparture(event.target.value)}
+                  onChange={event => {
+                    setPlannedDeparture(event.target.value)
+                    setDepartureExpiryError('')
+                    if (demoDepartureLabel) clearDemoDeparture()
+                    setFormError('')
+                  }}
+                  required
+                  aria-required="true"
+                  aria-invalid={Boolean(departureExpiryError || (formError && !departureValid)) || undefined}
+                  aria-describedby={
+                    departureExpiryError
+                      ? 'planned-departure-error'
+                      : demoDepartureLabel
+                        ? 'planned-departure-demo'
+                        : 'planned-departure-hint'
+                  }
                 />
               </label>
-              <p className="storage-note">Used if you save this as a job. Monitoring only runs while the tab is open and stops after this time.</p>
+              {demoDepartureLabel ? (
+                <p id="planned-departure-demo" className="storage-note" data-testid="demo-departure-note">
+                  {demoDepartureLabel}
+                </p>
+              ) : (
+                <p id="planned-departure-hint" className="storage-note">No default is filled in — enter the real planned departure. Each restriction is judged against this window. Also used when you save a job. Monitoring only runs while the tab is open and stops after this time.</p>
+              )}
+              {departureExpiryError && (
+                <p id="planned-departure-error" className="field-error" role="alert" data-testid="departure-expiry-error">
+                  {departureExpiryError}
+                </p>
+              )}
+              {formError && !departureExpiryError && (
+                <p className="field-error" role="alert" data-testid="departure-required-error">
+                  {formError}
+                </p>
+              )}
             </div>
 
             <label className="clearance-tick">
@@ -843,7 +1271,7 @@ export default function RouteIntelligencePolished() {
                 type="button" 
                 className="btn-primary" 
                 onClick={handleCheckRoute}
-                disabled={!vehicleValid}
+                disabled={!vehicleValid || !departureValid}
               >
                 Check route
               </button>
@@ -875,7 +1303,11 @@ export default function RouteIntelligencePolished() {
                 {displayed.degraded && (
                   <div className="degraded-notice">
                     <AlertTriangle size={16} />
-                    <span>Data source temporarily unavailable – verify manually</span>
+                    <span>
+                      {displayed.degradedPartial
+                        ? 'Some Autobahn feeds unavailable – verify manually'
+                        : 'Data source temporarily unavailable – verify manually'}
+                    </span>
                   </div>
                 )}
                 {displayed.mode === 'simulated' && (
@@ -893,10 +1325,35 @@ export default function RouteIntelligencePolished() {
                   )
                 })()}
               </div>
-              <button type="button" className="btn-text" onClick={resetFlow}>
-                Check another route
+              {/* Dynamic CTA based on verdict */}
+              {displayed.verdict === 'READY' && (
+                <button type="button" className="btn-primary verdict-cta" onClick={() => logDemoAction('Proceed with departure')}>
+                  <CheckCircle2 size={16} />
+                  Proceed with departure
+                </button>
+              )}
+              {displayed.verdict === 'VERIFY' && (
+                <button type="button" className="btn-primary verdict-cta" onClick={() => setShowRequestOnSite(true)}>
+                  <AlertTriangle size={16} />
+                  Verify before departure
+                </button>
+              )}
+              {displayed.verdict === 'HOLD' && (
+                <button type="button" className="btn-primary verdict-cta" onClick={() => setShowTakeAction(true)}>
+                  <CircleX size={16} />
+                  Take action
+                </button>
+              )}
+              <button type="button" className="btn-text" onClick={handleRecheck} disabled={checking}>
+                Re-check
               </button>
             </div>
+
+            {demoDepartureLabel ? (
+              <p className="storage-note" data-testid="demo-departure-note">
+                {demoDepartureLabel}
+              </p>
+            ) : null}
 
             <div className="result-actions">
               <button type="button" className="btn-primary" onClick={() => setShowSaveJob(true)}>
@@ -968,6 +1425,27 @@ export default function RouteIntelligencePolished() {
               </div>
 
               <div className="results-sidebar">
+                {/* Status Timeline */}
+                <StatusTimeline result={displayed} permitNumber={permitNumber} monitoring={monitoring} />
+
+                {/* Monitoring Controls */}
+                {loadedJob.current && (
+                  <MonitoringControls
+                    monitoring={monitoring}
+                    onStop={() => setMonitoring(false)}
+                    onResume={() => setMonitoring(true)}
+                    departureTime={plannedDeparture ? fromLocalInput(plannedDeparture) : undefined}
+                    nextCheckIn={jobInterval}
+                  />
+                )}
+
+                {/* Information Checked Panel */}
+                <InformationCheckedPanel
+                  result={displayed}
+                  expanded={showInfoChecked}
+                  onToggle={() => setShowInfoChecked(!showInfoChecked)}
+                />
+
                 <div className="results-summary">
                   <h3>Route details</h3>
                   <div className="summary-grid">
@@ -1000,8 +1478,14 @@ export default function RouteIntelligencePolished() {
                             setClearanceBy(event.target.value)
                           }}
                           placeholder="Name stored with each confirmation"
+                          data-testid="confirmer-name"
                         />
                     </label>
+                    {!confirmerName && pendingVerify.length > 0 && (
+                      <p id="bulk-confirm-disabled-hint" className="field-hint" data-testid="bulk-confirm-disabled-hint">
+                        Enter a confirmer name to enable bulk confirmation. HOLD / restriction items can never be bulk-confirmed.
+                      </p>
+                    )}
                     <label className="clearance-tick">
                       <input
                         type="checkbox"
@@ -1017,12 +1501,26 @@ export default function RouteIntelligencePolished() {
                       <button
                         type="button"
                         className="btn-primary"
-                        onClick={() => confirmOnSite(pendingVerify.map(item => item.id))}
+                        disabled={!confirmerName}
+                        title={!confirmerName ? 'Enter a confirmer name first' : undefined}
+                        aria-describedby={!confirmerName ? 'bulk-confirm-disabled-hint' : undefined}
+                        onClick={() => openBulkConfirm(pendingVerify.map(item => item.id))}
                       >
                         Confirm remaining VERIFY on site ({pendingVerify.length})
                       </button>
                     )}
                   </div>
+                  {oppositeDirectionNotes.length > 0 && (
+                    <p
+                      className="opposite-direction-summary"
+                      data-testid="opposite-direction-summary"
+                    >
+                      {oppositeDirectionNotes.length === 1
+                        ? '1 opposite-direction ramp note'
+                        : `${oppositeDirectionNotes.length} opposite-direction ramp notes`}
+                      {' '}(info only — not on your travel direction)
+                    </p>
+                  )}
                   <div className="evidence-list">
                     {primaryEvidence.map(item => (
                       <EvidenceCard
@@ -1030,7 +1528,11 @@ export default function RouteIntelligencePolished() {
                         item={item}
                         retrievedAt={displayed.retrievedAt}
                         onFly={() => item.lat != null && item.lng != null && mapRef.current?.flyToEvidence(item)}
-                        onConfirm={() => confirmOnSite([item.id])}
+                        onConfirm={() => {
+                          setPendingConfirmIds([item.id])
+                          setConfirmLocation(item.title || undefined)
+                          setShowOnSiteConfirm(true)
+                        }}
                       />
                     ))}
                   </div>
@@ -1056,15 +1558,14 @@ export default function RouteIntelligencePolished() {
             
             {/* Mobile sticky action bar */}
             <div className="mobile-route-actions">
-              <button type="button" className="btn-secondary" onClick={resetFlow}>
+              <button type="button" className="btn-secondary" onClick={handleRecheck} disabled={checking}>
                 Re-check
               </button>
               <button
                 type="button"
                 className="btn-primary"
-                onClick={() => pendingVerify.length
-                  ? confirmOnSite(pendingVerify.map(item => item.id))
-                  : setToast(displayed.verdict === 'HOLD' ? 'HOLD items cannot be acknowledged away.' : 'No VERIFY items left to confirm.')}
+                disabled={pendingVerify.length > 0 && !confirmerName}
+                onClick={() => openBulkConfirm(pendingVerify.map(item => item.id))}
               >
                 Confirm on site
               </button>
@@ -1074,6 +1575,139 @@ export default function RouteIntelligencePolished() {
       </div>
 
       {toast && <Toast message={toast} tone="info" onClose={() => setToast('')} />}
+
+      {/* Dialogs */}
+      <TakeActionSheet
+        open={showTakeAction}
+        onClose={() => setShowTakeAction(false)}
+        onReviewIssue={() => {
+          setShowTakeAction(false)
+          // Scroll to primary evidence
+          const primaryEvidence = document.querySelector('.evidence-list')
+          primaryEvidence?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }}
+        onEscalate={() => {
+          setShowTakeAction(false)
+          setShowEscalate(true)
+        }}
+        onHoldDeparture={() => {
+          setShowTakeAction(false)
+          setShowHoldDeparture(true)
+        }}
+        onRequestOnSiteCheck={() => {
+          setShowTakeAction(false)
+          setShowRequestOnSite(true)
+        }}
+      />
+
+      <EscalateDialog
+        open={showEscalate}
+        onClose={() => setShowEscalate(false)}
+        onConfirm={() => {
+          setShowEscalate(false)
+          logDemoAction('Escalate')
+        }}
+        routeName={result ? `${result.route.origin} → ${result.route.destination}` : undefined}
+      />
+
+      <HoldDepartureDialog
+        open={showHoldDeparture}
+        onClose={() => setShowHoldDeparture(false)}
+        onConfirm={() => {
+          setShowHoldDeparture(false)
+          logDemoAction('Hold departure')
+        }}
+        routeName={result ? `${result.route.origin} → ${result.route.destination}` : undefined}
+      />
+
+      <RequestOnSiteCheckDialog
+        open={showRequestOnSite}
+        onClose={() => setShowRequestOnSite(false)}
+        onConfirm={() => {
+          setShowRequestOnSite(false)
+          logDemoAction('On-site check')
+        }}
+      />
+
+      <OnSiteConfirmDialog
+        open={showOnSiteConfirm}
+        onClose={() => {
+          setShowOnSiteConfirm(false)
+          setPendingConfirmIds([])
+          setConfirmLocation(undefined)
+        }}
+        location={confirmLocation}
+        confirmerName={clearanceBy}
+        requireConfirmerName
+        items={pendingConfirmIds.map(id => {
+          const item = result?.evidence.find(entry => entry.id === id)
+          return { id, title: item ? displayEvidenceTitle(item) : id }
+        })}
+        onConfirm={(outcome, note, _photo, confirmedBy) => {
+          if (!result) return
+
+          const name = confirmedBy.trim()
+          if (!name) {
+            setToast('Enter a confirmer name before confirming VERIFY items.')
+            return
+          }
+          clearanceByRef.current = name
+          setClearanceBy(name)
+
+          if (outcome === 'closed') {
+            const holdLocked = pendingConfirmIds.some(id => {
+              const item = result.evidence.find(entry => entry.id === id)
+              return item && isHoldItem(item)
+            })
+            if (holdLocked) {
+              setToast('Confirmed closed — HOLD remains.')
+            } else {
+              setToast(`Status recorded as closed${note ? ': ' + note : ''}`)
+            }
+            setShowOnSiteConfirm(false)
+            setPendingConfirmIds([])
+            setConfirmLocation(undefined)
+            return
+          }
+
+          confirmOnSite(pendingConfirmIds, name)
+          setShowOnSiteConfirm(false)
+          setPendingConfirmIds([])
+          setConfirmLocation(undefined)
+        }}
+      />
+
+      {/* Debug-only: never mutate live results; scenario permits remain the demo path. */}
+      {debugTools && (
+        <TestScenariosDrawer
+          open={showTestScenarios}
+          onClose={() => setShowTestScenarios(false)}
+          onSimulateClosure={() => {
+            setShowTestScenarios(false)
+            setToast('Live simulate is disabled. Use a Simulated HOLD sample permit instead.')
+          }}
+          onSimulateRoadwork={() => {
+            setShowTestScenarios(false)
+            setToast('Live simulate is disabled. Use a Simulated VERIFY sample permit instead.')
+          }}
+          onClearSimulations={() => {
+            setShowTestScenarios(false)
+            setToast('Live simulate is disabled.')
+          }}
+        />
+      )}
+      {debugTools ? (
+        <button
+          type="button"
+          className="test-scenarios-trigger"
+          data-testid="debug-scenarios-trigger"
+          onClick={() => setShowTestScenarios(true)}
+          title="Debug test scenarios"
+          aria-label="Open debug test scenarios"
+        >
+          🧪
+        </button>
+      ) : null}
     </div>
   )
 }
@@ -1106,9 +1740,11 @@ function EvidenceCard({
     >
       <div className="evidence-header">
         <strong data-testid="evidence-title">{title}</strong>
-        <span className={`confidence-badge confidence-${String(item.confidence).toLowerCase()}`}>
-          {String(item.confidence).toLowerCase() === 'high' ? 'High confidence' : 'Medium confidence'}
-        </span>
+        <SourceChip
+          source={item.source}
+          retrievedAt={item.retrievedAt || retrievedAt}
+          confidence={String(item.confidence)}
+        />
       </div>
       {keepOriginalAside ? (
         <details className="evidence-original">
@@ -1125,6 +1761,20 @@ function EvidenceCard({
           )}
           {item.reason}
         </p>
+      )}
+      {item.relatedRecords && item.relatedRecords.length > 0 && (
+        <details className="evidence-related" data-testid="evidence-related">
+          <summary>
+            {item.relatedRecords.length === 1
+              ? '+1 related record'
+              : `+${item.relatedRecords.length} related records`}
+          </summary>
+          <ul>
+            {item.relatedRecords.map(related => (
+              <li key={related.id}>{related.title || related.id}</li>
+            ))}
+          </ul>
+        </details>
       )}
       <div className="evidence-meta">
         <span>{item.source}</span>

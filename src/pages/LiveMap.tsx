@@ -199,7 +199,8 @@ export default function LiveMap() {
     })
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
-    map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-right')
+    /* Keep scale on the left so it never collides with the Layers / KPI end-stack on the right. */
+    map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left')
 
     // Helper to add cluster layers
     const addClusterLayers = () => {
@@ -493,10 +494,11 @@ export default function LiveMap() {
         </div>
         <div className="live-map-header-actions">
           <span><Clock3 size={12} /> Updated {formatBerlinTime(lastUpdated)}</span>
-          <button type="button" onClick={refreshEvents} disabled={liveStatus === 'refreshing'}>
-            <RefreshCw size={13} className={liveStatus === 'refreshing' ? 'spin' : ''} /> Refresh data
+          <button type="button" onClick={refreshEvents} disabled={liveStatus === 'refreshing'} aria-label="Refresh data" title="Refresh data">
+            <RefreshCw size={14} className={liveStatus === 'refreshing' ? 'spin' : ''} />
+            <span className="btn-label">Refresh</span>
           </button>
-          <button type="button" onClick={() => {
+          <button type="button" aria-label="Fit Germany" title="Fit Germany" onClick={() => {
             const map = mapRef.current
             if (!map) return
             const bounds = germanyOutline.reduce((bounds, coord) => {
@@ -504,21 +506,26 @@ export default function LiveMap() {
             }, new maplibregl.LngLatBounds())
             map.fitBounds(bounds, { padding: 32 })
           }}>
-            <Maximize2 size={13} /> Fit Germany
+            <Maximize2 size={14} />
+            <span className="btn-label">Fit Germany</span>
           </button>
         </div>
       </header>
 
-      <div className="live-map-tabs" role="tablist" aria-label="Map scope">
-        <button type="button" className={scope === 'national' ? 'active' : ''} onClick={() => setScope('national')}>
-          <MapIcon size={13} /> Germany
-        </button>
-        <button type="button" className={scope === 'munich' ? 'active' : ''} onClick={() => setScope('munich')}>
-          <LocateFixed size={13} /> Bavaria focus
-        </button>
+      <div className="live-map-tabs" aria-label="Map scope and basemap">
+        <div className="segmented" role="tablist" aria-label="Map scope">
+          <button type="button" role="tab" aria-selected={scope === 'national'} className={scope === 'national' ? 'active' : ''} onClick={() => setScope('national')}>
+            <MapIcon size={13} /> Germany
+          </button>
+          <button type="button" role="tab" aria-selected={scope === 'munich'} className={scope === 'munich' ? 'active' : ''} onClick={() => setScope('munich')}>
+            <LocateFixed size={13} /> Bavaria
+          </button>
+        </div>
         <span />
-        <button type="button" className={baseMap === 'road' ? 'active' : ''} onClick={() => setBaseMap('road')}>Road</button>
-        <button type="button" className={baseMap === 'contrast' ? 'active' : ''} onClick={() => setBaseMap('contrast')}>High contrast</button>
+        <div className="segmented" role="tablist" aria-label="Basemap style">
+          <button type="button" role="tab" aria-selected={baseMap === 'road'} className={baseMap === 'road' ? 'active' : ''} onClick={() => setBaseMap('road')}>Road</button>
+          <button type="button" role="tab" aria-selected={baseMap === 'contrast'} className={baseMap === 'contrast' ? 'active' : ''} onClick={() => setBaseMap('contrast')}>Contrast</button>
+        </div>
       </div>
 
       <div className="live-map-workspace">
@@ -530,7 +537,7 @@ export default function LiveMap() {
           </div>
           <div className="live-event-summary">
             <div><strong>{visibleEvents.length}</strong><span>Matched</span></div>
-            <div><strong>{scopeEvents.filter(event => event.type === 'warnings').length}</strong><span>Safety</span></div>
+            <div><strong>{visibleEvents.filter(event => event.type === 'warnings').length}</strong><span>Safety</span></div>
             <div><strong>{roadVectors.length}</strong><span>Autobahns</span></div>
           </div>
           {selectedEvent && (
@@ -566,44 +573,46 @@ export default function LiveMap() {
           </div>
         </aside>
 
-        <main className="live-map-stage">
+        <div className="live-map-stage">
           <div ref={mapContainer} className="maplibre-map" data-testid="corridor-map" aria-label="Interactive live mobility map of Germany" />
 
-          <section className={`live-layer-panel ${layerPanelOpen ? 'open' : ''}`}>
-            <button type="button" className="layer-panel-heading" onClick={() => setLayerPanelOpen(open => !open)}>
-              <span><Layers3 size={14} /> Layers</span><ChevronDown size={13} />
-            </button>
-            {layerPanelOpen && (
-              <>
-                <div className="layer-panel-list">
-                  {layerOptions.map(layer => {
-                    const Icon = layer.icon
-                    const active = activeLayers.includes(layer.id)
-                    return (
-                      <button type="button" key={layer.id} onClick={() => toggleLayer(layer.id)} aria-pressed={active}>
-                        <span className="layer-icon" style={{ color: layer.color, background: `${layer.color}16` }}><Icon size={13} /></span>
-                        <strong>{layer.label}</strong>
-                        <small>{layerCount(layer.id)}</small>
-                        <i className={active ? 'active' : ''}><span /></i>
-                      </button>
-                    )
-                  })}
-                </div>
-                <div className="layer-panel-footer"><span>Data source</span><strong>Live: Autobahn GmbH · Updated {formatBerlinTime(lastUpdated)}</strong></div>
-              </>
-            )}
-          </section>
+          <div className="live-map-end-stack">
+            <section className={`live-layer-panel ${layerPanelOpen ? 'open' : ''}`}>
+              <button type="button" className="layer-panel-heading" onClick={() => setLayerPanelOpen(open => !open)}>
+                <span><Layers3 size={14} /> Layers</span><ChevronDown size={13} />
+              </button>
+              {layerPanelOpen && (
+                <>
+                  <div className="layer-panel-list">
+                    {layerOptions.map(layer => {
+                      const Icon = layer.icon
+                      const active = activeLayers.includes(layer.id)
+                      return (
+                        <button type="button" key={layer.id} onClick={() => toggleLayer(layer.id)} aria-pressed={active}>
+                          <span className="layer-icon" style={{ color: layer.color, background: `${layer.color}16` }}><Icon size={13} /></span>
+                          <strong>{layer.label}</strong>
+                          <small>{layerCount(layer.id)}</small>
+                          <i className={active ? 'active' : ''}><span /></i>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div className="layer-panel-footer"><span>Data source</span><strong>Live: Autobahn GmbH · Updated {formatBerlinTime(lastUpdated)}</strong></div>
+                </>
+              )}
+            </section>
+
+            <div className="live-map-kpis" data-testid="corridor-map-kpis">
+              <div><Route size={14} /><span>Operational signals</span><strong>{visibleEvents.length}</strong></div>
+              <div><AlertTriangle size={14} /><span>Warnings</span><strong>{visibleEvents.filter(event => event.type === 'warnings').length}</strong></div>
+              <div><RefreshCw size={14} /><span>Autobahns in view</span><strong>{roadVectors.length}</strong></div>
+            </div>
+          </div>
 
           <div className="live-map-legend">
             <span>Corridor pressure</span><i className="legend-low" /><small>Flowing</small><i className="legend-mid" /><small>Pressure</small><i className="legend-high" /><small>Restricted</small>
           </div>
-
-          <div className="live-map-kpis">
-            <div><Route size={14} /><span>Operational signals</span><strong>{events.length}</strong></div>
-            <div><AlertTriangle size={14} /><span>Warnings</span><strong>{events.filter(event => event.type === 'warnings').length}</strong></div>
-            <div><RefreshCw size={14} /><span>Autobahns in view</span><strong>{roadVectors.length}</strong></div>
-          </div>
-        </main>
+        </div>
       </div>
     </div>
   )

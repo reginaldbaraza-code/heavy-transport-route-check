@@ -47,16 +47,18 @@ export default function Home() {
     <div className="app-page home-page" style={{ padding: '28px 28px 40px', maxWidth: 1280, margin: '0 auto' }}>
 
       {/* ── Header ──────────────────────────────────────────────── */}
-      <div style={{ marginBottom: 28 }}>
-        <h1 style={{
-          fontSize: 26, fontWeight: 700,
-          letterSpacing: '-0.03em',
+      <div className="home-page-header" style={{ marginBottom: 36, paddingTop: 4 }}>
+        <h1 className="home-large-title" style={{
+          fontSize: 'var(--text-large-title)',
+          fontWeight: 700,
+          letterSpacing: 'var(--tracking-display)',
           color: 'var(--text-primary)',
-          lineHeight: 1.2,
+          lineHeight: 1.05,
+          whiteSpace: 'nowrap',
         }}>
           {greeting}, Your organisation
         </h1>
-        <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.5 }}>
+        <p style={{ fontSize: 16, color: 'var(--text-secondary)', marginTop: 10, lineHeight: 1.5, maxWidth: '42em' }}>
           Here's what's happening across your data activity today.
         </p>
       </div>
@@ -236,7 +238,7 @@ export default function Home() {
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
               <span style={{ fontSize: 14, fontWeight: 600, color: 'rgba(255,255,255,0.85)', letterSpacing: '-0.01em' }}>Platform</span>
-              <TrendingUp size={14} style={{ color: '#f5c518' }} />
+              <TrendingUp size={14} style={{ color: 'var(--accent)' }} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, marginBottom: 18 }}>
               {[['134', 'Data Offers'], ['157', 'Members']].map(([num, lbl]) => (
@@ -264,7 +266,7 @@ export default function Home() {
                 <button key={name} onClick={() => navigate('/catalogue')}
                   style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 7, background: 'none', cursor: 'pointer' }}>
                   <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)' }}>{name}</span>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: '#f5c518', fontVariantNumeric: 'tabular-nums' }}>{n}</span>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--accent)', fontVariantNumeric: 'tabular-nums' }}>{n}</span>
                 </button>
               ))}
             </div>

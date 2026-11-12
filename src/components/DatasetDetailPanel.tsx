@@ -252,7 +252,7 @@ function DataOffersTab({ dataset }: { dataset: Dataset }) {
   const navigate = useNavigate()
   return (
     <div className="p-6">
-      <div className="bg-white border border-[var(--border)] rounded-xl p-5 mb-4">
+      <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-5 mb-4">
         <h3 className="font-bold text-sm text-[var(--foreground)] mb-3">Data Offer</h3>
         <div className="flex items-center gap-4 py-2">
           <span className="text-sm text-[var(--muted-foreground)] w-24">Policy:</span>

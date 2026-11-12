@@ -12,6 +12,14 @@ import { useJobs } from '../context/JobsContext'
 import { useOrgSettings } from '../context/OrgSettingsContext'
 import { SEARCH_EMPTY_HELP, searchAppData } from '../lib/appSearch'
 import { formatBerlinDateTime, orgInitials } from '../lib/formatTime'
+import {
+  DRAWER_NAV_MAX_WIDTH_PX,
+  collapseControlLabel,
+  effectiveSidebarCollapsed,
+  reduceNavChromeCollapseToggle,
+  reduceNavChromeOpenMobile,
+  reduceNavChromeViewportChange,
+} from '../lib/layoutNavChrome'
 
 const navItems = [
   { path: '/', label: 'Overview', icon: Home, exact: true },
@@ -48,7 +56,11 @@ function documentTitleFor(pathname: string) {
 export default function Layout() {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth : 1440,
+  )
   const [notifOpen, setNotifOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
@@ -69,10 +81,31 @@ export default function Layout() {
     color: alert.escalated || alert.severity === 'HOLD' ? 'bg-red-500' : alert.severity === 'VERIFY' ? 'bg-amber-500' : 'bg-green-500',
     link: alert.jobId ? `/jobs` : '/activity',
   }))
+  const navChrome = { collapsed, mobileOpen }
+  const sidebarCollapsed = effectiveSidebarCollapsed(collapsed, viewportWidth)
+  const collapseLabel = collapseControlLabel(navChrome, viewportWidth)
 
   useEffect(() => {
     document.title = documentTitleFor(location.pathname)
   }, [location.pathname])
+
+  useEffect(() => {
+    const syncViewport = () => setViewportWidth(window.innerWidth)
+    syncViewport()
+    const mq = window.matchMedia(`(max-width: ${DRAWER_NAV_MAX_WIDTH_PX}px)`)
+    mq.addEventListener('change', syncViewport)
+    window.addEventListener('resize', syncViewport)
+    return () => {
+      mq.removeEventListener('change', syncViewport)
+      window.removeEventListener('resize', syncViewport)
+    }
+  }, [])
+
+  useEffect(() => {
+    const next = reduceNavChromeViewportChange({ collapsed, mobileOpen }, viewportWidth)
+    if (next.collapsed !== collapsed) setCollapsed(next.collapsed)
+    if (next.mobileOpen !== mobileOpen) setMobileOpen(next.mobileOpen)
+  }, [viewportWidth, collapsed, mobileOpen])
 
   useEffect(() => {
     const closeMenus = (event: KeyboardEvent) => {
@@ -80,6 +113,7 @@ export default function Layout() {
         setNotifOpen(false)
         setMobileOpen(false)
         setSearchOpen(false)
+        setHelpOpen(false)
       }
     }
     document.addEventListener('keydown', closeMenus)
@@ -100,6 +134,18 @@ export default function Layout() {
     }
   }
 
+  const onCollapseControl = () => {
+    const next = reduceNavChromeCollapseToggle({ collapsed, mobileOpen }, viewportWidth)
+    setCollapsed(next.collapsed)
+    setMobileOpen(next.mobileOpen)
+  }
+
+  const onOpenMobileNav = () => {
+    const next = reduceNavChromeOpenMobile({ collapsed, mobileOpen })
+    setCollapsed(next.collapsed)
+    setMobileOpen(next.mobileOpen)
+  }
+
   return (
     <div className="app-frame flex h-screen overflow-hidden" style={{ background: 'var(--bg-base)' }}>
 
@@ -107,9 +153,8 @@ export default function Layout() {
       <aside
         className={`app-sidebar ${mobileOpen ? 'mobile-open' : ''}`}
         style={{
-          width: collapsed ? 64 : 220,
-          background: 'var(--navy)',
-          transition: 'width 250ms cubic-bezier(0.4,0,0.2,1)',
+          width: sidebarCollapsed ? 72 : 232,
+          transition: 'width 220ms var(--ease-out)',
           display: 'flex',
           flexDirection: 'column',
           flexShrink: 0,
@@ -117,15 +162,15 @@ export default function Layout() {
         }}
       >
         {/* Logo row */}
-        <div className={`sidebar-brand ${collapsed ? 'is-collapsed' : ''}`}>
-          {collapsed ? (
+        <div className={`sidebar-brand ${sidebarCollapsed ? 'is-collapsed' : ''}`}>
+          {sidebarCollapsed ? (
             <button
               type="button"
               className="sidebar-htr"
               onClick={() => navigate('/')}
               aria-label="Heavy transport route check"
             >
-              HTR
+              <RouteCheckLogo size={20} tone="auto" decorative />
             </button>
           ) : (
             <div className="sidebar-lockup">
@@ -135,7 +180,7 @@ export default function Layout() {
                 onClick={() => navigate('/')}
                 aria-label="Go to home"
               >
-                <RouteCheckLogo size={32} tone="dark" decorative />
+                <RouteCheckLogo size={32} tone="auto" decorative />
               </button>
               <button
                 type="button"
@@ -151,57 +196,36 @@ export default function Layout() {
           <button
             type="button"
             className="sidebar-collapse"
-            onClick={() => setCollapsed(!collapsed)}
-            aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
+            onClick={onCollapseControl}
+            aria-label={collapseLabel}
           >
             <Menu size={16} strokeWidth={1.75} />
           </button>
         </div>
 
         {/* Nav */}
-        <nav style={{ flex: 1, padding: '10px 8px', overflowY: 'auto', overflowX: 'hidden' }}>
-          {!collapsed && (
-            <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: '0.08em', color: 'rgba(255,255,255,0.72)', padding: '4px 8px 6px', textTransform: 'uppercase' }}>
+        <nav className="sidebar-nav">
+          {!sidebarCollapsed && (
+            <div className="sidebar-section-label">
               Heavy transport
             </div>
           )}
-          {collapsed && <div style={{ height: 8 }} />}
+          {sidebarCollapsed && <div style={{ height: 8 }} />}
 
           {navItems.map(({ path, label, icon: Icon, exact }) => (
             <NavLink
               key={path}
               to={path}
               end={exact}
-              title={collapsed ? label : undefined}
-              style={{ display: 'block', marginBottom: 2 }}
-              className="group"
+              title={sidebarCollapsed ? label : undefined}
+              className="sidebar-link"
               onClick={() => setMobileOpen(false)}
             >
               {({ isActive }) => (
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: collapsed ? '9px 10px' : '8px 10px',
-                  borderRadius: 8,
-                  background: isActive ? 'rgba(255,255,255,0.12)' : 'transparent',
-                  color: isActive ? '#ffffff' : 'rgba(255,255,255,0.72)',
-                  cursor: 'pointer',
-                  justifyContent: collapsed ? 'center' : 'flex-start',
-                  transition: 'all 120ms',
-                  position: 'relative',
-                }}>
-                  {isActive && (
-                    <div style={{
-                      position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
-                      width: 3, height: 18, background: '#f5c518', borderRadius: '0 3px 3px 0',
-                    }} />
-                  )}
-                  <Icon size={18} strokeWidth={1.75} style={{ flexShrink: 0 }} />
-                  {!collapsed && (
-                    <span style={{ fontSize: 14, fontWeight: isActive ? 600 : 400, letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
-                      {label}
-                    </span>
+                <div className={`sidebar-link-row ${isActive ? 'is-active' : ''} ${sidebarCollapsed ? 'is-collapsed' : ''}`}>
+                  <Icon size={18} strokeWidth={isActive ? 2 : 1.75} style={{ flexShrink: 0 }} />
+                  {!sidebarCollapsed && (
+                    <span>{label}</span>
                   )}
                 </div>
               )}
@@ -209,46 +233,26 @@ export default function Layout() {
           ))}
 
           <div style={{ height: 16 }} />
-          {!collapsed && (
-            <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: '0.08em', color: 'rgba(255,255,255,0.72)', padding: '4px 8px 6px', textTransform: 'uppercase' }}>
+          {!sidebarCollapsed && (
+            <div className="sidebar-section-label">
               Coming later
             </div>
           )}
-          {collapsed && <div style={{ height: 2, background: 'rgba(255,255,255,0.07)', margin: '0 4px 8px' }} />}
+          {sidebarCollapsed && <div className="sidebar-divider" />}
 
           {connectorItems.map(({ path, label, icon: Icon }) => (
             <NavLink
               key={path}
               to={path}
-              title={collapsed ? label : undefined}
-              style={{ display: 'block', marginBottom: 2 }}
+              title={sidebarCollapsed ? label : undefined}
+              className="sidebar-link"
               onClick={() => setMobileOpen(false)}
             >
               {({ isActive }) => (
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: collapsed ? '9px 10px' : '8px 10px',
-                  borderRadius: 8,
-                  background: isActive ? 'rgba(255,255,255,0.12)' : 'transparent',
-                  color: isActive ? '#ffffff' : 'rgba(255,255,255,0.72)',
-                  cursor: 'pointer',
-                  justifyContent: collapsed ? 'center' : 'flex-start',
-                  transition: 'all 120ms',
-                  position: 'relative',
-                }}>
-                  {isActive && (
-                    <div style={{
-                      position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)',
-                      width: 3, height: 18, background: '#f5c518', borderRadius: '0 3px 3px 0',
-                    }} />
-                  )}
-                  <Icon size={18} strokeWidth={1.75} style={{ flexShrink: 0 }} />
-                  {!collapsed && (
-                    <span style={{ fontSize: 14, fontWeight: isActive ? 600 : 400, letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
-                      {label}
-                    </span>
+                <div className={`sidebar-link-row ${isActive ? 'is-active' : ''} ${sidebarCollapsed ? 'is-collapsed' : ''}`}>
+                  <Icon size={18} strokeWidth={isActive ? 2 : 1.75} style={{ flexShrink: 0 }} />
+                  {!sidebarCollapsed && (
+                    <span>{label}</span>
                   )}
                 </div>
               )}
@@ -257,22 +261,12 @@ export default function Layout() {
         </nav>
 
         {/* Settings */}
-        <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', padding: '8px' }}>
-          <NavLink to="/settings" title={collapsed ? 'Settings' : undefined} onClick={() => setMobileOpen(false)}>
+        <div className="sidebar-footer">
+          <NavLink to="/settings" title={sidebarCollapsed ? 'Settings' : undefined} className="sidebar-link" onClick={() => setMobileOpen(false)}>
             {({ isActive }) => (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '8px 10px',
-                borderRadius: 8,
-                background: isActive ? 'rgba(255,255,255,0.12)' : 'transparent',
-                color: isActive ? '#fff' : 'rgba(255,255,255,0.72)',
-                cursor: 'pointer',
-                justifyContent: collapsed ? 'center' : 'flex-start',
-              }}>
-                <Settings size={18} strokeWidth={1.75} />
-                {!collapsed && <span style={{ fontSize: 14, fontWeight: 400, letterSpacing: '-0.01em' }}>Settings</span>}
+              <div className={`sidebar-link-row ${isActive ? 'is-active' : ''} ${sidebarCollapsed ? 'is-collapsed' : ''}`}>
+                <Settings size={18} strokeWidth={isActive ? 2 : 1.75} />
+                {!sidebarCollapsed && <span>Settings</span>}
               </div>
             )}
           </NavLink>
@@ -286,10 +280,10 @@ export default function Layout() {
         {/* Topbar */}
         <header className="app-topbar" style={{
           height: 56,
-          background: 'rgba(242,242,247,0.85)',
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
-          borderBottom: '1px solid rgba(0,0,0,0.06)',
+          background: 'var(--bg-glass)',
+          backdropFilter: 'blur(20px) saturate(1.6)',
+          WebkitBackdropFilter: 'blur(20px) saturate(1.6)',
+          borderBottom: 'var(--hairline)',
           display: 'flex',
           alignItems: 'center',
           gap: 12,
@@ -298,8 +292,8 @@ export default function Layout() {
           position: 'relative',
           zIndex: 20,
         }}>
-          <button type="button" className="mobile-nav-trigger" aria-label="Open navigation" onClick={() => { setCollapsed(false); setMobileOpen(true) }}>
-            <Menu size={17} />
+          <button type="button" className="mobile-nav-trigger" aria-label="Open navigation" onClick={onOpenMobileNav}>
+            <Menu size={18} />
           </button>
           {/* Search */}
           <div className="topbar-search" ref={searchRef} style={{
@@ -308,13 +302,13 @@ export default function Layout() {
             display: 'flex',
             alignItems: 'center',
             gap: 8,
-            background: 'rgba(0,0,0,0.06)',
+            background: 'var(--bg-fill)',
             borderRadius: 10,
             padding: '0 12px',
-            height: 34,
+            height: 36,
             position: 'relative',
           }}>
-            <Search size={14} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
+            <Search size={15} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
             <input
               type="search"
               aria-label="Search permits, routes, roads, and alerts"
@@ -330,14 +324,14 @@ export default function Layout() {
                 background: 'transparent',
                 border: 'none',
                 outline: 'none',
-                fontSize: 14,
+                fontSize: 15,
                 color: 'var(--text-primary)',
                 width: '100%',
               }}
             />
             {searchQuery && (
-              <button onClick={() => setSearchQuery('')} aria-label="Clear search" style={{ color: 'var(--text-tertiary)', display: 'flex', padding: 2 }}>
-                <X size={12} />
+              <button onClick={() => setSearchQuery('')} aria-label="Clear search" style={{ color: 'var(--text-tertiary)', display: 'flex', padding: 4, minWidth: 28, minHeight: 28, alignItems: 'center', justifyContent: 'center' }}>
+                <X size={14} />
               </button>
             )}
             {searchOpen && searchQuery.trim() && (
@@ -375,8 +369,8 @@ export default function Layout() {
                 aria-label="Notifications"
                 aria-expanded={notifOpen}
                 style={{
-                  width: 34, height: 34,
-                  borderRadius: 9,
+                  width: 44, height: 44,
+                  borderRadius: 12,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   background: 'transparent',
                   color: 'var(--text-secondary)',
@@ -384,7 +378,7 @@ export default function Layout() {
                 }}
                 className="hover:!bg-black/[0.06] hover:!text-[var(--text-primary)]"
               >
-                <Bell size={17} />
+                <Bell size={18} />
                 {unreadCount > 0 && (
                   <span className="notification-count">{unreadCount > 9 ? '9+' : unreadCount}</span>
                 )}
@@ -393,14 +387,16 @@ export default function Layout() {
               {notifOpen && (
                 <div className="notification-popover" style={{
                   position: 'absolute',
-                  top: 42, right: 0,
+                  top: 48, right: 0,
                   width: 400,
-                  background: 'var(--bg-card)',
+                  background: 'var(--bg-glass-strong)',
                   borderRadius: 14,
                   boxShadow: 'var(--shadow-xl)',
-                  border: '1px solid var(--border)',
+                  border: 'var(--hairline)',
                   overflow: 'hidden',
                   zIndex: 100,
+                  backdropFilter: 'blur(24px)',
+                  WebkitBackdropFilter: 'blur(24px)',
                 }}>
                   <div style={{ padding: '14px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--divider)' }}>
                     <span style={{ fontWeight: 600, fontSize: 14, letterSpacing: '-0.01em' }}>Notifications</span>
@@ -445,14 +441,42 @@ export default function Layout() {
               )}
             </div>
 
-            <button
-              className="topbar-help hover:!bg-black/[0.06] hover:!text-[var(--text-primary)]"
-              onClick={() => navigate('/settings')}
-              aria-label="Help and settings"
-              style={{ width: 34, height: 34, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}
-            >
-              <HelpCircle size={17} />
-            </button>
+            <div style={{ position: 'relative' }}>
+              <button
+                className="topbar-help hover:!bg-black/[0.06] hover:!text-[var(--text-primary)]"
+                onClick={() => { setHelpOpen(!helpOpen); setNotifOpen(false) }}
+                aria-label="Help and settings"
+                aria-expanded={helpOpen}
+                style={{ width: 44, height: 44, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: helpOpen ? 'var(--text-primary)' : 'var(--text-secondary)', background: helpOpen ? 'var(--bg-fill)' : 'transparent' }}
+              >
+                <HelpCircle size={18} />
+              </button>
+              {helpOpen && (
+                <div className="topbar-dropdown" style={{
+                  position: 'absolute', right: 0, top: 'calc(100% + 6px)',
+                  width: 220, background: 'var(--bg-card)', border: '1px solid var(--border)',
+                  borderRadius: 12, boxShadow: 'var(--shadow-lg)',
+                  padding: '6px', zIndex: 100,
+                }}>
+                  <button
+                    onClick={() => { navigate('/settings'); setHelpOpen(false) }}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, fontWeight: 500, background: 'transparent', cursor: 'pointer' }}
+                    className="hover:!bg-black/[0.04]"
+                  >
+                    <Settings size={16} />
+                    Settings
+                  </button>
+                  <button
+                    onClick={() => { window.open('https://github.com/team4-heavy-transport/heavy-transport-route-check', '_blank'); setHelpOpen(false) }}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, fontWeight: 500, background: 'transparent', cursor: 'pointer' }}
+                    className="hover:!bg-black/[0.04]"
+                  >
+                    <HelpCircle size={16} />
+                    Documentation
+                  </button>
+                </div>
+              )}
+            </div>
 
             <div className="topbar-divider" style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.1)', margin: '0 6px' }} />
 
@@ -495,7 +519,10 @@ export default function Layout() {
         {/* Page */}
         <main className="app-page-host"
           style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}
-          onClick={() => notifOpen && setNotifOpen(false)}
+          onClick={() => {
+            if (notifOpen) setNotifOpen(false)
+            if (helpOpen) setHelpOpen(false)
+          }}
         >
           <Outlet />
         </main>

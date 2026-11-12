@@ -34,7 +34,7 @@ export default function Approvals() {
           </p>
           <div className="space-y-3">
             {reqs.map(req => (
-              <div key={req.id} className={`bg-white rounded-xl border p-5 flex items-center gap-4 ${
+              <div key={req.id} className={`bg-[var(--bg-card)] rounded-xl border p-5 flex items-center gap-4 ${
                 req.status === 'pending' ? 'border-[var(--border)]' :
                 req.status === 'approved' ? 'border-green-200 bg-green-50/30' : 'border-red-200 bg-red-50/30'
               }`}>

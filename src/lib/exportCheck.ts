@@ -442,7 +442,7 @@ export function createPdfDocument(snapshot: ExportSnapshot) {
 
   doc.setFillColor(16, 42, 67)
   doc.rect(0, 0, 210, 28, 'F')
-  drawRouteCheckLogo(doc, margin, 7.5, 13)
+  drawRouteCheckLogo(doc, margin, 7.5, 13, 'dark')
   doc.setTextColor(255, 255, 255)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(16)
