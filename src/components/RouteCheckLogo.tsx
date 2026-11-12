@@ -5,7 +5,7 @@ export type RouteCheckLogoProps = {
   className?: string
 }
 
-export type LogoDetail = "small" | "full"
+type LogoDetail = "small" | "full"
 
 /** Autobahn Plate — fixed brand blue (light-mode --accent), not dark-mode accent. */
 export const PLATE = "#0071e3"
