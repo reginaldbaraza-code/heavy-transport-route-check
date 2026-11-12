@@ -1435,7 +1435,9 @@ button, a, input, select, textarea {
   .live-map-stage { order: 1; min-height: 58dvh; height: 58dvh; }
   .live-event-panel { order: 2; display: flex; max-height: 520px; border-top: 1px solid var(--border); border-right: 0; }
   .live-event-list { min-height: 240px; }
-  .live-map-legend { left: 8px; bottom: 120px; max-width: min(200px, calc(100% - 110px)); }
+  /* Three legend items need ~221px; keep clear of stage edges, not the end-stack
+     (legend sits bottom-left; Layers/KPI stack is top-right). */
+  .live-map-legend { left: 8px; bottom: 120px; max-width: min(280px, calc(100% - 16px)); }
 
   .app-page-host > div:has(> .connector-sidebar) { height: auto !important; min-height: 100%; flex-direction: column; }
   .connector-sidebar { width: 100% !important; height: 58px; flex-direction: row !important; overflow-x: auto; overflow-y: hidden !important; border-right: 0 !important; border-bottom: 1px solid var(--border) !important; scrollbar-width: none; }
@@ -3124,8 +3126,18 @@ h4 { font-size: 18px !important; line-height: 1.35 !important; }
     grid-template-columns: 1fr;
   }
   
+  /* minmax(0,1fr): a plain 1fr track mins to content size, so nowrap titles
+     expand the column past the viewport and push Expected badges off-screen. */
   .test-permits-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .test-permit-card {
+    min-width: 0;
+    max-width: 100%;
   }
   
   .verdict-banner {
@@ -3355,8 +3367,9 @@ h4 { font-size: 18px !important; line-height: 1.35 !important; }
     bottom: 100px !important;
     left: 8px !important;
     right: auto !important;
-    /* Stay clear of the right-side Layers/KPI stack (~220px). */
-    max-width: min(148px, calc(100% - 240px)) !important;
+    /* Bottom-left, clear of the top-right end-stack; fit Flowing/Pressure/Restricted (~221px). */
+    max-width: min(280px, calc(100% - 16px)) !important;
+    width: max-content !important;
     font-size: 12px !important;
     flex-wrap: nowrap !important;
   }
@@ -4188,7 +4201,7 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   .result-actions, .history-export-actions { width: 100%; }
   .result-actions button, .result-actions a, .history-export-actions button { width: 100%; justify-content: center; }
   .app-page, .route-page, .market-page, .jobs-page { overflow-x: clip; padding-left: 16px; padding-right: 16px; }
-  .live-map-legend { max-width: min(148px, calc(100% - 240px)); left: 8px; bottom: 100px; transform: none; flex-wrap: nowrap; }
+  .live-map-legend { max-width: min(280px, calc(100% - 16px)); width: max-content; left: 8px; bottom: 100px; transform: none; flex-wrap: nowrap; }
   .live-map-end-stack { display: grid; grid-template-rows: auto auto; align-content: start; top: 8px; right: 8px; left: auto; bottom: 140px; width: min(220px, calc(100% - 16px)); max-height: none; overflow: hidden; }
   .live-map-end-stack:has(.live-layer-panel.open) { grid-template-rows: minmax(0, 1fr) auto; }
   .live-map-end-stack .live-map-kpis { display: flex; flex: none; max-width: none; left: auto; right: auto; top: auto; bottom: auto; transform: none; overflow: visible; }

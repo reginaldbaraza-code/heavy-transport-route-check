@@ -461,6 +461,115 @@ async function main() {
     )
   }
 
+  // Mobile: corridor legend must fully contain Flowing / Pressure / Restricted.
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(base + '/map-explorer', { waitUntil: 'domcontentloaded', timeout: 60000 })
+  await skipIfNeeded()
+  await page.locator('.live-map-legend').waitFor({ timeout: 25000 })
+  const legendFit = await page.evaluate(() => {
+    const legend = document.querySelector('.live-map-legend')
+    if (!legend) return { ok: false, reason: 'missing' }
+    const box = legend.getBoundingClientRect()
+    const items = [...legend.querySelectorAll('small')].map(el => {
+      const b = el.getBoundingClientRect()
+      return {
+        text: el.textContent.trim(),
+        outside: b.right > box.right + 1 || b.left < box.left - 1 || b.right > window.innerWidth + 1,
+        right: Math.round(b.right),
+      }
+    })
+    return {
+      ok: legend.scrollWidth <= legend.clientWidth + 1
+        && items.length >= 3
+        && items.every(item => !item.outside)
+        && /Restricted/i.test(items.map(i => i.text).join(' ')),
+      width: Math.round(box.width),
+      scrollWidth: legend.scrollWidth,
+      clientWidth: legend.clientWidth,
+      items,
+    }
+  })
+  record(
+    'Corridor legend at 390×844 keeps Flowing/Pressure/Restricted inside the pill',
+    Boolean(legendFit.ok),
+    JSON.stringify(legendFit),
+  )
+
+  // Mobile: sample/scenario permit cards must not force horizontal page overflow.
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded', timeout: 60000 })
+  await skipIfNeeded()
+  await page.getByRole('button', { name: /show sample permits/i }).click()
+  await page.getByText('Scenario mode').waitFor({ timeout: 15000 })
+  const permitOverflow = await page.evaluate(() => {
+    const docEl = document.documentElement
+    const cards = [...document.querySelectorAll('.test-permit-card')]
+    const cardMetrics = cards.map(el => {
+      const box = el.getBoundingClientRect()
+      const badge = el.querySelector('.expected-badge')
+      const badgeBox = badge?.getBoundingClientRect()
+      return {
+        title: el.querySelector('strong')?.textContent?.trim() || '',
+        right: Math.round(box.right),
+        width: Math.round(box.width),
+        badgeOffscreen: Boolean(badgeBox && badgeBox.right > window.innerWidth + 1),
+        badgeRight: badgeBox ? Math.round(badgeBox.right) : null,
+      }
+    })
+    const grid = document.querySelector('.test-permits-grid')
+    const gridOverflow = grid ? grid.scrollWidth > grid.clientWidth + 1 : true
+    const maxRight = Math.max(0, ...cardMetrics.map(c => c.right))
+    return {
+      ok: docEl.scrollWidth <= docEl.clientWidth + 1
+        && !gridOverflow
+        && maxRight <= window.innerWidth + 1
+        && cardMetrics.every(c => !c.badgeOffscreen)
+        && cardMetrics.some(c => /Simulated/i.test(c.title)),
+      scrollWidth: docEl.scrollWidth,
+      clientWidth: docEl.clientWidth,
+      gridScrollWidth: grid?.scrollWidth || 0,
+      gridClientWidth: grid?.clientWidth || 0,
+      maxRight,
+      cards: cardMetrics.filter(c => /Simulated/i.test(c.title) || c.badgeOffscreen).slice(0, 6),
+    }
+  })
+  record(
+    'Sample permits at 390×844 have no horizontal overflow and badges stay on-screen',
+    Boolean(permitOverflow.ok),
+    JSON.stringify(permitOverflow),
+  )
+
+  // Desktop unchanged: legend still single-line and fully visible at 1440.
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(base + '/map-explorer', { waitUntil: 'domcontentloaded', timeout: 60000 })
+  await skipIfNeeded()
+  await page.locator('.live-map-legend').waitFor({ timeout: 25000 })
+  const desktopLegend = await page.evaluate(() => {
+    const legend = document.querySelector('.live-map-legend')
+    if (!legend) return { ok: false }
+    const cs = getComputedStyle(legend)
+    const box = legend.getBoundingClientRect()
+    const items = [...legend.querySelectorAll('small')].map(el => {
+      const b = el.getBoundingClientRect()
+      return { text: el.textContent.trim(), outside: b.right > box.right + 1 }
+    })
+    return {
+      ok: cs.flexWrap === 'nowrap'
+        && legend.scrollWidth <= legend.clientWidth + 1
+        && items.every(i => !i.outside)
+        && box.width >= 200
+        && box.width <= 320,
+      width: Math.round(box.width),
+      flexWrap: cs.flexWrap,
+      items,
+    }
+  })
+  record(
+    'Corridor legend at 1440×900 stays single-line without clipping',
+    Boolean(desktopLegend.ok),
+    JSON.stringify(desktopLegend),
+  )
+
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto(base + '/map-explorer', { waitUntil: 'domcontentloaded', timeout: 60000 })
   await skipIfNeeded()
@@ -1115,27 +1224,94 @@ async function main() {
     historyActions.slice(0, 220),
   )
 
-  await page.goto(base + '/route-checks?permit=hamburg-hannover&run=1', { waitUntil: 'domcontentloaded' })
-  await page.locator('#planned-departure').waitFor({ timeout: 15000 })
-  const permitAutorun = await page.evaluate(() => {
-    const departure = document.getElementById('planned-departure')
-    const fileError = document.querySelector('[data-testid="gpx-upload-error"]')
-    const width = document.querySelector('[data-testid="vehicle-width"]')
+  // Sample ?run=1: labelled demo departure + permit vehicle dims (not Standard 3.0×4.0×25×52).
+  const bremenPayloadPromise = page.waitForRequest(
+    req => req.url().includes('/api/check-route') && req.method() === 'POST',
+    { timeout: 120000 },
+  )
+  await page.goto(base + '/route-checks?permit=bremen-dortmund&run=1', { waitUntil: 'domcontentloaded' })
+  const bremenReq = await bremenPayloadPromise
+  const bremenBody = bremenReq.postDataJSON()
+  const bremenVehicle = bremenBody?.vehicle || {}
+  record(
+    'bremen-dortmund&run=1 sends permit vehicle 3.5×4.2×32×72',
+    Number(bremenVehicle.width) === 3.5
+      && Number(bremenVehicle.height) === 4.2
+      && Number(bremenVehicle.length) === 32
+      && Number(bremenVehicle.grossWeight) === 72,
+    JSON.stringify(bremenVehicle),
+  )
+  await page.locator('.verdict-banner, .checking-state').first().waitFor({ timeout: 15000 })
+  if (await page.locator('.checking-state').count()) {
+    await page.locator('.verdict-banner').waitFor({ timeout: 120000 })
+  } else {
+    await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
+  }
+  const bremenResult = await page.evaluate(() => {
+    const banner = document.querySelector('.verdict-banner')?.textContent || ''
+    const demoNote = document.querySelector('[data-testid="demo-departure-note"]')?.textContent || ''
+    let history = []
+    try {
+      history = JSON.parse(localStorage.getItem('htr-route-check-history') || '[]')
+    } catch {
+      history = []
+    }
     return {
-      departureVisible: Boolean(departure && departure.offsetParent !== null),
-      departureValue: departure?.value || '',
-      fileErrorVisible: Boolean(fileError),
-      fileErrorText: fileError?.textContent || '',
-      width: width?.value || '',
-      focused: document.activeElement?.id === 'planned-departure',
+      banner,
+      demoNote,
+      vehicle: history[0]?.vehicle || null,
+      verdict: history[0]?.verdict || '',
     }
   })
   record(
-    'Permit ?run=1 without departure lands on vehicle step (no file error)',
-    permitAutorun.departureVisible
-      && !permitAutorun.fileErrorVisible
-      && permitAutorun.departureValue === ''
-      && permitAutorun.width === '3.2',
+    'bremen-dortmund&run=1 gives HOLD with demo departure note',
+    /HOLD/i.test(bremenResult.banner)
+      && bremenResult.verdict === 'HOLD'
+      && /Demo departure:/i.test(bremenResult.demoNote)
+      && /change it and re-check/i.test(bremenResult.demoNote)
+      && Number(bremenResult.vehicle?.width) === 3.5
+      && Number(bremenResult.vehicle?.grossWeight) === 72,
+    JSON.stringify({
+      verdict: bremenResult.verdict,
+      demoNote: bremenResult.demoNote.slice(0, 120),
+      vehicle: bremenResult.vehicle,
+      banner: bremenResult.banner.replace(/\s+/g, ' ').slice(0, 160),
+    }),
+  )
+
+  await page.goto(base + '/route-checks?permit=hamburg-hannover&run=1', { waitUntil: 'domcontentloaded' })
+  await page.locator('.verdict-banner, .checking-state, #planned-departure').first().waitFor({ timeout: 15000 })
+  if (await page.locator('.checking-state').count()) {
+    await page.locator('.verdict-banner').waitFor({ timeout: 120000 })
+  }
+  const permitAutorun = await page.evaluate(() => {
+    const fileError = document.querySelector('[data-testid="gpx-upload-error"]')
+    const demoNote = document.querySelector('[data-testid="demo-departure-note"]')?.textContent || ''
+    const width = document.querySelector('[data-testid="vehicle-width"]')
+    let history = []
+    try {
+      history = JSON.parse(localStorage.getItem('htr-route-check-history') || '[]')
+    } catch {
+      history = []
+    }
+    return {
+      fileErrorVisible: Boolean(fileError),
+      fileErrorText: fileError?.textContent || '',
+      demoNote,
+      width: width?.value || '',
+      historyVehicle: history[0]?.vehicle || null,
+      hasVerdict: Boolean(document.querySelector('.verdict-banner')),
+    }
+  })
+  record(
+    'Permit ?run=1 applies demo departure and permit vehicle (no file error)',
+    !permitAutorun.fileErrorVisible
+      && /Demo departure:/i.test(permitAutorun.demoNote)
+      && permitAutorun.hasVerdict
+      && Number(permitAutorun.historyVehicle?.width) === 3.2
+      && Number(permitAutorun.historyVehicle?.height) === 4.5
+      && Number(permitAutorun.historyVehicle?.length) === 28.5
+      && Number(permitAutorun.historyVehicle?.grossWeight) === 60,
     JSON.stringify(permitAutorun),
   )
 
