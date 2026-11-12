@@ -126,7 +126,7 @@ export default function Layout() {
               onClick={() => navigate('/')}
               aria-label="Heavy transport route check"
             >
-              HTR
+              <RouteCheckLogo size={24} tone="auto" decorative />
             </button>
           ) : (
             <div className="sidebar-lockup">
@@ -136,7 +136,7 @@ export default function Layout() {
                 onClick={() => navigate('/')}
                 aria-label="Go to home"
               >
-                <RouteCheckLogo size={32} tone="light" decorative />
+                <RouteCheckLogo size={32} tone="auto" decorative />
               </button>
               <button
                 type="button"

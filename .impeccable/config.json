@@ -1,0 +1,26 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "src/index.css"
+        ],
+        "createdAt": "2026-11-12T01:58:15.167Z",
+        "reason": "pre-existing domain verdict/evidence status edges in Apple-style UI; not introduced by Autobahn Plate logo refresh"
+      },
+      {
+        "rule": "border-accent-on-rounded",
+        "value": "*",
+        "files": [
+          "src/index.css"
+        ],
+        "createdAt": "2026-11-12T01:58:45.013Z",
+        "reason": "pre-existing permit-map and panel chrome in Apple-style UI; not introduced by Autobahn Plate logo refresh"
+      }
+    ]
+  }
+}
