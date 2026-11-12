@@ -602,9 +602,9 @@ export default function LiveMap() {
               )}
             </section>
 
-            <div className="live-map-kpis">
-              <div><Route size={14} /><span>Operational signals</span><strong>{events.length}</strong></div>
-              <div><AlertTriangle size={14} /><span>Warnings</span><strong>{events.filter(event => event.type === 'warnings').length}</strong></div>
+            <div className="live-map-kpis" data-testid="corridor-map-kpis">
+              <div><Route size={14} /><span>Operational signals</span><strong>{visibleEvents.length}</strong></div>
+              <div><AlertTriangle size={14} /><span>Warnings</span><strong>{visibleEvents.filter(event => event.type === 'warnings').length}</strong></div>
               <div><RefreshCw size={14} /><span>Autobahns in view</span><strong>{roadVectors.length}</strong></div>
             </div>
           </div>

@@ -585,6 +585,72 @@ async function main() {
     mainLandmark.count === 1 && !mainLandmark.nested && mainLandmark.host && mainLandmark.stageIsDiv,
     JSON.stringify(mainLandmark),
   )
+
+  // Map KPI strip must track the same filtered set as the list/map (scope + layers),
+  // not the raw national feed total.
+  await page.locator('[data-testid="corridor-map-kpis"]').waitFor({ timeout: 20000 })
+  await page.getByRole('tab', { name: 'Bavaria' }).click()
+  await page.waitForTimeout(800)
+  const bavariaKpis = await page.evaluate(() => {
+    const summaryStrong = [...document.querySelectorAll('.live-event-summary > div')].map(el => ({
+      label: el.querySelector('span')?.textContent?.trim() || '',
+      value: Number(el.querySelector('strong')?.textContent || 'NaN'),
+    }))
+    const matched = summaryStrong.find(item => /Matched/i.test(item.label))?.value ?? NaN
+    const safety = summaryStrong.find(item => /Safety/i.test(item.label))?.value ?? NaN
+    const kpiStrong = [...document.querySelectorAll('[data-testid="corridor-map-kpis"] > div')].map(el => ({
+      label: el.querySelector('span')?.textContent?.trim() || '',
+      value: Number(el.querySelector('strong')?.textContent || 'NaN'),
+    }))
+    const ops = kpiStrong.find(item => /Operational signals/i.test(item.label))?.value ?? NaN
+    const warnings = kpiStrong.find(item => /Warnings/i.test(item.label))?.value ?? NaN
+    return { matched, ops, warnings, safety, summaryStrong, kpiStrong }
+  })
+  record(
+    'Corridor KPIs match Bavaria-scoped visible signals',
+    Number.isFinite(bavariaKpis.matched)
+      && bavariaKpis.ops === bavariaKpis.matched
+      && bavariaKpis.warnings === bavariaKpis.safety
+      && bavariaKpis.matched > 0
+      && bavariaKpis.matched < 500,
+    JSON.stringify(bavariaKpis),
+  )
+  await page.getByRole('tab', { name: 'Germany' }).click()
+  await page.waitForTimeout(500)
+  const lorry = page.getByRole('button', { name: /Lorry parking/i })
+  if (await lorry.count()) {
+    const before = await page.evaluate(() => ({
+      matched: Number(document.querySelector('.live-event-summary strong')?.textContent || 'NaN'),
+      ops: Number(document.querySelector('[data-testid="corridor-map-kpis"] div:first-child strong')?.textContent || 'NaN'),
+      lorryOn: document.querySelector('button[aria-pressed="true"]')
+        ? [...document.querySelectorAll('.live-layer-panel button[aria-pressed]')].some(b => /Lorry parking/i.test(b.textContent || '') && b.getAttribute('aria-pressed') === 'true')
+        : false,
+    }))
+    // Ensure lorry starts off (default), then toggle on and off.
+    if (before.lorryOn) await lorry.click()
+    await page.waitForTimeout(400)
+    const lorryOff = await page.evaluate(() => ({
+      matched: Number(document.querySelector('.live-event-summary strong')?.textContent || 'NaN'),
+      ops: Number(document.querySelector('[data-testid="corridor-map-kpis"] div:first-child strong')?.textContent || 'NaN'),
+    }))
+    await lorry.click()
+    await page.waitForTimeout(400)
+    const lorryOn = await page.evaluate(() => ({
+      matched: Number(document.querySelector('.live-event-summary strong')?.textContent || 'NaN'),
+      ops: Number(document.querySelector('[data-testid="corridor-map-kpis"] div:first-child strong')?.textContent || 'NaN'),
+    }))
+    record(
+      'Corridor KPIs follow layer toggles (lorry parking)',
+      lorryOff.ops === lorryOff.matched
+        && lorryOn.ops === lorryOn.matched
+        && lorryOn.ops > lorryOff.ops,
+      JSON.stringify({ lorryOff, lorryOn }),
+    )
+    if (lorryOn.ops !== lorryOff.ops) await lorry.click().catch(() => {})
+  } else {
+    record('Corridor KPIs follow layer toggles (lorry parking)', false, 'Lorry parking layer control missing')
+  }
+
   for (const panelWidth of [280, 320, 360, 400]) {
     await page.locator('.live-event-panel').evaluate((el, width) => {
       el.style.width = `${width}px`
