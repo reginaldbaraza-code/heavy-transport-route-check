@@ -651,6 +651,90 @@ async function main() {
     record('Corridor KPIs follow layer toggles (lorry parking)', false, 'Lorry parking layer control missing')
   }
 
+  // Panel Safety must track the same filtered set as overlay Warnings
+  // (search query + Safety signals layer), not the raw scope total.
+  const readCorridorKpis = async () => page.evaluate(() => {
+    const summaryStrong = [...document.querySelectorAll('.live-event-summary > div')].map(el => ({
+      label: el.querySelector('span')?.textContent?.trim() || '',
+      value: Number(el.querySelector('strong')?.textContent || 'NaN'),
+    }))
+    const matched = summaryStrong.find(item => /Matched/i.test(item.label))?.value ?? NaN
+    const safety = summaryStrong.find(item => /Safety/i.test(item.label))?.value ?? NaN
+    const kpiStrong = [...document.querySelectorAll('[data-testid="corridor-map-kpis"] > div')].map(el => ({
+      label: el.querySelector('span')?.textContent?.trim() || '',
+      value: Number(el.querySelector('strong')?.textContent || 'NaN'),
+    }))
+    const ops = kpiStrong.find(item => /Operational signals/i.test(item.label))?.value ?? NaN
+    const warnings = kpiStrong.find(item => /Warnings/i.test(item.label))?.value ?? NaN
+    return { matched, ops, warnings, safety }
+  })
+
+  const germanyBaseline = await readCorridorKpis()
+  const searchInput = page.locator('.live-event-search input')
+  await searchInput.fill('A9')
+  await page.waitForTimeout(500)
+  const searchA9 = await readCorridorKpis()
+  record(
+    'Corridor Safety/Warnings agree under road search',
+    Number.isFinite(searchA9.matched)
+      && searchA9.ops === searchA9.matched
+      && searchA9.warnings === searchA9.safety
+      && searchA9.matched > 0
+      && searchA9.matched < germanyBaseline.matched
+      && searchA9.safety <= germanyBaseline.safety,
+    JSON.stringify({ germanyBaseline, searchA9 }),
+  )
+
+  await searchInput.fill('zzzzqq')
+  await page.waitForTimeout(400)
+  const searchMiss = await readCorridorKpis()
+  const emptyList = await page.locator('.live-event-empty').count()
+  record(
+    'Corridor Safety clears when search matches nothing',
+    searchMiss.matched === 0
+      && searchMiss.ops === 0
+      && searchMiss.warnings === 0
+      && searchMiss.safety === 0
+      && emptyList > 0,
+    JSON.stringify({ searchMiss, emptyList }),
+  )
+
+  await searchInput.fill('')
+  await page.waitForTimeout(400)
+  await page.getByRole('tab', { name: 'Bavaria' }).click()
+  await page.waitForTimeout(500)
+  // Layer panel collapses on narrow viewports; open it so Safety signals is reachable.
+  const layerHeading = page.locator('.layer-panel-heading')
+  if (await layerHeading.count()) {
+    const layerListVisible = await page.locator('.layer-panel-list').count()
+    if (!layerListVisible) await layerHeading.click()
+  }
+  const safetyLayer = page.getByRole('button', { name: /Safety signals/i })
+  if (await safetyLayer.count()) {
+    if (await safetyLayer.getAttribute('aria-pressed') !== 'true') await safetyLayer.click()
+    await page.waitForTimeout(300)
+    const safetyOn = await readCorridorKpis()
+    await safetyLayer.click()
+    await page.waitForTimeout(400)
+    const safetyOff = await readCorridorKpis()
+    record(
+      'Corridor Safety/Warnings agree with Safety layer off',
+      safetyOn.warnings === safetyOn.safety
+        && safetyOn.safety > 0
+        && safetyOff.ops === safetyOff.matched
+        && safetyOff.warnings === 0
+        && safetyOff.safety === 0
+        && safetyOff.matched < safetyOn.matched,
+      JSON.stringify({ safetyOn, safetyOff }),
+    )
+    // Restore Safety layer for later layout checks.
+    if (await safetyLayer.getAttribute('aria-pressed') !== 'true') await safetyLayer.click().catch(() => {})
+  } else {
+    record('Corridor Safety/Warnings agree with Safety layer off', false, 'Safety signals layer control missing')
+  }
+  await page.getByRole('tab', { name: 'Germany' }).click()
+  await page.waitForTimeout(400)
+
   for (const panelWidth of [280, 320, 360, 400]) {
     await page.locator('.live-event-panel').evaluate((el, width) => {
       el.style.width = `${width}px`

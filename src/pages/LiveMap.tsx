@@ -537,7 +537,7 @@ export default function LiveMap() {
           </div>
           <div className="live-event-summary">
             <div><strong>{visibleEvents.length}</strong><span>Matched</span></div>
-            <div><strong>{scopeEvents.filter(event => event.type === 'warnings').length}</strong><span>Safety</span></div>
+            <div><strong>{visibleEvents.filter(event => event.type === 'warnings').length}</strong><span>Safety</span></div>
             <div><strong>{roadVectors.length}</strong><span>Autobahns</span></div>
           </div>
           {selectedEvent && (
