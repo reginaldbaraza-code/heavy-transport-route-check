@@ -205,8 +205,9 @@
     --verdict-pill-ink: #1c1c1e;
     --badge-bg: #c41e16;
     --badge-fg: #ffffff;
-    --border: rgba(84, 84, 88, 0.65);
-    --border-strong: rgba(84, 84, 88, 0.85);
+    /* Opaque separators ≥3:1 on --bg-card / --bg-base (non-text UI) */
+    --border: #6e6e73;
+    --border-strong: #8e8e93;
     --divider: rgba(84, 84, 88, 0.45);
     --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.35);
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35), 0 6px 16px rgba(0, 0, 0, 0.4);
@@ -3828,11 +3829,27 @@ select:focus-visible {
 .sidebar-htr {
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
   text-align: left;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: .04em;
   color: var(--sidebar-text);
+}
+.sidebar-htr svg {
+  display: block;
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+.rc-logo-auto .rc-logo-dark {
+  display: none;
+}
+@media (prefers-color-scheme: dark) {
+  .rc-logo-auto .rc-logo-light {
+    display: none;
+  }
+  .rc-logo-auto .rc-logo-dark {
+    display: inline;
+  }
 }
 .sidebar-collapse {
   width: 32px;
