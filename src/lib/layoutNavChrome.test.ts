@@ -7,6 +7,7 @@ import {
   DRAWER_NAV_MAX_WIDTH_PX,
   collapseControlLabel,
   effectiveSidebarCollapsed,
+  isClosedDrawerInert,
   isDrawerViewport,
   reduceNavChromeCollapseToggle,
   reduceNavChromeOpenMobile,
@@ -81,10 +82,27 @@ test("drawer viewport clears a leftover desktop-collapsed rail", () => {
   assert.deepEqual(leavingDrawer, { collapsed: false, mobileOpen: false })
 })
 
+test("closed drawer is inert at mobile widths; open drawer and desktop are not", () => {
+  const closed = { collapsed: false, mobileOpen: false }
+  const open = { collapsed: false, mobileOpen: true }
+
+  for (const width of [320, 390, 768, 900]) {
+    assert.equal(isClosedDrawerInert(closed, width), true, `closed @ ${width}`)
+    assert.equal(isClosedDrawerInert(open, width), false, `open @ ${width}`)
+  }
+
+  assert.equal(isClosedDrawerInert(closed, 901), false)
+  assert.equal(isClosedDrawerInert(closed, 1440), false)
+  assert.equal(isClosedDrawerInert({ collapsed: true, mobileOpen: false }, 1440), false)
+})
+
 test("Layout wires collapse through layoutNavChrome helpers", () => {
   assert.match(layoutSource, /reduceNavChromeCollapseToggle/)
   assert.match(layoutSource, /effectiveSidebarCollapsed/)
   assert.match(layoutSource, /onCollapseControl/)
+  assert.match(layoutSource, /isClosedDrawerInert/)
+  assert.match(layoutSource, /\binert=\{drawerInert/)
+  assert.match(layoutSource, /useLayoutEffect/)
   assert.doesNotMatch(
     layoutSource,
     /onClick=\{\(\) => setCollapsed\(!collapsed\)\}/,

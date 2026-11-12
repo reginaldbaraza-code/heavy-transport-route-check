@@ -285,23 +285,103 @@ async function main() {
       tabDisplay,
     )
 
-    await page.getByRole('button', { name: 'Open navigation' }).click()
+    const closedA11y = await page.evaluate(() => {
+      const sidebar = document.querySelector('.app-sidebar')
+      if (!sidebar) return { ok: false, reason: 'missing sidebar' }
+      const focusables = Array.from(
+        sidebar.querySelectorAll('a, button, input, select, textarea, [tabindex]'),
+      )
+      const active = document.activeElement
+      return {
+        ok: true,
+        inert: sidebar.hasAttribute('inert'),
+        mobileOpen: sidebar.classList.contains('mobile-open'),
+        focusableCount: focusables.length,
+        anyFocusableInTree: focusables.some((el) => {
+          // inert ancestors make matches() / focus() fail; also check offset.
+          try {
+            el.focus()
+            return document.activeElement === el
+          } catch {
+            return false
+          }
+        }),
+        activeInSidebar: Boolean(active && sidebar.contains(active)),
+      }
+    })
+    // Clear any accidental focus from the probe above.
+    await page.evaluate(() => document.body.focus())
+    record(
+      `Closed drawer at ${width}×${height}: inert and not focusable`,
+      Boolean(
+        closedA11y.ok
+        && closedA11y.inert
+        && !closedA11y.mobileOpen
+        && !closedA11y.anyFocusableInTree
+        && !closedA11y.activeInSidebar,
+      ),
+      JSON.stringify(closedA11y),
+    )
+
+    const openTrigger = page.getByRole('button', { name: 'Open navigation' })
+    await openTrigger.click()
     record(
       `Drawer opens at ${width}×${height}`,
       await page.locator('.app-sidebar.mobile-open').count() === 1,
     )
+    await page.waitForFunction(() => {
+      const close = document.querySelector('.app-sidebar.mobile-open .sidebar-collapse')
+      return Boolean(close && document.activeElement === close)
+    }, null, { timeout: 3000 }).catch(() => {})
 
     const closeInDrawer = page.locator('.app-sidebar.mobile-open').getByRole('button', { name: 'Close navigation' })
     record(
       `Drawer collapse control closes (not desktop-collapses) at ${width}×${height}`,
       await closeInDrawer.count() === 1,
     )
+
+    const openA11y = await page.evaluate(() => {
+      const sidebar = document.querySelector('.app-sidebar')
+      if (!sidebar) return { ok: false, reason: 'missing sidebar' }
+      const closeBtn = sidebar.querySelector('.sidebar-collapse')
+      const closeFocusedInitially = Boolean(
+        closeBtn && (document.activeElement === closeBtn || document.activeElement?.closest?.('.sidebar-collapse') === closeBtn),
+      )
+      const overview = Array.from(sidebar.querySelectorAll('a')).find((a) =>
+        /overview/i.test(a.getAttribute('aria-label') || a.textContent || ''),
+      )
+      let overviewFocusable = false
+      if (overview) {
+        overview.focus()
+        overviewFocusable = document.activeElement === overview
+      }
+      return {
+        ok: true,
+        inert: sidebar.hasAttribute('inert'),
+        mobileOpen: sidebar.classList.contains('mobile-open'),
+        overviewFocusable,
+        closeFocusedInitially,
+      }
+    })
+    record(
+      `Open drawer at ${width}×${height}: not inert; focus in drawer; nav links focusable`,
+      Boolean(
+        openA11y.ok
+        && !openA11y.inert
+        && openA11y.mobileOpen
+        && openA11y.closeFocusedInitially
+        && openA11y.overviewFocusable,
+      ),
+      JSON.stringify(openA11y),
+    )
+
     await closeInDrawer.click()
 
     const after = await page.evaluate(() => {
       const sidebar = document.querySelector('.app-sidebar')
       const main = document.querySelector('.app-main')
       const tabs = document.querySelector('.mobile-tab-bar')
+      const openBtn = document.querySelector('.mobile-nav-trigger')
       if (!sidebar || !main || !tabs) return { ok: false, reason: 'missing nodes' }
       const sideStyle = getComputedStyle(sidebar)
       const tabsStyle = getComputedStyle(tabs)
@@ -310,12 +390,14 @@ async function main() {
       return {
         ok: true,
         hasMobileOpen: sidebar.classList.contains('mobile-open'),
+        inert: sidebar.hasAttribute('inert'),
         tabDisplay: tabsStyle.display,
         sidebarWidth: Math.round(sideBox.width),
         mainLeft: Math.round(mainBox.left),
         mainWidth: Math.round(mainBox.width),
         transform: sideStyle.transform,
         left: sideStyle.left,
+        focusRestoredToOpen: document.activeElement === openBtn,
       }
     })
     record(
@@ -327,6 +409,11 @@ async function main() {
         && after.mainLeft <= 1
         && after.mainWidth >= width - 2,
       ),
+      JSON.stringify(after),
+    )
+    record(
+      `After drawer close at ${width}×${height}: inert again; focus returns to Open navigation`,
+      Boolean(after.ok && after.inert && after.focusRestoredToOpen),
       JSON.stringify(after),
     )
   }

@@ -68,3 +68,14 @@ export function collapseControlLabel(
   }
   return state.collapsed ? "Expand navigation" : "Collapse navigation"
 }
+
+/**
+ * Off-canvas drawer content must leave the tab order and a11y tree while closed.
+ * Desktop sidebar / collapsed icon rail stay interactive (never inert).
+ */
+export function isClosedDrawerInert(
+  state: NavChromeState,
+  viewportWidthPx: number,
+): boolean {
+  return isDrawerViewport(viewportWidthPx) && !state.mobileOpen
+}
