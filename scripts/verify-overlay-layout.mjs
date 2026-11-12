@@ -113,6 +113,22 @@ async function checkCorridor(page, vp, layersOpen) {
       issues.push('horizontal-scroll')
     }
     if (layersOpen && !footerVisible) issues.push('Layers footer not visible')
+    // Collapsed Layers must shrink to the heading — not keep a 1fr empty frosted row.
+    if (!layersOpen && layers) {
+      const heading = q('.layer-panel-heading')
+      const headingH = heading ? heading.getBoundingClientRect().height : 48
+      if (layers.h > headingH + 12) {
+        issues.push(`collapsed Layers too tall (${Math.round(layers.h)}px, heading ${Math.round(headingH)}px)`)
+      }
+    }
+    // Open Layers should expose more than a single clipped row when space allows.
+    if (layersOpen && layers) {
+      const list = q('.layer-panel-list')
+      if (list) {
+        const listH = list.getBoundingClientRect().height
+        if (listH < 28) issues.push(`Layers list squashed (${Math.round(listH)}px)`)
+      }
+    }
     if (kpi) {
       const rows = [...document.querySelectorAll('.live-map-kpis div')]
       if (rows.length && rows.some(row => row.getBoundingClientRect().height < 1)) {
@@ -142,12 +158,29 @@ async function checkCorridor(page, vp, layersOpen) {
   return { vp: vp.name, tag, file, ...result }
 }
 
+async function fillPlannedDeparture(page, hoursAhead = 8) {
+  const input = page.locator('#planned-departure')
+  await input.waitFor({ timeout: 15000 })
+  await page.getByRole('button', { name: 'Check route' }).waitFor({ state: 'visible', timeout: 15000 })
+  const value = await page.evaluate(hours => {
+    const date = new Date(Date.now() + hours * 60 * 60 * 1000)
+    const pad = n => String(n).padStart(2, '0')
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+  }, hoursAhead)
+  await input.fill(value)
+  await page.waitForFunction(() => {
+    const btn = [...document.querySelectorAll('button')].find(el => /Check route/i.test(el.textContent || ''))
+    return Boolean(btn && !btn.disabled)
+  }, null, { timeout: 20000 })
+}
+
 async function checkRouteResult(page, vp) {
   await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded', timeout: 60000 })
   await skipOnboarding(page)
   await page.getByRole('button', { name: /show sample permits/i }).click()
-  await page.getByRole('button', { name: /Simulated READY/i }).click()
-  await page.waitForTimeout(400)
+  // Use a live sample permit (not Simulated READY) so GPX + departure unlock Check route.
+  await page.getByRole('button', { name: /Hamburg → Hannover/ }).click()
+  await fillPlannedDeparture(page)
   await page.getByRole('button', { name: 'Check route' }).click()
   await page.locator('.verdict-banner, .dispatcher-verdict-banner').first().waitFor({ timeout: 90000 })
   await page.waitForTimeout(1800)

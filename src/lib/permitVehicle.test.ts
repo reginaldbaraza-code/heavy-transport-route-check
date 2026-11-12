@@ -34,3 +34,30 @@ test('route check uses form dimensions over sample permit defaults', () => {
   assert.equal(dims?.length, 28.5)
   assert.equal(dims?.grossWeight, 60)
 })
+
+test('explicit job/permit override beats stale form defaults (auto-run same tick)', () => {
+  const staleFormDefaults = { width: 3.0, height: 4.0, length: 25.0, grossWeight: 52 }
+  const jobVehicle = { width: 3.5, height: 4.2, length: 32.0, grossWeight: 72 }
+  const dims = resolveCheckVehicle(staleFormDefaults, null, { vehicle: jobVehicle }, jobVehicle)
+  assert.deepEqual(dims, jobVehicle)
+})
+
+test('explicit override beats form even when metadata also carries vehicle', () => {
+  const staleFormDefaults = { width: 3.0, height: 4.0, length: 25.0, grossWeight: 52 }
+  const permit = {
+    kind: 'live' as const,
+    vehicle: { width: 3.2, height: 4.5, length: 28.5, grossWeight: 60 },
+  } satisfies Pick<TestPermit, 'kind' | 'vehicle'>
+  const dims = resolveCheckVehicle(staleFormDefaults, permit, { vehicle: permit.vehicle }, permit.vehicle)
+  assert.deepEqual(dims, permit.vehicle)
+})
+
+test('without override, valid stale form still wins (manual-check contract)', () => {
+  const form = { width: 3.0, height: 4.0, length: 25.0, grossWeight: 52 }
+  const permit = {
+    kind: 'live' as const,
+    vehicle: { width: 3.5, height: 4.2, length: 32.0, grossWeight: 72 },
+  } satisfies Pick<TestPermit, 'kind' | 'vehicle'>
+  const dims = resolveCheckVehicle(form, permit, { vehicle: permit.vehicle })
+  assert.deepEqual(dims, form)
+})
