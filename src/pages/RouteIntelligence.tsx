@@ -40,8 +40,11 @@ import {
   defaultDepartureIso,
   defaultJobName,
   demoDepartureIso,
+  extractPermittedRoads,
   fromLocalInput,
   isGpxFileProblemMessage,
+  jobCheckOptions,
+  sanitizeCorridor,
   toLocalInput,
 } from '../lib/jobs'
 import {
@@ -100,6 +103,21 @@ export default function RouteIntelligencePolished() {
   const [jobInterval, setJobInterval] = useState(prefs.intervalMinutes)
   const [showSaveJob, setShowSaveJob] = useState(false)
   const loadedJob = useRef<string | null>(null)
+  /** Permit fields from the last sample/job load — used for Save as job and Re-check. */
+  const lastPermitMeta = useRef<{
+    corridor?: string
+    permittedRoads?: string[]
+    validFrom?: string
+    validUntil?: string
+    travelFrom?: string
+    travelTo?: string
+    origin?: string
+    destination?: string
+    permitNumber?: string
+    bridgeClearanceConfirmed?: boolean
+    clearanceConfirmedBy?: string
+    confirmedAt?: string
+  } | null>(null)
   const [activePermitId, setActivePermitId] = useState<string | null>(null)
   const [clearanceConfirmed, setClearanceConfirmed] = useState(false)
   const [clearanceBy, setClearanceBy] = useState('')
@@ -195,6 +213,51 @@ export default function RouteIntelligencePolished() {
     setToast('Enter a planned departure before checking the route.')
   }
 
+  const rememberPermitMeta = (
+    permit?: TestPermit | null,
+    metadata?: {
+      corridor?: string
+      permittedRoads?: string[]
+      validFrom?: string
+      validUntil?: string
+      travelFrom?: string
+      travelTo?: string
+      origin?: string
+      destination?: string
+      permitNumber?: string
+      bridgeClearanceConfirmed?: boolean
+      clearanceConfirmedBy?: string
+      confirmedAt?: string
+    } | null,
+  ) => {
+    const corridor = sanitizeCorridor(
+      metadata?.corridor,
+      metadata?.permittedRoads,
+      permit?.corridor,
+    )
+    const roads = extractPermittedRoads(corridor, metadata?.permittedRoads, permit?.corridor)
+    lastPermitMeta.current = {
+      corridor: corridor || undefined,
+      permittedRoads: roads.length ? roads : undefined,
+      validFrom: metadata?.validFrom || permit?.validFrom,
+      validUntil: metadata?.validUntil || permit?.validUntil,
+      travelFrom: metadata?.travelFrom
+        || permit?.originShort
+        || permit?.origin
+        || metadata?.origin,
+      travelTo: metadata?.travelTo
+        || permit?.destinationShort
+        || permit?.destination
+        || metadata?.destination,
+      origin: metadata?.origin || permit?.origin,
+      destination: metadata?.destination || permit?.destination,
+      permitNumber: metadata?.permitNumber || permit?.permitNumber,
+      bridgeClearanceConfirmed: metadata?.bridgeClearanceConfirmed ?? permit?.bridgeClearanceConfirmed,
+      clearanceConfirmedBy: metadata?.clearanceConfirmedBy || permit?.clearanceConfirmedBy,
+      confirmedAt: metadata?.confirmedAt || permit?.confirmedAt,
+    }
+  }
+
   const runCheck = async (
     content: string,
     metadata?: any,
@@ -229,7 +292,7 @@ export default function RouteIntelligencePolished() {
       }
     }
     const departureIso = fromLocalInput(departureLocal)
-    const permitExpiry = metadata?.validUntil || activePermit?.validUntil
+    const permitExpiry = metadata?.validUntil || activePermit?.validUntil || lastPermitMeta.current?.validUntil
     if (permitExpiry) {
       const expiryMs = Date.parse(permitExpiry)
       const departureMs = Date.parse(departureIso)
@@ -253,20 +316,46 @@ export default function RouteIntelligencePolished() {
     try {
       if (metadata || activePermit) {
         setPermitNumber(activePermit?.kind === 'scenario' ? (activePermit.permitNumber || permit) : (metadata?.permitNumber || activePermit?.permitNumber || ''))
+        rememberPermitMeta(activePermit, metadata)
       }
+
+      const remembered = lastPermitMeta.current
+      const corridor = sanitizeCorridor(
+        metadata?.corridor,
+        metadata?.permittedRoads,
+        activePermit?.corridor,
+        remembered?.corridor,
+        remembered?.permittedRoads,
+      )
+      const roads = extractPermittedRoads(
+        corridor,
+        metadata?.permittedRoads,
+        activePermit?.corridor,
+        remembered?.permittedRoads,
+      )
+      const validFrom = metadata?.validFrom || activePermit?.validFrom || remembered?.validFrom
+      const validUntil = metadata?.validUntil || activePermit?.validUntil || remembered?.validUntil
+      const travelFrom = metadata?.travelFrom
+        || activePermit?.originShort
+        || activePermit?.origin
+        || metadata?.origin
+        || remembered?.travelFrom
+      const travelTo = metadata?.travelTo
+        || activePermit?.destinationShort
+        || activePermit?.destination
+        || metadata?.destination
+        || remembered?.travelTo
 
       const departureStart = departureIso
       const checkResult = await checkRoute(content, dims, {
         permitNumber: permit,
-        corridor: metadata?.corridor || activePermit?.corridor,
-        permittedRoads: (metadata?.corridor || activePermit?.corridor)
-          ? [String(metadata?.corridor || activePermit?.corridor).replace(/\s+/g, '')]
-          : undefined,
+        corridor: corridor || undefined,
+        permittedRoads: roads.length ? roads : undefined,
         departureStart,
-        validFrom: metadata?.validFrom || activePermit?.validFrom,
-        validUntil: metadata?.validUntil || activePermit?.validUntil,
-        travelFrom: activePermit?.originShort || activePermit?.origin || metadata?.origin,
-        travelTo: activePermit?.destinationShort || activePermit?.destination || metadata?.destination,
+        validFrom,
+        validUntil,
+        travelFrom,
+        travelTo,
         bridgeClearanceConfirmed: permitOverride
           ? Boolean(metadata?.bridgeClearanceConfirmed ?? permitOverride.bridgeClearanceConfirmed)
           : Boolean(metadata?.bridgeClearanceConfirmed ?? clearanceConfirmed),
@@ -279,6 +368,16 @@ export default function RouteIntelligencePolished() {
         scenario: activePermit?.scenario,
         acknowledgements: acks,
       })
+      lastPermitMeta.current = {
+        ...(lastPermitMeta.current || {}),
+        corridor: corridor || lastPermitMeta.current?.corridor,
+        permittedRoads: roads.length ? roads : lastPermitMeta.current?.permittedRoads,
+        validFrom,
+        validUntil,
+        travelFrom,
+        travelTo,
+        permitNumber: permit,
+      }
       setResult(checkResult)
       setActiveLayer('roadworks')
       setStep('result')
@@ -331,7 +430,13 @@ export default function RouteIntelligencePolished() {
           lastSource: checkResult.source,
           origin: checkResult.route.origin,
           destination: checkResult.route.destination,
-          corridor: checkResult.route.corridor,
+          // Keep clean Autobahn codes — never the API buffer display label.
+          corridor: corridor || sanitizeCorridor(checkResult.route.corridor),
+          permittedRoads: roads.length ? roads : extractPermittedRoads(checkResult.route.corridor),
+          validFrom,
+          validUntil,
+          travelFrom,
+          travelTo,
           siteAcknowledgements: acks,
         })
       }
@@ -372,6 +477,8 @@ export default function RouteIntelligencePolished() {
     setPermitNumber(permit.permitNumber)
     setAcknowledgements([])
     applyDemoDeparture(permit)
+    rememberPermitMeta(permit)
+    loadedJob.current = null
 
     try {
       const { gpxContent: content, metadata } = await loadTestPermit(permit)
@@ -379,6 +486,7 @@ export default function RouteIntelligencePolished() {
       applyPermitVehicle(permit, metadata)
       setPermitNumber(permit.kind === 'scenario' ? permit.permitNumber : (metadata?.permitNumber || permit.permitNumber))
       applyDemoDeparture(permit, metadata)
+      rememberPermitMeta(permit, metadata)
     } catch (err) {
       setFileError(err instanceof Error ? err.message : 'Failed to load sample permit')
     }
@@ -392,6 +500,8 @@ export default function RouteIntelligencePolished() {
     setPlannedDeparture('')
     clearDemoDeparture()
     setDepartureExpiryError('')
+    lastPermitMeta.current = null
+    loadedJob.current = null
 
     // Check for VEMAGS PDF/XML formats and provide helpful message
     const fileName = file.name.toLowerCase()
@@ -519,17 +629,16 @@ export default function RouteIntelligencePolished() {
       setClearanceBy(job.clearanceConfirmedBy || '')
       setConfirmedAt(job.confirmedAt || '')
       setAcknowledgements(job.siteAcknowledgements || [])
+      const jobMeta = jobCheckOptions(job)
+      rememberPermitMeta(null, jobMeta)
       if (autoRun) {
         // Pass job.vehicle explicitly — form setState has not flushed in this tick.
+        // jobCheckOptions sanitizes polluted corridors and restores validity/travel fields.
         void runCheck(
           job.gpxContent,
           {
-            permitNumber: job.permitNumber,
+            ...jobMeta,
             vehicle: job.vehicle,
-            corridor: job.corridor,
-            bridgeClearanceConfirmed: job.bridgeClearanceConfirmed,
-            clearanceConfirmedBy: job.clearanceConfirmedBy,
-            confirmedAt: job.confirmedAt,
           },
           undefined,
           job.siteAcknowledgements || [],
@@ -561,6 +670,7 @@ export default function RouteIntelligencePolished() {
         setActivePermitId(permit.id)
         applyPermitClearance(permit, metadata)
         const demoIso = applyDemoDeparture(permit, metadata)
+        rememberPermitMeta(permit, metadata)
         const permitDims = permitVehicleDims(permit, metadata)
         // Pass permitDims explicitly — form setState has not flushed in this tick.
         if (autoRun) {
@@ -598,6 +708,7 @@ export default function RouteIntelligencePolished() {
     setDepartureExpiryError('')
     setShowSaveJob(false)
     loadedJob.current = null
+    lastPermitMeta.current = null
     setActivePermitId(null)
     setClearanceConfirmed(false)
     setClearanceBy('')
@@ -606,17 +717,36 @@ export default function RouteIntelligencePolished() {
     lastHistoryId.current = null
   }
 
+  /** Re-run the same route/vehicle/departure (and permit window) — do not reset to Import. */
+  const handleRecheck = () => {
+    if (!gpxContent || checking) return
+    const job = loadedJob.current ? getJob(loadedJob.current) : undefined
+    const permit = activePermitId ? testPermits.find(item => item.id === activePermitId) : undefined
+    const meta = job
+      ? { ...jobCheckOptions(job), vehicle: job.vehicle }
+      : (lastPermitMeta.current || undefined)
+    void runCheck(gpxContent, meta, permit, acknowledgements)
+  }
+
   const handleSaveJob = () => {
     if (!gpxContent) return
     const name = jobName.trim() || defaultJobName(routeFile, result?.route.origin, result?.route.destination, permitNumber)
+    const meta = lastPermitMeta.current
+    const corridor = sanitizeCorridor(meta?.corridor, meta?.permittedRoads, result?.route.corridor)
+    const roads = extractPermittedRoads(corridor, meta?.permittedRoads)
     const saved = saveJob({
       name,
       permitNumber,
       routeFileName: routeFile || name,
       gpxContent,
-      origin: result?.route.origin || '',
-      destination: result?.route.destination || '',
-      corridor: result?.route.corridor || '',
+      origin: result?.route.origin || meta?.origin || '',
+      destination: result?.route.destination || meta?.destination || '',
+      corridor,
+      permittedRoads: roads.length ? roads : undefined,
+      validFrom: meta?.validFrom,
+      validUntil: meta?.validUntil,
+      travelFrom: meta?.travelFrom || result?.route.origin,
+      travelTo: meta?.travelTo || result?.route.destination,
       vehicle,
       plannedDeparture: fromLocalInput(plannedDeparture),
       monitorIntervalMinutes: jobInterval || prefs.intervalMinutes,
@@ -632,6 +762,7 @@ export default function RouteIntelligencePolished() {
       siteAcknowledgements: acknowledgements,
     }, loadedJob.current || undefined)
     loadedJob.current = saved.id
+    rememberPermitMeta(null, jobCheckOptions(saved))
     setShowSaveJob(false)
     setMonitoring(true)
     setToast('Job saved and monitoring started.')
@@ -1195,7 +1326,7 @@ export default function RouteIntelligencePolished() {
                   Take action
                 </button>
               )}
-              <button type="button" className="btn-text" onClick={resetFlow}>
+              <button type="button" className="btn-text" onClick={handleRecheck} disabled={checking}>
                 Re-check
               </button>
             </div>
@@ -1409,7 +1540,7 @@ export default function RouteIntelligencePolished() {
             
             {/* Mobile sticky action bar */}
             <div className="mobile-route-actions">
-              <button type="button" className="btn-secondary" onClick={resetFlow}>
+              <button type="button" className="btn-secondary" onClick={handleRecheck} disabled={checking}>
                 Re-check
               </button>
               <button
