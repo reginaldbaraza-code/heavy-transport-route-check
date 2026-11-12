@@ -199,7 +199,8 @@ export default function LiveMap() {
     })
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
-    map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-right')
+    /* Keep scale on the left so it never collides with the Layers / KPI end-stack on the right. */
+    map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left')
 
     // Helper to add cluster layers
     const addClusterLayers = () => {
@@ -493,10 +494,11 @@ export default function LiveMap() {
         </div>
         <div className="live-map-header-actions">
           <span><Clock3 size={12} /> Updated {formatBerlinTime(lastUpdated)}</span>
-          <button type="button" onClick={refreshEvents} disabled={liveStatus === 'refreshing'}>
-            <RefreshCw size={13} className={liveStatus === 'refreshing' ? 'spin' : ''} /> Refresh data
+          <button type="button" onClick={refreshEvents} disabled={liveStatus === 'refreshing'} aria-label="Refresh data" title="Refresh data">
+            <RefreshCw size={14} className={liveStatus === 'refreshing' ? 'spin' : ''} />
+            <span className="btn-label">Refresh</span>
           </button>
-          <button type="button" onClick={() => {
+          <button type="button" aria-label="Fit Germany" title="Fit Germany" onClick={() => {
             const map = mapRef.current
             if (!map) return
             const bounds = germanyOutline.reduce((bounds, coord) => {
@@ -504,21 +506,26 @@ export default function LiveMap() {
             }, new maplibregl.LngLatBounds())
             map.fitBounds(bounds, { padding: 32 })
           }}>
-            <Maximize2 size={13} /> Fit Germany
+            <Maximize2 size={14} />
+            <span className="btn-label">Fit Germany</span>
           </button>
         </div>
       </header>
 
-      <div className="live-map-tabs" role="tablist" aria-label="Map scope">
-        <button type="button" className={scope === 'national' ? 'active' : ''} onClick={() => setScope('national')}>
-          <MapIcon size={13} /> Germany
-        </button>
-        <button type="button" className={scope === 'munich' ? 'active' : ''} onClick={() => setScope('munich')}>
-          <LocateFixed size={13} /> Bavaria focus
-        </button>
+      <div className="live-map-tabs" aria-label="Map scope and basemap">
+        <div className="segmented" role="tablist" aria-label="Map scope">
+          <button type="button" role="tab" aria-selected={scope === 'national'} className={scope === 'national' ? 'active' : ''} onClick={() => setScope('national')}>
+            <MapIcon size={13} /> Germany
+          </button>
+          <button type="button" role="tab" aria-selected={scope === 'munich'} className={scope === 'munich' ? 'active' : ''} onClick={() => setScope('munich')}>
+            <LocateFixed size={13} /> Bavaria
+          </button>
+        </div>
         <span />
-        <button type="button" className={baseMap === 'road' ? 'active' : ''} onClick={() => setBaseMap('road')}>Road</button>
-        <button type="button" className={baseMap === 'contrast' ? 'active' : ''} onClick={() => setBaseMap('contrast')}>High contrast</button>
+        <div className="segmented" role="tablist" aria-label="Basemap style">
+          <button type="button" role="tab" aria-selected={baseMap === 'road'} className={baseMap === 'road' ? 'active' : ''} onClick={() => setBaseMap('road')}>Road</button>
+          <button type="button" role="tab" aria-selected={baseMap === 'contrast'} className={baseMap === 'contrast' ? 'active' : ''} onClick={() => setBaseMap('contrast')}>Contrast</button>
+        </div>
       </div>
 
       <div className="live-map-workspace">

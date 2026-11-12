@@ -47,16 +47,18 @@ export default function Home() {
     <div className="app-page home-page" style={{ padding: '28px 28px 40px', maxWidth: 1280, margin: '0 auto' }}>
 
       {/* ── Header ──────────────────────────────────────────────── */}
-      <div style={{ marginBottom: 28 }}>
-        <h1 style={{
-          fontSize: 26, fontWeight: 700,
-          letterSpacing: '-0.03em',
+      <div className="home-page-header" style={{ marginBottom: 36, paddingTop: 4 }}>
+        <h1 className="home-large-title" style={{
+          fontSize: 'var(--text-large-title)',
+          fontWeight: 700,
+          letterSpacing: 'var(--tracking-display)',
           color: 'var(--text-primary)',
-          lineHeight: 1.2,
+          lineHeight: 1.05,
+          whiteSpace: 'nowrap',
         }}>
           {greeting}, Your organisation
         </h1>
-        <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.5 }}>
+        <p style={{ fontSize: 16, color: 'var(--text-secondary)', marginTop: 10, lineHeight: 1.5, maxWidth: '42em' }}>
           Here's what's happening across your data activity today.
         </p>
       </div>
