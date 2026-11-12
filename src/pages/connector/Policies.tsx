@@ -33,7 +33,7 @@ export default function Policies() {
           </p>
 
           {showCreate && (
-            <div className="bg-white border border-[var(--accent)] rounded-xl p-5 mb-5">
+            <div className="bg-[var(--bg-card)] border border-[var(--accent)] rounded-xl p-5 mb-5">
               <h3 className="font-bold text-[var(--foreground)] mb-3">New Policy</h3>
               <input
                 value={newName}
@@ -71,7 +71,7 @@ export default function Policies() {
             </div>
           )}
 
-          <div className="data-table-shell bg-white rounded-xl border border-[var(--border)] overflow-hidden">
+          <div className="data-table-shell bg-[var(--bg-card)] rounded-xl border border-[var(--border)] overflow-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--border)] bg-[var(--muted)]">

@@ -13,7 +13,7 @@ export default function Negotiations() {
         <div className="connector-workspace-body p-8">
           <div className="grid grid-cols-2 gap-6 mb-6">
             {['Incoming Negotiations', 'Outgoing Negotiations'].map(t => (
-              <div key={t} className="bg-white rounded-xl border border-[var(--border)] p-6">
+              <div key={t} className="bg-[var(--bg-card)] rounded-xl border border-[var(--border)] p-6">
                 <h2 className="text-lg font-bold text-[var(--foreground)] mb-1">{t}</h2>
                 <p className="text-sm text-[var(--muted-foreground)] mb-8">
                   {t === 'Incoming Negotiations' ? 'Consumers requesting access to your data' : 'Your ongoing access requests'}
