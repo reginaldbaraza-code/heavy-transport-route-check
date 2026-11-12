@@ -148,7 +148,15 @@ export function extractRoadNumbers(text?: string | null): string[] {
 }
 
 export function inferPermittedRoads(corridor?: string, extra: string[] = []): string[] {
-  return [...new Set([...extractRoadNumbers(corridor), ...extra.map(road => road.toUpperCase().replace(/\s+/g, ''))])]
+  // Always extract Autobahn codes — polluted display labels like
+  // "A1·±0.5kmHOLD/±1.5kmVERIFY" must not become permitted-road tokens.
+  const fromExtra = extra.flatMap(road => {
+    const extracted = extractRoadNumbers(road)
+    if (extracted.length) return extracted
+    const cleaned = String(road || '').toUpperCase().replace(/\s+/g, '')
+    return /^A\d{1,3}$/.test(cleaned) ? [cleaned] : []
+  })
+  return [...new Set([...extractRoadNumbers(corridor), ...fromExtra])]
 }
 
 export function distanceToRouteKm(routeLine: Feature<LineString>, lat: number, lng: number): number {
