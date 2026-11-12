@@ -103,6 +103,11 @@
   --hold-text: var(--red-text);
   --blue-bg: var(--accent-light);
   --blue-text: #0058b0;
+  /* Ink on saturated READY/HOLD/VERIFY pill fills (11px bold needs ≥4.5:1) */
+  --verdict-pill-ink: #1c1c1e;
+  /* Notification badge — darkened system red so white stays ≥4.5:1 */
+  --badge-bg: #c41e16;
+  --badge-fg: #ffffff;
 
   /* Borders — hairline */
   --border: rgba(60, 60, 67, 0.12);
@@ -197,6 +202,9 @@
     --red-text: #ffb4ae;
     --blue-bg: #0c2a4a;
     --blue-text: #64d2ff;
+    --verdict-pill-ink: #1c1c1e;
+    --badge-bg: #c41e16;
+    --badge-fg: #ffffff;
     --border: rgba(84, 84, 88, 0.65);
     --border-strong: rgba(84, 84, 88, 0.85);
     --divider: rgba(84, 84, 88, 0.45);
@@ -1522,7 +1530,7 @@ button, a, input, select, textarea {
 }
 
 /* Route monitoring, alerts, layers, confirmation, and export */
-.notification-count { position: absolute; top: -5px; right: -7px; min-width: 20px; height: 20px; padding: 0 5px; display: grid; place-items: center; border: 2px solid var(--bg-base); border-radius: 99px; background: var(--red); color: white; font-size: 14px; font-weight: 800; line-height: 1; }
+.notification-count { position: absolute; top: -5px; right: -7px; min-width: 20px; height: 20px; padding: 0 5px; display: grid; place-items: center; border: 2px solid var(--bg-base); border-radius: 99px; background: var(--badge-bg); color: var(--badge-fg); font-size: 14px; font-weight: 800; line-height: 1; }
 .route-alert-filters { margin-bottom: 16px; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }.route-alert-filters .activity-filters { margin: 0; }.route-alert-filters > label { min-width: 280px; display: flex; flex-direction: column; gap: 5px; }.route-alert-filters label > span { color: var(--text-secondary); font-size: 14px; font-weight: 700; }.route-alert-filters select { min-height: 42px; padding: 0 36px 0 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); color: var(--text-primary); font-size: 16px; }
 .route-alert-log { overflow: hidden; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--bg-card); box-shadow: var(--shadow-sm); }.route-alert-log > header { min-height: 64px; padding: 0 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--divider); }.route-alert-log > header > div { display: flex; align-items: center; gap: 8px; }.route-alert-log > header svg { color: var(--accent); }.route-alert-log > header span { color: var(--text-secondary); font-size: 14px; }
 .settings-preference-section { padding: 20px; border-bottom: 1px solid var(--divider); }.settings-preference-section:last-child { border-bottom: 0; }.settings-preference-section > h3 { margin-bottom: 9px; }.settings-toggle-row { min-height: 68px; padding: 11px 0; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid var(--divider); cursor: pointer; }.settings-toggle-row:last-child { border-bottom: 0; }.settings-toggle-row > span { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }.settings-toggle-row strong { color: var(--text-primary); font-size: 16px; }.settings-toggle-row small { color: var(--text-secondary); font-size: 14px; }.settings-toggle-row input { position: relative; width: 44px; height: 26px; flex: none; appearance: none; border-radius: 99px; background: var(--border-strong); cursor: pointer; transition: background 120ms; }.settings-toggle-row input::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--bg-card); box-shadow: var(--shadow-xs); transition: transform 120ms; }.settings-toggle-row input:checked { background: var(--accent); }.settings-toggle-row input:checked::after { transform: translateX(18px); }
@@ -2656,6 +2664,15 @@ h4 { font-size: 18px !important; line-height: 1.35 !important; }
   background: var(--accent-soft);
 }
 
+/* Re-check sits on tinted READY/VERIFY/HOLD washes — use link blue that clears AA */
+.verdict-banner .btn-text {
+  color: var(--blue-text);
+}
+
+.verdict-banner .btn-text:hover {
+  background: color-mix(in srgb, var(--blue-text) 12%, transparent);
+}
+
 /* Checking State */
 .checking-state {
   display: flex;
@@ -2767,17 +2784,17 @@ h4 { font-size: 18px !important; line-height: 1.35 !important; }
 
 .verdict-banner.verdict-green .verdict-label {
   background: var(--ready);
-  color: white;
+  color: var(--verdict-pill-ink);
 }
 
 .verdict-banner.verdict-red .verdict-label {
   background: var(--hold);
-  color: white;
+  color: var(--verdict-pill-ink);
 }
 
 .verdict-banner.verdict-amber .verdict-label {
   background: var(--verify);
-  color: #1c1c1e;
+  color: var(--verdict-pill-ink);
 }
 
 .verdict-content h2 {
@@ -5118,8 +5135,8 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--hold);
-  color: white;
+  background: var(--badge-bg);
+  color: var(--badge-fg);
   font-size: 11px;
   font-weight: 700;
   line-height: 1;
@@ -5280,7 +5297,7 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   .verdict-banner.verdict-green .verdict-label,
   .verdict-banner.verdict-red .verdict-label,
   .verdict-banner.verdict-amber .verdict-label {
-    color: #1c1c1e;
+    color: var(--verdict-pill-ink);
   }
   .verdict-content h2 {
     color: var(--text-primary);
