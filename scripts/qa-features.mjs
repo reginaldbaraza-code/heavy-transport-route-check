@@ -1985,6 +1985,64 @@ async function main() {
     JSON.stringify({ ui: annaSeesAgain, ...annaApiAgain }),
   )
 
+  // Account check-history sync: Bremen sample must survive reload on Alerts & history.
+  await page.getByRole('button', { name: 'Switch user' }).first().click()
+  await page.getByRole('heading', { name: "Who's checking routes?" }).waitFor({ timeout: 15000 })
+  await page.getByRole('button', { name: 'Continue as Anna' }).click()
+  await page.waitForFunction(() => !document.querySelector('.login-screen'), null, { timeout: 30000 })
+  const annaHistoryPayload = page.waitForRequest(
+    req => req.url().includes('/api/check-route') && req.method() === 'POST',
+    { timeout: 120000 },
+  )
+  await page.goto(base + '/route-checks?permit=bremen-dortmund&run=1', { waitUntil: 'domcontentloaded' })
+  await annaHistoryPayload
+  await page.locator('.verdict-banner, .checking-state').first().waitFor({ timeout: 15000 })
+  if (await page.locator('.checking-state').count()) {
+    await page.locator('.verdict-banner').waitFor({ timeout: 120000 })
+  } else {
+    await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
+  }
+  await page.waitForFunction(() => {
+    const history = window.__HT_TEST__?.getHistory?.() || window.__HT_TEST__?.getStore?.('htr-route-check-history') || []
+    return Array.isArray(history) && history.length >= 1
+  }, null, { timeout: 30000 }).catch(() => {})
+  await page.evaluate(async () => {
+    await window.__HT_TEST__?.flushStore?.()
+  })
+  // Wait until the PUT has landed (save chip leaves pending/error).
+  await page.waitForFunction(() => {
+    const badge = document.querySelector('.user-chip-badge.is-error')
+    return !badge
+  }, null, { timeout: 20000 }).catch(() => {})
+  await page.waitForTimeout(800)
+
+  const annaStateBeforeReload = await page.evaluate(async () => {
+    const res = await fetch('/api/state?user=anna')
+    const payload = await res.json()
+    const raw = payload?.data?.['htr-route-check-history']
+    const parsed = typeof raw === 'string' ? JSON.parse(raw || '[]') : (raw || [])
+    return {
+      hasKey: Object.prototype.hasOwnProperty.call(payload?.data || {}, 'htr-route-check-history'),
+      count: Array.isArray(parsed) ? parsed.length : -1,
+      backend: payload?.backend || null,
+    }
+  })
+  record(
+    'Anna Bremen check is present in GET /api/state history',
+    annaStateBeforeReload.hasKey && annaStateBeforeReload.count >= 1,
+    JSON.stringify(annaStateBeforeReload),
+  )
+
+  await page.goto(base + '/activity', { waitUntil: 'domcontentloaded' })
+  await page.getByRole('heading', { name: /Alerts & history/i }).waitFor({ timeout: 20000 })
+  const activityChecks = await page.locator('.check-history-log .route-alert-item').count()
+  const activityEmpty = await page.getByRole('heading', { name: /No checks yet|No checks in this browser/i }).count()
+  record(
+    'Alerts & history shows ≥1 check after reload for Anna',
+    activityChecks >= 1 && activityEmpty === 0,
+    `checks=${activityChecks} empty=${activityEmpty}`,
+  )
+
   // Return to Demo for any remaining checks.
   await page.getByRole('button', { name: 'Switch user' }).first().click()
   await page.getByRole('button', { name: 'Continue as Demo' }).click()

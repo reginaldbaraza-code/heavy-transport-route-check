@@ -1,3 +1,12 @@
+import {
+  encodeStateWriteBody,
+  prepareCheckHistoryForPersist,
+  shouldUseKeepalive,
+  STATE_BODY_MAX_BYTES,
+  utf8ByteLength,
+  type HistoryPersistInput,
+} from './checkHistoryPersist'
+
 export const STORAGE_KEYS = {
   orgProfile: 'htr-org-profile',
   checkHistory: 'htr-route-check-history',
@@ -24,6 +33,14 @@ export const STATE_FIELD_KEYS = [
 export type StateFieldKey = (typeof STATE_FIELD_KEYS)[number]
 export type SyncBackend = 'redis' | 'memory' | null
 export type SyncSaveStatus = 'ok' | 'pending' | 'error'
+
+export {
+  KEEPALIVE_BODY_MAX_BYTES,
+  STATE_BODY_MAX_BYTES,
+  shouldUseKeepalive,
+  encodeStateWriteBody,
+  utf8ByteLength,
+} from './checkHistoryPersist'
 
 const DEBOUNCE_MS = 600
 const MAX_RETRIES = 3
@@ -108,7 +125,15 @@ export function readJson<T>(key: string, fallback: T): T {
 }
 
 export function writeJson(key: string, value: unknown) {
-  const serialized = JSON.stringify(value)
+  let toStore: unknown = value
+  if (key === STORAGE_KEYS.checkHistory && Array.isArray(value)) {
+    // Persist a compact, capped copy. Callers may keep full in-memory records.
+    toStore = prepareCheckHistoryForPersist(value as HistoryPersistInput[], {
+      userId: activeUserId || 'user',
+      maxBodyBytes: STATE_BODY_MAX_BYTES,
+    })
+  }
+  const serialized = JSON.stringify(toStore)
   cache.set(key, serialized)
   if (!activeUserId) return
   if (!(STATE_FIELD_KEYS as readonly string[]).includes(key)) return
@@ -135,12 +160,52 @@ async function persistKey(key: string, serialized: string, attempt = 0): Promise
     if (pendingKeys.size === 0 && saveStatus !== 'error') setSaveStatus('ok')
     return true
   }
+
+  let value: unknown
+  try {
+    value = JSON.parse(serialized)
+  } catch {
+    pendingKeys.delete(key)
+    setSaveStatus('error')
+    return false
+  }
+
+  // History: last-chance trim if something still exceeds the server limit.
+  if (key === STORAGE_KEYS.checkHistory && Array.isArray(value)) {
+    const trimmed = prepareCheckHistoryForPersist(value as HistoryPersistInput[], {
+      userId: activeUserId,
+      maxBodyBytes: STATE_BODY_MAX_BYTES,
+    })
+    const trimmedSerialized = JSON.stringify(trimmed)
+    if (trimmedSerialized !== serialized) {
+      cache.set(key, trimmedSerialized)
+      serialized = trimmedSerialized
+      value = trimmed
+    }
+  }
+
+  const body = encodeStateWriteBody(activeUserId, key, value)
+  const bodyBytes = utf8ByteLength(body)
+  if (bodyBytes > STATE_BODY_MAX_BYTES) {
+    // Never send a request the server will reject with 413.
+    pendingKeys.delete(key)
+    setSaveStatus('error')
+    if (!saveToastShown) {
+      saveToastShown = true
+      window.dispatchEvent(new CustomEvent('htr-sync-error', {
+        detail: { message: "Couldn't save to your account. Retrying…" },
+      }))
+    }
+    return false
+  }
+
   try {
     const res = await fetch('/api/state', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user: activeUserId, key, value: JSON.parse(serialized) }),
-      keepalive: true,
+      body,
+      // Chrome rejects keepalive bodies over ~64 KB — use normal fetch above that.
+      keepalive: shouldUseKeepalive(bodyBytes),
     })
     if (!res.ok) throw new Error(`save failed ${res.status}`)
     pendingKeys.delete(key)
@@ -174,7 +239,9 @@ async function persistKey(key: string, serialized: string, attempt = 0): Promise
 
 function beaconSave(userId: string, key: string, serialized: string) {
   try {
-    const body = JSON.stringify({ user: userId, key, value: JSON.parse(serialized) })
+    const body = encodeStateWriteBody(userId, key, JSON.parse(serialized))
+    // sendBeacon shares the ~64 KB keepalive limit — skip and fall back to fetch.
+    if (!shouldUseKeepalive(utf8ByteLength(body))) return false
     if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
       const blob = new Blob([body], { type: 'application/json' })
       if (navigator.sendBeacon('/api/state', blob)) return true

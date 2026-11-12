@@ -140,7 +140,8 @@ export function RouteMonitoringProvider({ children }: { children: ReactNode }) {
       id: record.id || `check-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     }
     setHistory(current => {
-      const next = [saved, ...current.filter(item => item.id !== saved.id)].slice(0, 100)
+      // Keep full records in memory for the current session; writeJson persists a compact copy.
+      const next = [saved, ...current.filter(item => item.id !== saved.id)].slice(0, 50)
       writeJson(STORAGE_KEYS.checkHistory, next)
       return next
     })
