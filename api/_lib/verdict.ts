@@ -77,6 +77,9 @@ export type ClassifyContext = {
   windowStartMs: number
   windowEndMs: number
   nowMs: number
+  /** Route travel endpoints used to detect opposite-direction feed text (e.g. "Hannover -> Hamburg"). */
+  travelFrom?: string
+  travelTo?: string
 }
 
 export const HOLD_DISTANCE_KM = 0.5
@@ -87,6 +90,9 @@ const PARKING_RE = /\b(Parkplatz|Rastanlage|Rastplatz|Raststätte|\bPWC\b)/i
 const RAMP_EXPLICIT_RE = /\b(Rampe|Auffahrt|Abfahrt|Anschlussstelle)\b/i
 const MAINLINE_SPAN_RE = /\b(zwischen|between)\b[\s\S]{0,100}\b(AS|Anschlussstelle)\b|\bAS\b[\s\S]{0,60}\b(und|and|bis|–|-)\s*(AS\b|Anschlussstelle)/i
 const LONG_SECTION_RE = /\b\d{1,3}[.,]\d+\s*km\b/i
+// Junction abbreviations AK/AD must be uppercase — lowercase "Ak – D …" is a MIA work-code, not Autobahnkreuz.
+const RAMP_RE = /(?:^|\s|,|-|\()(?:AS\b|Auffahrt|Abfahrt|Anschlussstelle|Parkplatz|Rastanlage|Rastplatz|Raststätte|PWC\b|Rampe|Zubringer|Überfahrt|Tangente|Ohr|Verf(?:le|el)chtung|Knotenpunkt|Betriebsumfahrung|Sperrung\s+im\s+Knotenpunkt)(?:\b|$|\s|,|-)/i
+const JUNCTION_RE = /(?:^|[\s,(/-])(?:AK|AD)(?=[\s,)/-]|$)/
 const FULL_CLOSURE_RE = /\b(Vollsperrung|volle?\s+Sperrung|carriagewayClosed|roadClosed|both directions|beide Richtungen|gesamt(e)? Fahrbahn)\b/i
 const OPPOSITE_RE = /\b(Gegenrichtung|entgegen|opposite direction|Gegenfahrbahn)\b/i
 const NIGHT_RE = /(?:von\s+)?(\d{1,2}):(\d{2})\s*(?:Uhr\s*)?(?:–|-|bis)\s*(\d{1,2}):(\d{2})/gi
@@ -119,16 +125,49 @@ export function distanceToRouteKm(routeLine: Feature<LineString>, lat: number, l
 export function classifyLocationKind(text: string): LocationKind {
   if (PARKING_RE.test(text) && !MAINLINE_SPAN_RE.test(text) && !LONG_SECTION_RE.test(text)) return 'parking'
   // Multi-km mainline sections often name endpoint junctions ("zwischen AS X und AS Y") — not ramps.
-  if (MAINLINE_SPAN_RE.test(text) || (LONG_SECTION_RE.test(text) && !RAMP_EXPLICIT_RE.test(text))) {
+  if (MAINLINE_SPAN_RE.test(text) || (LONG_SECTION_RE.test(text) && !RAMP_EXPLICIT_RE.test(text) && !JUNCTION_RE.test(text))) {
     return 'mainline'
   }
-  if (RAMP_EXPLICIT_RE.test(text) || /\bAS\b/i.test(text)) return 'ramp'
+  if (RAMP_RE.test(text) || JUNCTION_RE.test(text)) return 'ramp'
   return 'mainline'
 }
 
-export function parseTravelDirection(text: string): TravelDirection {
+function placeToken(value?: string | null): string {
+  if (!value) return ''
+  const token = value.trim().split(/[\s,/·|()]+/).find(Boolean) || ''
+  return token
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+export function parseTravelDirection(
+  text: string,
+  travel?: { from?: string; to?: string },
+): TravelDirection {
   if (OPPOSITE_RE.test(text)) return 'against'
   if (/\b(beide Richtungen|both directions|beide Fahrtrichtungen)\b/i.test(text)) return 'both'
+
+  const from = placeToken(travel?.from)
+  const to = placeToken(travel?.to)
+  if (from && to) {
+    const arrowRe = /([A-Za-zÄÖÜäöüß][\w\-ÄÖÜäöüß]*)\s*(?:->|→|⇒)\s*([A-Za-zÄÖÜäöüß][\w\-ÄÖÜäöüß]*)/g
+    let match: RegExpExecArray | null
+    while ((match = arrowRe.exec(text))) {
+      const a = placeToken(match[1])
+      const b = placeToken(match[2])
+      if (a && b) {
+        if (a === to && b === from) return 'against'
+        if (a === from && b === to) return 'with'
+      }
+    }
+    const toward = text.match(/\bRichtung\s+([A-Za-zÄÖÜäöüß][\w\-ÄÖÜäöüß]*)/i)
+    if (toward) {
+      const dest = placeToken(toward[1])
+      if (dest === from) return 'against'
+      if (dest === to) return 'with'
+    }
+  }
   return 'unknown'
 }
 
@@ -265,12 +304,20 @@ export function departureWindow(opts: {
 }
 
 function roadMatchesPermit(input: CandidateInput, permittedRoads: string[]): { road?: string; offPermit: boolean } {
-  const fromItem = extractRoadNumbers([input.road, input.title, input.description].filter(Boolean).join(' '))
-  // Prefer the feed's explicit road; incidental mentions of the permitted corridor (e.g. "Zubringer A7" on an A1 ramp) must not count as on-permit.
-  const road = (input.road || '').toUpperCase().replace(/\s+/g, '') || fromItem[0]
+  const titleRoads = extractRoadNumbers(input.title)
+  const descRoads = extractRoadNumbers(input.description)
+
+  // Prefer input.road if present, otherwise take the first road from title, then description
+  const road = input.road?.toUpperCase().replace(/\s+/g, '') || titleRoads[0] || descRoads[0]
+
   if (!permittedRoads.length || !road) return { road, offPermit: false }
-  const permitted = new Set(permittedRoads.map(item => item.toUpperCase().replace(/\s+/g, '')))
-  return { road, offPermit: !permitted.has(road) }
+
+  const permitted = new Set(permittedRoads.map(item => item.toUpperCase()))
+
+  // Only the primary road (not all mentioned roads) determines permit match
+  const offPermit = !permitted.has(road)
+
+  return { road, offPermit }
 }
 
 export function classifyCandidate(input: CandidateInput, ctx: ClassifyContext): ClassifiedEvidence | null {

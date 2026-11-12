@@ -524,3 +524,174 @@ test('concatenated place names are split in classified titles and details', () =
   assert.match(blob, /Bayreuth – Kulmbach/)
   assert.doesNotMatch(blob, /BayreuthKulmbach/)
 })
+
+test('Rampe / Zubringer keywords classify as ramp, not mainline', () => {
+  assert.equal(classifyLocationKind('A1 Rampe 3 Zubringer A7 zur A39'), 'ramp')
+  assert.equal(classifyLocationKind('Überfahrt A9 RF München auf A38'), 'ramp')
+  assert.equal(classifyLocationKind('Ohr A3->A1'), 'ramp')
+  assert.equal(classifyLocationKind('Tangente A3->A1'), 'ramp')
+  assert.equal(classifyLocationKind('Verflechtung A46->A3'), 'ramp')
+  assert.equal(classifyLocationKind('Verfelchtung A46->A3 FR OB'), 'ramp') // common MIA misspelling
+  assert.equal(classifyLocationKind('Sperrung im Knotenpunkt'), 'ramp')
+  assert.equal(classifyLocationKind('Betriebsumfahrung'), 'ramp')
+  assert.equal(classifyLocationKind('AK Maschen works'), 'ramp')
+  assert.equal(classifyLocationKind('AD Horster Dreieck'), 'ramp')
+  assert.equal(classifyLocationKind('A9 von Bayreuth – Kulmbach (AD) Erneuerung'), 'ramp')
+  // MIA work-code "Ak – D …" is not Autobahnkreuz — keep mainline so genuine width HOLDs
+  assert.equal(classifyLocationKind('A1 - Bauwerksarbeiten - Ak – D 57914 - 1-str. R Köln'), 'mainline')
+})
+
+test('A1 ramp item must not HOLD an A7 permit', () => {
+  // Hamburg→Hannover A7: "A1, AK Maschen, Bauwerksarbeiten, BW432a - A1 Abbau Verkehrsführung Rampe 3 - Zubringer A7 zur A39"
+  // Use a coordinate closer to the A7 line
+  const a7Line = routeLineFromPoints([
+    { lat: 53.55, lng: 9.99 },
+    { lat: 53.38, lng: 10.02 },
+    { lat: 52.96, lng: 9.86 },
+    { lat: 52.37, lng: 9.73 },
+  ])
+  
+  const a1Ramp = classifyCandidate(candidate({
+    id: 'mia-18908726-26409922-26409927-26409932',
+    road: 'A1',
+    title: 'A1, AK Maschen, Bauwerksarbeiten, BW432a',
+    description: 'A1 Abbau Verkehrsführung Rampe 3 - Zubringer A7 zur A39',
+    category: 'closures',
+    isBlocked: true,
+    lat: 53.38199,
+    lng: 10.02032,
+  }), { ...baseCtx, routeLine: a7Line, permittedRoads: ['A7'] })
+  
+  assert.ok(a1Ramp, 'Item should be classified, not filtered out')
+  assert.equal(a1Ramp.locationKind, 'ramp', 'Should detect Rampe/Zubringer as ramp')
+  assert.equal(a1Ramp.road, 'A1', 'Should identify primary road as A1')
+  assert.equal(a1Ramp.state, 'warning', 'Should be warning, not danger')
+  assert.notEqual(a1Ramp.state, 'danger', 'A1 ramp must not HOLD an A7 permit')
+  assert.match(a1Ramp.reason, /ramp|not a confirmed mainline/i)
+})
+
+test('A38 Überfahrt item must not HOLD an A9 permit', () => {
+  // Leipzig→Nürnberg A9: "Überfahrt A9 RF München auf A38"
+  const a38Item = classifyCandidate(candidate({
+    road: 'A38',
+    title: 'A38 Überfahrt',
+    description: 'Überfahrt A9 RF München auf A38',
+    category: 'closures',
+    isBlocked: true,
+  }), { ...baseCtx, permittedRoads: ['A9'] })
+  
+  assert.ok(a38Item)
+  assert.equal(a38Item.locationKind, 'ramp', 'Überfahrt should be classified as ramp')
+  assert.equal(a38Item.road, 'A38', 'Primary road should be A38, not A9')
+  assert.notEqual(a38Item.state, 'danger', 'A38 item must not HOLD an A9 permit')
+})
+
+test('A3 interchange connectors must not HOLD an A3 permit', () => {
+  // Duisburg→Köln A3: "Ohr A3->A1", "Tangente A3->A1", "Rampe A3 -> A46", "Verflechtung A46->A3"
+  const ohr = classifyCandidate(candidate({
+    road: 'A3',
+    title: 'Ohr A3->A1',
+    description: 'Sperrung Ohr A3->A1',
+    category: 'closures',
+    isBlocked: true,
+  }), { ...baseCtx, permittedRoads: ['A3'] })
+  
+  assert.ok(ohr)
+  assert.equal(ohr.locationKind, 'ramp')
+  assert.notEqual(ohr.state, 'danger')
+  
+  const tangente = classifyCandidate(candidate({
+    road: 'A3',
+    title: 'Tangente A3->A1',
+    description: 'Tangente gesperrt',
+    category: 'closures',
+    isBlocked: true,
+  }), { ...baseCtx, permittedRoads: ['A3'] })
+  
+  assert.ok(tangente)
+  assert.equal(tangente.locationKind, 'ramp')
+  assert.notEqual(tangente.state, 'danger')
+  
+  const rampe = classifyCandidate(candidate({
+    road: 'A3',
+    title: 'Rampe A3 -> A46',
+    description: 'Vollsperrung Rampe',
+    category: 'closures',
+    isBlocked: true,
+  }), { ...baseCtx, permittedRoads: ['A3'] })
+  
+  assert.ok(rampe)
+  assert.equal(rampe.locationKind, 'ramp')
+  assert.notEqual(rampe.state, 'danger')
+  
+  const verflechtung = classifyCandidate(candidate({
+    road: 'A46',
+    title: 'Verflechtung A46->A3',
+    description: 'Verflechtung gesperrt',
+    category: 'closures',
+    isBlocked: true,
+    lat: onRoute.lat + 0.001,
+    lng: onRoute.lng + 0.001,
+  }), { ...baseCtx, permittedRoads: ['A3'] })
+  
+  assert.ok(verflechtung)
+  assert.equal(verflechtung.locationKind, 'ramp')
+  // A46 item near A3 should be other-road VERIFY
+  assert.notEqual(verflechtung.state, 'danger')
+})
+
+test('Knotenpunkt / Betriebsumfahrung on A8 must not HOLD', () => {
+  // München→Stuttgart A8: "Sperrung im Knotenpunkt", "Betriebsumfahrung"
+  const knotenpunkt = classifyCandidate(candidate({
+    road: 'A8',
+    title: 'Sperrung im Knotenpunkt',
+    description: 'Sperrung im Knotenpunkt',
+    category: 'closures',
+    isBlocked: true,
+  }), { ...baseCtx, permittedRoads: ['A8'] })
+  
+  assert.ok(knotenpunkt)
+  assert.equal(knotenpunkt.locationKind, 'ramp')
+  assert.notEqual(knotenpunkt.state, 'danger')
+  
+  const betrieb = classifyCandidate(candidate({
+    road: 'A8',
+    title: 'Betriebsumfahrung',
+    description: 'Betriebsumfahrung eingerichtet',
+    category: 'closures',
+  }), { ...baseCtx, permittedRoads: ['A8'] })
+  
+  assert.ok(betrieb)
+  assert.equal(betrieb.locationKind, 'ramp')
+  assert.notEqual(betrieb.state, 'danger')
+})
+
+test('genuine A7 mainline closure must still HOLD', () => {
+  // Control case: ensure we don't over-correct
+  const genuine = classifyCandidate(candidate({
+    road: 'A7',
+    title: 'A7 Vollsperrung',
+    description: 'Vollsperrung beide Richtungen A7 mainline zwischen Hamburg und Hannover',
+    category: 'closures',
+    isBlocked: true,
+  }), { ...baseCtx, permittedRoads: ['A7'] })
+  
+  assert.ok(genuine)
+  assert.equal(genuine.locationKind, 'mainline', 'Should be mainline, not ramp')
+  assert.equal(genuine.state, 'danger', 'Genuine mainline closure must HOLD')
+})
+
+test('genuine A1 width restriction with MIA Ak code still HOLDs', () => {
+  // Bremen→Dortmund control: "Ak – D 57914" must not demote a hard width limit to VERIFY
+  const width = classifyCandidate(candidate({
+    road: 'A1',
+    title: 'A1 - Bauwerksarbeiten - Ak – D 57914 - 1-str. R Köln',
+    description: 'Restbreite 3.25 m',
+    residualWidth: 3.25,
+    category: 'roadworks',
+  }), { ...baseCtx, permittedRoads: ['A1'], vehicle: { width: 3.5, height: 4.5, length: 28.5, grossWeight: 60 } })
+
+  assert.ok(width)
+  assert.equal(width.locationKind, 'mainline')
+  assert.equal(width.state, 'danger', 'Hard width on permitted A1 mainline must HOLD')
+})
