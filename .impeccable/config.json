@@ -1,0 +1,26 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "src/index.css"
+        ],
+        "createdAt": "2026-11-12T02:59:19.899Z",
+        "reason": "Existing verdict/evidence left-edge status accents are product chrome for READY/VERIFY/HOLD; contrast fix must not redesign them"
+      },
+      {
+        "rule": "border-accent-on-rounded",
+        "value": "*",
+        "files": [
+          "src/index.css"
+        ],
+        "createdAt": "2026-11-12T02:59:32.451Z",
+        "reason": "Pre-existing rounded status/alert cards with accent borders are incumbent product chrome; dark-contrast token fix does not redesign them"
+      }
+    ]
+  }
+}

@@ -189,14 +189,25 @@ async function main() {
       }
     }
 
-    // Route result after sample permit (desktop + mobile)
+    // Route result after HOLD sample — safety-critical banner contrast
     await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded', timeout: 60000 })
     await skipOnboarding(page)
     const toggle = page.getByRole('button', { name: /show sample permits/i })
     if (await toggle.count()) await toggle.click()
-    const sample = page.getByRole('button', { name: /Simulated READY/i })
+    const holdSample = page.getByRole('button', { name: /Simulated HOLD/i }).first()
+    const readySample = page.getByRole('button', { name: /Simulated READY/i })
+    const sample = (await holdSample.count()) ? holdSample : readySample
     if (await sample.count()) {
       await sample.click()
+      const departure = page.locator('#planned-departure')
+      if (await departure.count()) {
+        const value = await page.evaluate(() => {
+          const date = new Date(Date.now() + 8 * 60 * 60 * 1000)
+          const pad = n => String(n).padStart(2, '0')
+          return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+        })
+        await departure.fill(value)
+      }
       const check = page.getByRole('button', { name: 'Check route' })
       if (await check.count()) {
         await check.click()
@@ -211,6 +222,85 @@ async function main() {
           report.push(result)
           criticalCount += result.critical.length
           violationCount += result.violations.length
+
+          const holdBanner = await page.evaluate(() => {
+            const parse = (input) => {
+              if (!input || input === 'transparent') return null
+              const m = String(input).match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)/i)
+              if (!m) return null
+              const a = m[4] === undefined ? 1 : Number(m[4])
+              if (a <= 0.01) return null
+              return { r: Number(m[1]), g: Number(m[2]), b: Number(m[3]), a }
+            }
+            const luminance = (r, g, b) => {
+              const toLin = (c) => {
+                const s = c / 255
+                return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+              }
+              return 0.2126 * toLin(r) + 0.7152 * toLin(g) + 0.0722 * toLin(b)
+            }
+            const ratio = (fg, bg) => {
+              const a = fg.a ?? 1
+              const rr = fg.r * a + bg.r * (1 - a)
+              const gg = fg.g * a + bg.g * (1 - a)
+              const bb = fg.b * a + bg.b * (1 - a)
+              const L1 = luminance(rr, gg, bb)
+              const L2 = luminance(bg.r, bg.g, bg.b)
+              return (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05)
+            }
+            const effectiveBg = (el) => {
+              let node = el
+              while (node && node !== document.documentElement) {
+                const cs = getComputedStyle(node)
+                const bg = parse(cs.backgroundColor)
+                if (bg && bg.a >= 0.85) return bg
+                if (bg && bg.a >= 0.6) {
+                  const parent = node.parentElement ? parse(getComputedStyle(node.parentElement).backgroundColor) : null
+                  if (parent) {
+                    return {
+                      r: bg.r * bg.a + parent.r * (1 - bg.a),
+                      g: bg.g * bg.a + parent.g * (1 - bg.a),
+                      b: bg.b * bg.a + parent.b * (1 - bg.a),
+                      a: 1,
+                    }
+                  }
+                }
+                node = node.parentElement
+              }
+              return parse(getComputedStyle(document.body).backgroundColor) || { r: 0, g: 0, b: 0, a: 1 }
+            }
+            const banner = document.querySelector('.verdict-banner.verdict-red, .dispatcher-verdict-banner.hold')
+            if (!banner) return { found: false }
+            const title = banner.querySelector('h2') || banner
+            const pill = banner.querySelector('.verdict-label')
+            const button = document.querySelector('.btn-primary, .primary-button')
+            const measure = (el) => {
+              if (!el) return null
+              const cs = getComputedStyle(el)
+              const fg = parse(cs.color)
+              const bg = effectiveBg(el)
+              if (!fg || !bg) return null
+              return Number(ratio(fg, bg).toFixed(2))
+            }
+            return {
+              found: true,
+              titleRatio: measure(title),
+              pillRatio: measure(pill),
+              buttonRatio: measure(button),
+            }
+          })
+
+          if (colorScheme === 'dark' && holdBanner.found) {
+            const holdOk = Number(holdBanner.titleRatio) >= 4.5
+            console.log(`HOLD banner title contrast=${holdBanner.titleRatio} (need ≥4.5)`)
+            if (holdBanner.pillRatio != null) console.log(`HOLD pill contrast=${holdBanner.pillRatio}`)
+            if (holdBanner.buttonRatio != null) console.log(`primary button contrast=${holdBanner.buttonRatio}`)
+            report.push({ label: `${label}-hold-banner`, holdBanner, ok: holdOk })
+            if (!holdOk) {
+              criticalCount += 1
+              violationCount += 1
+            }
+          }
         } catch (e) {
           console.log(`route result skipped (${vp.name}): ${e.message}`)
           report.push({ label: `${prefix}-route-result-${vp.name}`, violations: [], critical: [], skipped: e.message })
@@ -234,7 +324,7 @@ async function main() {
 
   await browser.close()
 
-  // Fail only on near-invisible text (ratio < 1.5). Soft AA misses can be noisy on icons/maps.
+  // Fail on near-invisible text, and on HOLD banner AA misses in dark mode.
   if (failOnViolations && criticalCount > 0) {
     process.exit(1)
   }
