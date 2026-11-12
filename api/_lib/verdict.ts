@@ -689,6 +689,8 @@ export function determineVerdict(
   evidence: Array<Pick<ClassifiedEvidence, 'id' | 'state' | 'blocker' | 'category'>>,
   opts: {
     degraded?: boolean
+    /** Override the default degraded reason (e.g. corridor undetected). */
+    degradedReason?: string
     clearanceConfirmed?: boolean
     acknowledgements?: SiteAcknowledgement[]
   } = {},
@@ -700,15 +702,22 @@ export function determineVerdict(
 } {
   const reasons: string[] = []
   const ackIds = new Set((opts.acknowledgements || []).map(item => item.evidenceId))
-  if (opts.degraded) {
-    return { verdict: 'VERIFY', confidence: 'medium', reasons: ['Live Autobahn source unavailable.'], acknowledgedCount: 0 }
-  }
+  // Confirmed HOLD from remaining evidence must never be silently downgraded
+  // when a live Autobahn feed is degraded or unavailable.
   const hold = evidence.filter(item => item.state === 'danger')
   if (hold.length) {
     return {
       verdict: 'HOLD',
       confidence: 'high',
       reasons: [`${hold.length} confirmed mainline block${hold.length === 1 ? '' : 's'} on the permitted carriageway.`],
+      acknowledgedCount: 0,
+    }
+  }
+  if (opts.degraded) {
+    return {
+      verdict: 'VERIFY',
+      confidence: 'medium',
+      reasons: [opts.degradedReason || 'Live Autobahn source unavailable.'],
       acknowledgedCount: 0,
     }
   }
@@ -741,6 +750,8 @@ export function verdictCopy(
   verdict: 'READY' | 'HOLD' | 'VERIFY',
   opts: {
     degraded?: boolean
+    degradedPartial?: boolean
+    corridorUndetected?: boolean
     issueCount: number
     distanceKm: number
     clearanceConfirmed?: boolean
@@ -748,15 +759,32 @@ export function verdictCopy(
   },
 ) {
   if (verdict === 'HOLD') {
+    const blocking = `${opts.issueCount} blocking ${opts.issueCount === 1 ? 'issue' : 'issues'} on the permitted mainline.`
+    if (!opts.degraded) {
+      return { title: 'Hold departure – blocking issue on route', summary: blocking }
+    }
+    const feedNote = opts.degradedPartial
+      ? 'Autobahn live feed is partially unavailable — treat as incomplete evidence.'
+      : 'Autobahn live feed is unavailable — treat as incomplete evidence.'
     return {
       title: 'Hold departure – blocking issue on route',
-      summary: `${opts.issueCount} blocking ${opts.issueCount === 1 ? 'issue' : 'issues'} on the permitted mainline.`,
+      summary: `${blocking} ${feedNote}`,
     }
   }
   if (opts.degraded) {
+    if (opts.corridorUndetected) {
+      return {
+        title: "Can't confirm route – motorway not detected",
+        summary: 'Could not identify which Autobahn the GPX follows. Pass a corridor hint (e.g. A20) or verify manually.',
+      }
+    }
     return {
-      title: "Can't confirm route – data source unavailable",
-      summary: 'The Autobahn data source is temporarily unavailable. Retry or verify manually.',
+      title: opts.degradedPartial
+        ? "Can't confirm route – some Autobahn feeds unavailable"
+        : "Can't confirm route – data source unavailable",
+      summary: opts.degradedPartial
+        ? 'Some Autobahn live feeds failed. Remaining evidence is incomplete — retry or verify manually.'
+        : 'The Autobahn data source is temporarily unavailable. Retry or verify manually.',
     }
   }
   if (verdict === 'READY') {

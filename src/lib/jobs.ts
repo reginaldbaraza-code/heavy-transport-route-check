@@ -25,6 +25,12 @@ export type SavedJob = {
   validUntil?: string
   travelFrom?: string
   travelTo?: string
+  /**
+   * Simulated scenario id (e.g. "hold-width") when the job was saved from a demo permit.
+   * Re-runs and monitor checks must keep this so they do not silently hit live data.
+   * Absent on legacy / live jobs.
+   */
+  scenario?: string
   vehicle: VehicleDims
   plannedDeparture: string
   monitorIntervalMinutes: number
@@ -128,6 +134,8 @@ export function jobCheckOptions(job: SavedJob) {
     bridgeClearanceConfirmed: normalized.bridgeClearanceConfirmed,
     clearanceConfirmedBy: normalized.clearanceConfirmedBy,
     confirmedAt: normalized.confirmedAt,
+    // Only include when present so legacy jobs without a scenario stay live.
+    ...(normalized.scenario ? { scenario: normalized.scenario } : {}),
   }
 }
 
