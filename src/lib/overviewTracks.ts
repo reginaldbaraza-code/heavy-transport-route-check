@@ -1,4 +1,4 @@
-import { sampleTestPermits, type TestPermit } from './routeCheck'
+import { sampleTestPermits, scenarioTestPermits, type TestPermit } from './routeCheck'
 
 export type OverviewVerdict = 'READY' | 'HOLD' | 'VERIFY'
 
@@ -19,28 +19,43 @@ export const OVERVIEW_FEATURED_COPY = {
   impact: 'Selected vehicle: 3.30 m W × 4.30 m H × 30.0 m L · 65 t. Live width (not height) blocks the permitted route when present.',
 }
 
-/** Four geographically spread live sample permits for the overview hero map. */
+/**
+ * Four geographically spread overview hero tracks.
+ * Lübeck→Rostock uses the Simulated READY (ready-clear) fixture so the demo
+ * tallies include a genuine READY without mislabelling the live A20 sample.
+ */
 export const OVERVIEW_MONITOR_ROUTES: Array<{ id: string; verdict: OverviewVerdict }> = [
   { id: 'hamburg-hannover', verdict: 'VERIFY' },
-  { id: 'lubeck-rostock', verdict: 'VERIFY' },
+  { id: 'scenario-ready', verdict: 'READY' },
   { id: 'leipzig-nurnberg', verdict: 'VERIFY' },
   { id: 'munchen-stuttgart', verdict: 'HOLD' },
 ]
 
+export function overviewTallyCounts(permits: TestPermit[] = getOverviewMonitorPermits().map(item => item.permit)) {
+  const verdicts = permits.map(permit => overviewVerdictForPermit(permit))
+  return {
+    total: permits.length,
+    ready: verdicts.filter(v => v === 'READY').length,
+    verify: verdicts.filter(v => v === 'VERIFY').length,
+    hold: verdicts.filter(v => v === 'HOLD').length,
+  }
+}
+
 export function overviewVerdictForPermit(permit: TestPermit): OverviewVerdict {
-  if (permit.expectedVerdict) return permit.expectedVerdict
   const configured = OVERVIEW_MONITOR_ROUTES.find(route => route.id === permit.id)
   if (configured) return configured.verdict
+  if (permit.expectedVerdict) return permit.expectedVerdict
   return 'VERIFY'
 }
 
 export function getOverviewMonitorPermits() {
+  const catalogue = [...sampleTestPermits, ...scenarioTestPermits]
   return OVERVIEW_MONITOR_ROUTES.map(route => {
-    const permit = sampleTestPermits.find(item => item.id === route.id)
+    const permit = catalogue.find(item => item.id === route.id)
     if (!permit) throw new Error(`Missing overview sample permit ${route.id}`)
     return {
       permit,
-      verdict: permit.expectedVerdict ?? route.verdict,
+      verdict: route.verdict,
     }
   })
 }
