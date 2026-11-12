@@ -465,6 +465,17 @@ async function main() {
   await page.goto(base + '/map-explorer', { waitUntil: 'domcontentloaded', timeout: 60000 })
   await skipIfNeeded()
   await page.locator('.live-event-panel').waitFor({ timeout: 20000 })
+  const mainLandmark = await page.evaluate(() => ({
+    count: document.querySelectorAll('main').length,
+    nested: Boolean(document.querySelector('main main')),
+    host: Boolean(document.querySelector('main.app-page-host')),
+    stageIsDiv: Boolean(document.querySelector('div.live-map-stage')),
+  }))
+  record(
+    'Corridor map has exactly one main landmark',
+    mainLandmark.count === 1 && !mainLandmark.nested && mainLandmark.host && mainLandmark.stageIsDiv,
+    JSON.stringify(mainLandmark),
+  )
   for (const panelWidth of [280, 320, 360, 400]) {
     await page.locator('.live-event-panel').evaluate((el, width) => {
       el.style.width = `${width}px`
