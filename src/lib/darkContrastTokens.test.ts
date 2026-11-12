@@ -101,6 +101,9 @@ test('dark-mode verdict and button tokens meet WCAG AA contrast', () => {
   const pillInk = resolve(tokens, '--verdict-pill-ink')
   const badgeBg = resolve(tokens, '--badge-bg')
   const badgeFg = resolve(tokens, '--badge-fg')
+  const border = resolve(tokens, '--border')
+  const bgCard = resolve(tokens, '--bg-card')
+  const bgBase = resolve(tokens, '--bg-base')
 
   assert.ok(contrastRatio(textPrimary, holdBg) >= 4.5, `HOLD banner title ${textPrimary} on ${holdBg}`)
   assert.ok(contrastRatio(textPrimary, readyBg) >= 4.5, `READY banner title on ${readyBg}`)
@@ -113,12 +116,18 @@ test('dark-mode verdict and button tokens meet WCAG AA contrast', () => {
   assert.ok(contrastRatio(pillInk, hold) >= 4.5, `Hold departure pill on ${hold}`)
   assert.ok(contrastRatio(pillInk, ready) >= 4.5, `Ready pill on ${ready}`)
   assert.ok(contrastRatio(pillInk, verify) >= 4.5, `Verify pill on ${verify}`)
-  // Re-check text button on tinted banner washes
+  // Re-check text button on tinted banner washes (#45 --blue-text)
   assert.ok(contrastRatio(blueText, holdBg) >= 4.5, `Re-check on HOLD ${blueText} / ${holdBg}`)
   assert.ok(contrastRatio(blueText, readyBg) >= 4.5, `Re-check on READY ${blueText} / ${readyBg}`)
   assert.ok(contrastRatio(blueText, verifyBg) >= 4.5, `Re-check on VERIFY ${blueText} / ${verifyBg}`)
   // Top-bar notification count badge
   assert.ok(contrastRatio(badgeFg, badgeBg) >= 4.5, `notification badge ${badgeFg} on ${badgeBg}`)
+
+  // Non-text UI borders (toast, overview-tallies, permit-map-badge) ≥3:1 vs adjacent surfaces
+  assert.ok(contrastRatio(border, bgCard) >= 3, `border ${border} on bg-card ${bgCard}`)
+  assert.ok(contrastRatio(border, bgBase) >= 3, `border ${border} on bg-base ${bgBase}`)
+  // permit-map-badge sits on glass over the map; glass channels match bg-card when opaque
+  assert.ok(contrastRatio(border, bgCard) >= 3, `permit-map-badge border ${border} on glass/card ${bgCard}`)
 })
 
 test('light-mode verdict pills, Re-check, and badge meet WCAG AA contrast', () => {
