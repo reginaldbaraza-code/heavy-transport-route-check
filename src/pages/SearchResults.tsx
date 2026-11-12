@@ -28,8 +28,8 @@ export default function SearchResults() {
     <div className="market-page search-results-page">
       <PageHeader
         eyebrow="Search"
-        title={query ? `Results for “${query}”` : 'Search this browser'}
-        description="Looks through saved jobs, route checks, sample permits, scenarios, and alerts in this browser."
+        title={query ? `Results for “${query}”` : 'Search your account'}
+        description="Looks through saved jobs, route checks, sample permits, scenarios, and alerts in your account."
       />
       {!query && (
         <p className="storage-note">{SEARCH_EMPTY_HELP}</p>

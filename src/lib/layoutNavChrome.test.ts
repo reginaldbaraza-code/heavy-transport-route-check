@@ -91,3 +91,13 @@ test("Layout wires collapse through layoutNavChrome helpers", () => {
     "raw collapsed toggle must not remain on the collapse control",
   )
 })
+
+test("collapsed rail allows tooltips to escape overflow clipping", () => {
+  assert.match(layoutSource, /is-collapsed-rail/)
+  assert.match(css, /\.app-sidebar\.is-collapsed-rail\s*\{[^}]*overflow:\s*visible/)
+  assert.match(css, /\.app-sidebar\.is-collapsed-rail\s+\.sidebar-nav/)
+  assert.match(
+    css,
+    /\.has-tooltip\[data-tooltip\]:hover::after[\s\S]*\.has-tooltip\[data-tooltip\]:focus-visible::after/,
+  )
+})

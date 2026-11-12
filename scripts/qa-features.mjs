@@ -138,6 +138,32 @@ function decodePdfStrings(buffer) {
   return { latin1, text: strings.join('\n'), compact: strings.join('') }
 }
 
+async function readHistoryLength(page) {
+  return page.evaluate(() => {
+    const fromHook = window.__HT_TEST__?.getHistory?.()
+    if (Array.isArray(fromHook)) return fromHook.length
+    const fromStore = window.__HT_TEST__?.getStore?.('htr-route-check-history')
+    return Array.isArray(fromStore) ? fromStore.length : 0
+  })
+}
+
+async function readHistory(page) {
+  return page.evaluate(() => {
+    const fromHook = window.__HT_TEST__?.getHistory?.()
+    if (Array.isArray(fromHook)) return fromHook
+    const fromStore = window.__HT_TEST__?.getStore?.('htr-route-check-history')
+    return Array.isArray(fromStore) ? fromStore : []
+  })
+}
+
+/** Flush debounced account saves before full navigations/reloads (pagehide beacon can race hydrate). */
+async function flushAccount(page) {
+  await page.evaluate(async () => {
+    await window.__HT_TEST__?.flushStore?.()
+  }).catch(() => {})
+  await page.waitForTimeout(50)
+}
+
 async function main() {
   const preview = spawn('pnpm', ['exec', 'tsx', 'scripts/qa-preview.ts'], {
     cwd: process.cwd(),
@@ -154,6 +180,17 @@ async function main() {
   await context.grantPermissions(['notifications'])
   const page = await context.newPage()
 
+  async function ensureLoggedIn(userName = 'Demo') {
+    const loginHeading = page.getByRole('heading', { name: "Who's checking routes?" })
+    if (await loginHeading.count()) {
+      await page.getByRole('button', { name: `Continue as ${userName}` }).click()
+      await page.getByRole('heading', { name: "Who's checking routes?" }).waitFor({ state: 'detached', timeout: 30000 }).catch(() => {})
+      await page.waitForFunction(() => !document.querySelector('.login-screen'), null, { timeout: 30000 }).catch(() => {})
+    }
+    const skip = page.getByRole('button', { name: /skip/i })
+    if (await skip.count()) await skip.first().click().catch(() => {})
+  }
+
   for (const iconPath of ['/favicon-32.png', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png']) {
     const res = await page.goto(base + iconPath, { timeout: 15000 })
     const buf = res ? Buffer.from(await res.body()) : Buffer.alloc(0)
@@ -166,7 +203,48 @@ async function main() {
     )
   }
 
+  // Clear any prior user so the login screen is visible for the first assertion.
   await page.goto(base + '/', { waitUntil: 'domcontentloaded', timeout: 60000 })
+  await page.evaluate(() => {
+    try { localStorage.removeItem('htr-current-user') } catch {}
+  })
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 })
+  await page.getByRole('heading', { name: "Who's checking routes?" }).waitFor({ timeout: 20000 })
+  const loginTiles = page.locator('button.login-user-tile')
+  const loginTileCount = await loginTiles.count()
+  record('Login screen renders 7 user tiles', loginTileCount === 7, `count=${loginTileCount}`)
+
+  // Short phone viewport: footnote must stay in the first screen (no +24px tolerance).
+  await page.setViewportSize({ width: 390, height: 844 })
+  const loginFit = await page.evaluate(() => {
+    const screen = document.querySelector('.login-screen')
+    const footnote = document.querySelector('.login-footnote')
+    if (!screen || !footnote) return { ok: false, reason: 'missing' }
+    const screenRect = screen.getBoundingClientRect()
+    const noteRect = footnote.getBoundingClientRect()
+    const style = getComputedStyle(screen)
+    const viewport = window.innerHeight
+    const noteBottom = noteRect.bottom
+    return {
+      // Tolerance-free: bottom must be ≤ viewport (844). Layout aims for ≥40px spare locally.
+      ok: noteBottom <= viewport,
+      screenHeight: Math.round(screenRect.height),
+      noteBottom: Math.round(noteBottom),
+      spare: Math.round(viewport - noteBottom),
+      viewport,
+      paddingTop: style.paddingTop,
+      paddingBottom: style.paddingBottom,
+    }
+  })
+  record(
+    'Login footnote fits in 390×844 viewport',
+    Boolean(loginFit.ok),
+    JSON.stringify(loginFit),
+  )
+  await page.setViewportSize({ width: 1440, height: 900 })
+
+  await page.getByRole('button', { name: 'Continue as Demo' }).click()
+  await page.waitForFunction(() => !document.querySelector('.login-screen'), null, { timeout: 30000 })
   const skipOnboarding = page.getByRole('button', { name: /skip/i })
   if (await skipOnboarding.count()) {
     await skipOnboarding.first().click()
@@ -469,8 +547,7 @@ async function main() {
   await page.setViewportSize({ width: 1440, height: 900 })
 
   async function skipIfNeeded() {
-    const skip = page.getByRole('button', { name: /skip/i })
-    if (await skip.count()) await skip.first().click().catch(() => {})
+    await ensureLoggedIn('Demo')
   }
 
   const corridorViewports = [
@@ -884,6 +961,13 @@ async function main() {
   )
 
   await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded' })
+  await ensureLoggedIn('Demo')
+  await page.getByRole('heading', { name: /Route check/i }).first().waitFor({ timeout: 20000 })
+  await page.waitForFunction(
+    () => document.title === 'Route checks · HTR · Heavy transport route check',
+    null,
+    { timeout: 10000 },
+  ).catch(() => {})
   record(
     'Per-page title keeps HTR suffix',
     (await page.title()) === 'Route checks · HTR · Heavy transport route check',
@@ -960,6 +1044,7 @@ async function main() {
   await page.locator('[data-testid="save-job-form"]').waitFor()
   await page.getByRole('button', { name: 'Save job' }).click()
   await page.getByText(/Job saved and monitoring started/i).waitFor({ timeout: 10000 })
+  await flushAccount(page)
   record('Save as job after check', true)
 
   const savedJobMeta = await page.evaluate(() => {
@@ -1064,13 +1149,7 @@ async function main() {
   const csv = await downloadFile(page, 'Export CSV')
   record('Result CSV download is non-empty', csv.size > 50, `${csv.suggested} ${csv.size} bytes`)
 
-  const historyBeforeRecheck = await page.evaluate(() => {
-    try {
-      return JSON.parse(localStorage.getItem('htr-route-check-history') || '[]').length
-    } catch {
-      return 0
-    }
-  })
+  const historyBeforeRecheck = await readHistoryLength(page)
   const recheckRequest = page.waitForRequest(
     req => req.url().includes('/api/check-route') && req.method() === 'POST',
     { timeout: 30000 },
@@ -1085,13 +1164,7 @@ async function main() {
   }
   const stillOnResult = await page.locator('.verdict-banner').count()
   const importVisible = await page.getByRole('button', { name: /show sample permits/i }).count()
-  const historyAfterRecheck = await page.evaluate(() => {
-    try {
-      return JSON.parse(localStorage.getItem('htr-route-check-history') || '[]').length
-    } catch {
-      return 0
-    }
-  })
+  const historyAfterRecheck = await readHistoryLength(page)
   record(
     'Re-check re-runs check and stays on result (does not reset to Import)',
     Boolean(recheckPost) && stillOnResult > 0 && importVisible === 0 && historyAfterRecheck > historyBeforeRecheck,
@@ -1139,6 +1212,7 @@ async function main() {
   )
   await page.getByRole('button', { name: 'Save as job' }).click()
   await page.getByRole('button', { name: 'Save job' }).click()
+  await flushAccount(page)
   const scenarioJobMeta = await page.evaluate(() => {
     const jobs = window.__HT_TEST__?.getJobs() || []
     const match = jobs.find(job => job.scenario === 'hold-width' || /SCENARIO-HOLD-WIDTH|residual width|Duisburg/i.test(`${job.name} ${job.permitNumber}`))
@@ -1152,14 +1226,17 @@ async function main() {
     JSON.stringify(scenarioJobMeta),
   )
   if (scenarioJobMeta.id) {
+    await flushAccount(page)
     await page.goto(base + '/jobs', { waitUntil: 'domcontentloaded' })
+    await ensureLoggedIn('Demo')
+    await page.locator(`[data-job-id="${scenarioJobMeta.id}"]`).waitFor({ timeout: 15000 })
     const scenarioRerunRequest = page.waitForRequest(
       req => req.url().includes('/api/check-route') && req.method() === 'POST',
       { timeout: 30000 },
-    )
+    ).catch(() => null)
     await page.locator(`[data-job-id="${scenarioJobMeta.id}"]`).getByRole('button', { name: /Re-run check/i }).click()
     await page.waitForURL(/route-checks\?.*job=/, { timeout: 15000 })
-    const scenarioRerunPost = await scenarioRerunRequest.catch(() => null)
+    const scenarioRerunPost = await scenarioRerunRequest
     let scenarioRerunBody = null
     try {
       scenarioRerunBody = scenarioRerunPost ? scenarioRerunPost.postDataJSON() : null
@@ -1301,7 +1378,9 @@ async function main() {
     `csvImpact=${csvClearanceHits} pdfImpact=${pdfClearanceHits} csv=${csvImpactRow.slice(0, 180)} pdf=${pdfImpactText.slice(0, 180)}`,
   )
 
+  await flushAccount(page)
   await page.goto(base + '/jobs', { waitUntil: 'domcontentloaded' })
+  await ensureLoggedIn('Demo')
   const jobsCopy = await page.locator('.jobs-monitor-banner').innerText()
   record(
     'Jobs monitoring copy is plain language',
@@ -1369,10 +1448,11 @@ async function main() {
   const rerunVehicleMatch = await page.evaluate(({ expected, jobId }) => {
     let history = []
     try {
-      history = JSON.parse(localStorage.getItem('htr-route-check-history') || '[]')
+      history = window.__HT_TEST__?.getHistory?.() || window.__HT_TEST__?.getStore?.('htr-route-check-history') || []
     } catch {
       history = []
     }
+    if (!Array.isArray(history)) history = []
     const withJob = history.filter(item => item.jobId === jobId)
     const latest = withJob[0] || history.find(item => item.jobId) || history[0]
     const vehicle = latest?.vehicle || null
@@ -1428,7 +1508,9 @@ async function main() {
   }, liveJobMeta.id)
   record('Monitoring test hook created HOLD alert', Boolean(hookResult.ok && hookResult.holdAlert), JSON.stringify(hookResult))
 
+  await flushAccount(page)
   await page.reload({ waitUntil: 'domcontentloaded' })
+  await ensureLoggedIn('Demo')
   const badge = await page.locator('.notification-count').textContent().catch(() => null)
   record('Alert badge updates after verdict change', Number(badge || '0') > 0, `badge=${badge}`)
 
@@ -1436,12 +1518,12 @@ async function main() {
   const alertText = await page.locator('.route-alert-log').first().innerText()
   record('Alerts page includes verdict-change HOLD', /HOLD/.test(alertText), alertText.slice(0, 180).replace(/\s+/g, ' '))
 
-  await page.evaluate(() => {
-    const raw = window.localStorage.getItem('htr-monitor-alerts')
-    const alerts = raw ? JSON.parse(raw) : []
-    if (alerts[0]) {
+  await page.evaluate(async () => {
+    const alerts = window.__HT_TEST__?.getStore?.('htr-monitor-alerts') || window.__HT_TEST__?.getAlerts?.() || []
+    if (Array.isArray(alerts) && alerts[0]) {
       alerts[0].escalated = true
-      window.localStorage.setItem('htr-monitor-alerts', JSON.stringify(alerts))
+      window.__HT_TEST__?.setStore?.('htr-monitor-alerts', alerts)
+      await window.__HT_TEST__?.flushStore?.()
     }
   })
   await page.reload({ waitUntil: 'domcontentloaded' })
@@ -1606,10 +1688,11 @@ async function main() {
     const demoNote = document.querySelector('[data-testid="demo-departure-note"]')?.textContent || ''
     let history = []
     try {
-      history = JSON.parse(localStorage.getItem('htr-route-check-history') || '[]')
+      history = window.__HT_TEST__?.getHistory?.() || window.__HT_TEST__?.getStore?.('htr-route-check-history') || []
     } catch {
       history = []
     }
+    if (!Array.isArray(history)) history = []
     return {
       banner,
       demoNote,
@@ -1644,10 +1727,11 @@ async function main() {
     const width = document.querySelector('[data-testid="vehicle-width"]')
     let history = []
     try {
-      history = JSON.parse(localStorage.getItem('htr-route-check-history') || '[]')
+      history = window.__HT_TEST__?.getHistory?.() || window.__HT_TEST__?.getStore?.('htr-route-check-history') || []
     } catch {
       history = []
     }
+    if (!Array.isArray(history)) history = []
     return {
       fileErrorVisible: Boolean(fileError),
       fileErrorText: fileError?.textContent || '',
@@ -1816,10 +1900,15 @@ async function main() {
       viewport: { width: 1440, height: 900 },
       colorScheme,
     })
+    await context.addInitScript(() => {
+      try { localStorage.setItem('htr-current-user', 'demo') } catch {}
+    })
     const page = await context.newPage()
     await page.emulateMedia({ colorScheme })
     await page.goto(base + '/route-checks', { waitUntil: 'domcontentloaded', timeout: 60000 })
-    await page.getByRole('heading', { name: /Route check/i }).first().waitFor({ timeout: 15000 }).catch(() => {})
+    await page.getByRole('heading', { name: /Route check/i }).first().waitFor({ timeout: 20000 }).catch(() => {})
+    const login = page.getByRole('button', { name: 'Continue as Demo' })
+    if (await login.count()) await login.click().catch(() => {})
     const skip = page.getByRole('button', { name: /skip/i })
     if (await skip.count()) await skip.first().click({ timeout: 2000 }).catch(() => {})
     const later = page.getByRole('button', { name: /later|not now|continue without/i })
@@ -1834,6 +1923,339 @@ async function main() {
     await context.close()
     return contrast
   }
+
+  // Multi-job account sync: ≥15 realistic jobs must all persist (keepalive quota).
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.getByRole('button', { name: 'Switch user' }).first().click()
+  await page.getByRole('heading', { name: "Who's checking routes?" }).waitFor({ timeout: 15000 })
+  await page.getByRole('button', { name: 'Continue as Luis' }).click()
+  await page.waitForFunction(() => !document.querySelector('.login-screen'), null, { timeout: 30000 })
+  const skipLuis = page.getByRole('button', { name: /skip/i })
+  if (await skipLuis.count()) await skipLuis.first().click().catch(() => {})
+  if (!(await page.getByRole('heading', { name: /Saved jobs|Jobs/i }).count())) {
+    await page.getByRole('link', { name: 'Jobs' }).first().click().catch(() => {})
+  }
+  await page.waitForFunction(() => Boolean(window.__HT_TEST__?.setStore), null, { timeout: 20000 })
+  const multiJob = await page.evaluate(async () => {
+    const gpx = await fetch('/test-permits/bremen-dortmund-a1.gpx').then(r => r.text())
+    const jobs = []
+    let sawNotSaved = false
+    const prefix = `Luis multi ${Date.now()}`
+    for (let i = 0; i < 15; i++) {
+      const now = new Date().toISOString()
+      jobs.unshift({
+        id: `job-luis-multi-${Date.now()}-${i}`,
+        name: `${prefix} #${i + 1}`,
+        permitNumber: `DE-HB-LUIS-${70000 + i}`,
+        routeFileName: 'bremen-dortmund-a1.gpx',
+        gpxContent: gpx,
+        origin: 'Bremen Heavy Cargo Terminal',
+        destination: 'Dortmund',
+        corridor: 'A1',
+        permittedRoads: ['A1'],
+        vehicle: { width: 3.5, height: 4.2, length: 32, grossWeight: 72 },
+        plannedDeparture: now,
+        monitorIntervalMinutes: 15,
+        createdAt: now,
+        updatedAt: now,
+        lastCheckedAt: now,
+        lastVerdict: i % 3 === 0 ? 'HOLD' : i % 3 === 1 ? 'VERIFY' : 'READY',
+        lastSummary: 'Residual width conflict on the permitted A1 corridor — confirm before departure.',
+        lastRetrievedAt: now,
+        lastSource: 'Autobahn GmbH MIA, Open Roadworks',
+        monitoringStoppedReason: null,
+      })
+      window.__HT_TEST__?.setStore?.('htr-saved-jobs', jobs.slice())
+      await window.__HT_TEST__?.flushStore?.()
+      // Give the PUT a moment; chip must never stick on "Not saved".
+      await new Promise(resolve => setTimeout(resolve, 120))
+      if (document.querySelector('.user-chip-badge.is-error')) sawNotSaved = true
+    }
+    // Wait until the error badge is gone (final save settled).
+    for (let t = 0; t < 80; t++) {
+      if (!document.querySelector('.user-chip-badge.is-error')) break
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    await window.__HT_TEST__?.flushStore?.()
+    await new Promise(resolve => setTimeout(resolve, 400))
+    const res = await fetch('/api/state?user=luis')
+    const payload = await res.json()
+    const raw = payload?.data?.['htr-saved-jobs']
+    const parsed = typeof raw === 'string' ? JSON.parse(raw || '[]') : (raw || [])
+    const matched = Array.isArray(parsed) ? parsed.filter(item => String(item?.name || '').startsWith(prefix)) : []
+    const bodyProbe = JSON.stringify({ user: 'luis', key: 'htr-saved-jobs', value: parsed })
+    return {
+      apiCount: matched.length,
+      totalApi: Array.isArray(parsed) ? parsed.length : -1,
+      sawNotSaved,
+      notSavedNow: Boolean(document.querySelector('.user-chip-badge.is-error')),
+      approxBytes: new TextEncoder().encode(bodyProbe).length,
+      prefix,
+    }
+  })
+  record(
+    'Luis can save ≥15 jobs without Not saved / data loss',
+    multiJob.apiCount >= 15 && !multiJob.sawNotSaved && !multiJob.notSavedNow,
+    JSON.stringify(multiJob),
+  )
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 })
+  await page.waitForFunction(() => !document.querySelector('.login-screen'), null, { timeout: 30000 }).catch(() => {})
+  const multiJobAfterReload = await page.evaluate(async (prefix) => {
+    const res = await fetch('/api/state?user=luis')
+    const payload = await res.json()
+    const raw = payload?.data?.['htr-saved-jobs']
+    const parsed = typeof raw === 'string' ? JSON.parse(raw || '[]') : (raw || [])
+    const matched = Array.isArray(parsed) ? parsed.filter(item => String(item?.name || '').startsWith(prefix)) : []
+    return {
+      apiCount: matched.length,
+      notSaved: Boolean(document.querySelector('.user-chip-badge.is-error')),
+    }
+  }, multiJob.prefix)
+  record(
+    'Luis ≥15 jobs still present in GET /api/state after reload',
+    multiJobAfterReload.apiCount >= 15 && !multiJobAfterReload.notSaved,
+    JSON.stringify(multiJobAfterReload),
+  )
+
+  // Per-user isolation: Anna's job must not appear for Paul.
+  await page.getByRole('button', { name: 'Switch user' }).first().click()
+  await page.getByRole('heading', { name: "Who's checking routes?" }).waitFor({ timeout: 15000 })
+  await page.getByRole('button', { name: 'Continue as Anna' }).click()
+  await page.waitForFunction(() => !document.querySelector('.login-screen'), null, { timeout: 30000 })
+  // Collapsed-rail tooltips must escape overflow clipping (hover + focus-visible).
+  await page.setViewportSize({ width: 1440, height: 900 })
+  // Headless defaults to hover:none which suppresses :hover tooltips — emulate a mouse.
+  try {
+    const cdp = await page.context().newCDPSession(page)
+    await cdp.send('Emulation.setEmulatedMedia', {
+      features: [
+        { name: 'hover', value: 'hover' },
+        { name: 'any-hover', value: 'hover' },
+        { name: 'pointer', value: 'fine' },
+        { name: 'any-pointer', value: 'fine' },
+      ],
+    })
+  } catch {
+    // CDP optional — focus-visible path below still covers keyboard users.
+  }
+  const collapseBtn = page.getByRole('button', { name: 'Collapse navigation' })
+  if (await collapseBtn.count()) await collapseBtn.click().catch(() => {})
+  const railOverflow = await page.evaluate(() => {
+    const aside = document.querySelector('.app-sidebar')
+    const nav = document.querySelector('.sidebar-nav')
+    if (!aside || !nav) return { ok: false }
+    const asideStyle = getComputedStyle(aside)
+    const navStyle = getComputedStyle(nav)
+    return {
+      ok: aside.classList.contains('is-collapsed-rail')
+        && asideStyle.overflow === 'visible'
+        && navStyle.overflow === 'visible',
+      asideOverflow: asideStyle.overflow,
+      navOverflow: navStyle.overflow,
+      collapsed: aside.classList.contains('is-collapsed-rail'),
+    }
+  })
+  record(
+    'Collapsed rail overflow is visible for tooltips',
+    Boolean(railOverflow.ok),
+    JSON.stringify(railOverflow),
+  )
+  const routeChecksLink = page.getByRole('link', { name: 'Route checks' }).first()
+  await routeChecksLink.hover()
+  await page.waitForTimeout(80)
+  let routeTip = await routeChecksLink.evaluate(el => {
+    const after = getComputedStyle(el, '::after')
+    return { content: after.content, opacity: after.opacity }
+  })
+  // Focus path (works even when headless reports hover:none).
+  if (!(Number(routeTip.opacity) > 0.9)) {
+    await routeChecksLink.focus()
+    await page.waitForTimeout(40)
+    routeTip = await routeChecksLink.evaluate(el => {
+      const after = getComputedStyle(el, '::after')
+      return { content: after.content, opacity: after.opacity, active: document.activeElement === el }
+    })
+  }
+  record(
+    'Collapsed Route checks tooltip is visible beside the rail',
+    routeTip.content.includes('Route checks') && Number(routeTip.opacity) > 0.9,
+    JSON.stringify(routeTip),
+  )
+  const annaChip = page.getByRole('button', { name: /Switch user \(Anna\)/i }).first()
+  await annaChip.hover()
+  await page.waitForTimeout(80)
+  let annaTip = await annaChip.evaluate(el => {
+    const after = getComputedStyle(el, '::after')
+    return { content: after.content, opacity: after.opacity }
+  })
+  if (!(Number(annaTip.opacity) > 0.9)) {
+    await annaChip.focus()
+    await page.waitForTimeout(40)
+    annaTip = await annaChip.evaluate(el => {
+      const after = getComputedStyle(el, '::after')
+      return { content: after.content, opacity: after.opacity, active: document.activeElement === el }
+    })
+  }
+  record(
+    'Collapsed Anna chip tooltip shows Anna · Switch user',
+    /Anna/i.test(annaTip.content) && /Switch user/i.test(annaTip.content) && Number(annaTip.opacity) > 0.9,
+    JSON.stringify(annaTip),
+  )
+  try {
+    const { mkdirSync } = await import('node:fs')
+    mkdirSync('/tmp/htr-qa', { recursive: true })
+    await page.screenshot({ path: '/tmp/htr-qa/collapsed-rail-tooltips.png', fullPage: false })
+  } catch {
+    // Screenshot is diagnostic only.
+  }
+  const expandBtn = page.getByRole('button', { name: 'Expand navigation' })
+  if (await expandBtn.count()) await expandBtn.click().catch(() => {})
+  // Client-side: Router remounts on the current URL (likely /jobs or /). Prefer Jobs nav.
+  if (!(await page.getByRole('heading', { name: /Saved jobs|Jobs/i }).count())) {
+    await page.getByRole('link', { name: 'Jobs' }).first().click()
+  }
+  await page.getByRole('heading', { name: /Saved jobs|Jobs/i }).first().waitFor({ timeout: 15000 }).catch(() => {})
+  const annaJobName = `Anna isolation ${Date.now()}`
+  const annaSaved = await page.evaluate(async (name) => {
+    const job = {
+      id: `job-anna-${Date.now()}`,
+      name,
+      permitName: name,
+      permitNumber: 'ISO-ANNA',
+      corridor: 'A7',
+      permittedRoads: ['A7'],
+      plannedDeparture: new Date(Date.now() + 8 * 3600 * 1000).toISOString(),
+      vehicle: { width: 3, height: 4, length: 25, grossWeight: 52 },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      gpxText: '',
+      monitorIntervalMinutes: 15,
+      monitoringStoppedReason: null,
+    }
+    window.__HT_TEST__?.setStore?.('htr-saved-jobs', [job])
+    await window.__HT_TEST__?.flushStore?.()
+    const res = await fetch('/api/state?user=anna')
+    const payload = await res.json()
+    const raw = payload?.data?.['htr-saved-jobs']
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
+    return Array.isArray(parsed) && parsed.some(item => item?.name === name)
+  }, annaJobName)
+  // Remount providers from store without a full document reload race.
+  await page.getByRole('button', { name: 'Switch user' }).first().click()
+  await page.getByRole('button', { name: 'Continue as Anna' }).click()
+  await page.waitForFunction(() => !document.querySelector('.login-screen'), null, { timeout: 30000 })
+  if (!(await page.getByRole('heading', { name: /Saved jobs|Jobs/i }).count())) {
+    await page.getByRole('link', { name: 'Jobs' }).first().click()
+  }
+  await page.getByText(annaJobName).first().waitFor({ timeout: 15000 })
+  record('Anna can save a job to her account', annaSaved && await page.getByText(annaJobName).count() > 0, annaJobName)
+
+  await page.getByRole('button', { name: 'Switch user' }).first().click()
+  await page.getByRole('heading', { name: "Who's checking routes?" }).waitFor({ timeout: 15000 })
+  await page.getByRole('button', { name: 'Continue as Paul' }).click()
+  await page.waitForFunction(() => !document.querySelector('.login-screen'), null, { timeout: 30000 })
+  if (!(await page.getByRole('heading', { name: /Saved jobs|Jobs/i }).count())) {
+    await page.getByRole('link', { name: 'Jobs' }).first().click()
+  }
+  await page.waitForTimeout(400)
+  const paulSeesAnna = await page.getByText(annaJobName).count()
+  const paulApi = await page.evaluate(async (name) => {
+    const res = await fetch('/api/state?user=paul')
+    const payload = await res.json()
+    const raw = payload?.data?.['htr-saved-jobs']
+    const parsed = typeof raw === 'string' ? JSON.parse(raw || '[]') : (raw || [])
+    return Array.isArray(parsed) ? parsed.filter(item => item?.name === name).length : -1
+  }, annaJobName)
+  record('Paul does not see Anna’s job', paulSeesAnna === 0 && paulApi === 0, `ui=${paulSeesAnna} api=${paulApi}`)
+
+  await page.getByRole('button', { name: 'Switch user' }).first().click()
+  await page.getByRole('heading', { name: "Who's checking routes?" }).waitFor({ timeout: 15000 })
+  await page.getByRole('button', { name: 'Continue as Anna' }).click()
+  await page.waitForFunction(() => !document.querySelector('.login-screen'), null, { timeout: 30000 })
+  if (!(await page.getByRole('heading', { name: /Saved jobs|Jobs/i }).count())) {
+    await page.getByRole('link', { name: 'Jobs' }).first().click()
+  }
+  await page.getByText(annaJobName).first().waitFor({ timeout: 15000 }).catch(() => {})
+  const annaSeesAgain = await page.getByText(annaJobName).count()
+  const annaApiAgain = await page.evaluate(async (name) => {
+    const res = await fetch('/api/state?user=anna')
+    const payload = await res.json()
+    const raw = payload?.data?.['htr-saved-jobs']
+    const parsed = typeof raw === 'string' ? JSON.parse(raw || '[]') : (raw || [])
+    const jobs = window.__HT_TEST__?.getJobs?.() || []
+    return {
+      api: Array.isArray(parsed) ? parsed.filter(item => item?.name === name).length : -1,
+      hook: jobs.filter(item => item?.name === name).length,
+    }
+  }, annaJobName)
+  record(
+    'Switching back to Anna restores her job',
+    annaSeesAgain > 0 || annaApiAgain.api > 0 || annaApiAgain.hook > 0,
+    JSON.stringify({ ui: annaSeesAgain, ...annaApiAgain }),
+  )
+
+  // Account check-history sync: Bremen sample must survive reload on Alerts & history.
+  await page.getByRole('button', { name: 'Switch user' }).first().click()
+  await page.getByRole('heading', { name: "Who's checking routes?" }).waitFor({ timeout: 15000 })
+  await page.getByRole('button', { name: 'Continue as Anna' }).click()
+  await page.waitForFunction(() => !document.querySelector('.login-screen'), null, { timeout: 30000 })
+  const annaHistoryPayload = page.waitForRequest(
+    req => req.url().includes('/api/check-route') && req.method() === 'POST',
+    { timeout: 120000 },
+  )
+  await page.goto(base + '/route-checks?permit=bremen-dortmund&run=1', { waitUntil: 'domcontentloaded' })
+  await annaHistoryPayload
+  await page.locator('.verdict-banner, .checking-state').first().waitFor({ timeout: 15000 })
+  if (await page.locator('.checking-state').count()) {
+    await page.locator('.verdict-banner').waitFor({ timeout: 120000 })
+  } else {
+    await page.locator('.verdict-banner').waitFor({ timeout: 30000 })
+  }
+  await page.waitForFunction(() => {
+    const history = window.__HT_TEST__?.getHistory?.() || window.__HT_TEST__?.getStore?.('htr-route-check-history') || []
+    return Array.isArray(history) && history.length >= 1
+  }, null, { timeout: 30000 }).catch(() => {})
+  await page.evaluate(async () => {
+    await window.__HT_TEST__?.flushStore?.()
+  })
+  // Wait until the PUT has landed (save chip leaves pending/error).
+  await page.waitForFunction(() => {
+    const badge = document.querySelector('.user-chip-badge.is-error')
+    return !badge
+  }, null, { timeout: 20000 }).catch(() => {})
+  await page.waitForTimeout(800)
+
+  const annaStateBeforeReload = await page.evaluate(async () => {
+    const res = await fetch('/api/state?user=anna')
+    const payload = await res.json()
+    const raw = payload?.data?.['htr-route-check-history']
+    const parsed = typeof raw === 'string' ? JSON.parse(raw || '[]') : (raw || [])
+    return {
+      hasKey: Object.prototype.hasOwnProperty.call(payload?.data || {}, 'htr-route-check-history'),
+      count: Array.isArray(parsed) ? parsed.length : -1,
+      backend: payload?.backend || null,
+    }
+  })
+  record(
+    'Anna Bremen check is present in GET /api/state history',
+    annaStateBeforeReload.hasKey && annaStateBeforeReload.count >= 1,
+    JSON.stringify(annaStateBeforeReload),
+  )
+
+  await page.goto(base + '/activity', { waitUntil: 'domcontentloaded' })
+  await page.getByRole('heading', { name: /Alerts & history/i }).waitFor({ timeout: 20000 })
+  const activityChecks = await page.locator('.check-history-log .route-alert-item').count()
+  const activityEmpty = await page.getByRole('heading', { name: /No checks yet|No checks in this browser/i }).count()
+  record(
+    'Alerts & history shows ≥1 check after reload for Anna',
+    activityChecks >= 1 && activityEmpty === 0,
+    `checks=${activityChecks} empty=${activityEmpty}`,
+  )
+
+  // Return to Demo for any remaining checks.
+  await page.getByRole('button', { name: 'Switch user' }).first().click()
+  await page.getByRole('button', { name: 'Continue as Demo' }).click()
+  await page.waitForFunction(() => !document.querySelector('.login-screen'), null, { timeout: 30000 })
 
   // Dark-mode HOLD banner title must stay ≥4.5:1 (safety-critical).
   const holdContrast = await runContrastSample(

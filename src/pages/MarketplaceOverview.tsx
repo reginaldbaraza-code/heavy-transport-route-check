@@ -156,7 +156,7 @@ export default function MarketplaceOverview() {
         <section className="saved-checks-section" aria-label="Saved jobs">
           <div className="market-section-header compact">
             <div>
-              <span className="market-eyebrow">This browser</span>
+              <span className="market-eyebrow">Your account</span>
               <h2>Saved jobs</h2>
             </div>
             <Link to="/jobs">Open jobs <ArrowRight size={16} /></Link>
@@ -176,7 +176,7 @@ export default function MarketplaceOverview() {
               </Link>
             ))}
           </div>
-          <p className="storage-note">Jobs are stored in this browser only. Monitoring runs only while the tab is open.</p>
+          <p className="storage-note">Jobs are saved to your account. Monitoring runs only while the tab is open.</p>
         </section>
       )}
 
@@ -184,7 +184,7 @@ export default function MarketplaceOverview() {
         <section className="saved-checks-section" aria-label="Saved route checks">
           <div className="market-section-header compact">
             <div>
-              <span className="market-eyebrow">This browser</span>
+              <span className="market-eyebrow">Your account</span>
               <h2>Your saved route checks</h2>
             </div>
             <Link to="/activity">Alerts & history <ArrowRight size={16} /></Link>
@@ -206,14 +206,14 @@ export default function MarketplaceOverview() {
               )
             })}
           </div>
-          <p className="storage-note">History is stored only in this browser.</p>
+          <p className="storage-note">History is saved to your account.</p>
         </section>
       ) : (
         <section className="transport-empty-state saved-checks-empty">
           <div className="empty-state-card">
             <Upload size={48} />
             <h2>No saved routes yet</h2>
-            <p>Import a permitted route to check live Autobahn conditions. Completed checks are stored only in this browser.</p>
+            <p>Import a permitted route to check live Autobahn conditions. Completed checks are saved to your account.</p>
             <Link to="/route-checks" className="market-button primary">
               <Upload size={16} /> Check your first route
             </Link>

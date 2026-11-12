@@ -611,7 +611,7 @@ export default function RouteIntelligencePolished() {
       if (loadedJob.current === jobId && !autoRun) return
       const job = getJob(jobId)
       if (!job) {
-        setError('That saved job was not found in this browser.')
+        setError('That saved job was not found in your account.')
         return
       }
       loadedJob.current = jobId
@@ -1370,7 +1370,7 @@ export default function RouteIntelligencePolished() {
             {showSaveJob && (
               <div className="job-save-card" data-testid="save-job-form">
                 <h3>Save as job</h3>
-                <p>Stores the route file, permit number, vehicle dimensions, and planned departure in this browser only.</p>
+                <p>Saves the route file, permit number, vehicle dimensions, and planned departure to your account.</p>
                 <label>
                   <span>Job name</span>
                   <input value={jobName} onChange={event => setJobName(event.target.value)} />

@@ -203,6 +203,22 @@ test('dark-mode alert-status escalated and solid danger fills meet WCAG AA', () 
   }
 })
 
+function parseRgba(input: string): { r: number; g: number; b: number; a: number } | null {
+  const m = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([0-9.]+))?\s*\)$/i.exec(input.trim())
+  if (!m) return null
+  return { r: Number(m[1]), g: Number(m[2]), b: Number(m[3]), a: m[4] == null ? 1 : Number(m[4]) }
+}
+
+function blendOver(fg: { r: number; g: number; b: number; a: number }, bgHex: string): string {
+  const bg = parseHex(bgHex)
+  assert.ok(bg, `invalid blend bg ${bgHex}`)
+  const a = fg.a
+  const r = Math.round(fg.r * a + bg.r * (1 - a))
+  const g = Math.round(fg.g * a + bg.g * (1 - a))
+  const b = Math.round(fg.b * a + bg.b * (1 - a))
+  return `#${[r, g, b].map(n => n.toString(16).padStart(2, '0')).join('')}`
+}
+
 test('light-mode verdict pills, Re-check, and badge meet WCAG AA contrast', () => {
   const css = readFileSync(new URL('../index.css', import.meta.url), 'utf8')
   const tokens = lightModeTokens(css)
@@ -231,6 +247,27 @@ test('light-mode verdict pills, Re-check, and badge meet WCAG AA contrast', () =
     `Re-check on VERIFY gradient ${blueText} / ${lightBannerSurfaces.verify}`,
   )
   assert.ok(contrastRatio(badgeFg, badgeBg) >= 4.5, `notification badge ${badgeFg} on ${badgeBg}`)
+})
+
+test('Switch user chip link meets WCAG AA on --bg-fill in light and dark', () => {
+  const css = readFileSync(new URL('../index.css', import.meta.url), 'utf8')
+  const switchRule = ruleDeclarations(css, '.user-chip-switch')
+  assert.equal(switchRule.get('color'), 'var(--blue-text)')
+
+  for (const [label, tokens, underlay] of [
+    ['light', lightModeTokens(css), resolve(lightModeTokens(css), '--bg-elevated')] as const,
+    ['dark', darkModeTokens(css), resolve(darkModeTokens(css), '--bg-card')] as const,
+  ]) {
+    const blueText = resolve(tokens, '--blue-text')
+    const fillRaw = resolve(tokens, '--bg-fill')
+    const fill = parseRgba(fillRaw)
+    assert.ok(fill, `${label} --bg-fill should be rgba, got ${fillRaw}`)
+    const chipSurface = blendOver(fill, underlay)
+    assert.ok(
+      contrastRatio(blueText, chipSurface) >= 4.5,
+      `Switch user ${label}: ${blueText} on ${chipSurface} (bg-fill over ${underlay})`,
+    )
+  }
 })
 
 /** Light page wash behind polished verdict banners (prod measured). */

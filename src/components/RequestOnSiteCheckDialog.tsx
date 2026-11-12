@@ -49,7 +49,7 @@ export default function RequestOnSiteCheckDialog({
         <header>
           <h2 id="onsite-request-title">Log an on-site check (demo)</h2>
           <p>
-            This demo only records a field-verification note{location ? ` for ${location}` : ''} in this browser.
+            This demo only records a field-verification note{location ? ` for ${location}` : ''} to your account.
             Nobody is notified — nothing is sent.
           </p>
         </header>

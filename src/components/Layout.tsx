@@ -2,16 +2,18 @@ import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Home, Settings, Map, DatabaseZap, Route, ShieldAlert,
-  Bell, Search, ChevronDown, Activity, X, Menu,
+  Bell, Search, ChevronDown, X, Menu,
   HelpCircle, Briefcase
 } from 'lucide-react'
 import RouteCheckLogo from './RouteCheckLogo'
 import MobileTabBar from './MobileTabBar'
+import UserChip from './UserChip'
 import { useRouteMonitoring } from '../context/RouteMonitoringContext'
 import { useJobs } from '../context/JobsContext'
 import { useOrgSettings } from '../context/OrgSettingsContext'
+import { flushPendingSaves } from '../lib/browserStore'
 import { SEARCH_EMPTY_HELP, searchAppData } from '../lib/appSearch'
-import { formatBerlinDateTime, orgInitials } from '../lib/formatTime'
+import { formatBerlinDateTime } from '../lib/formatTime'
 import {
   DRAWER_NAV_MAX_WIDTH_PX,
   collapseControlLabel,
@@ -68,7 +70,7 @@ export default function Layout() {
   const location = useLocation()
   const { alerts, history, unreadCount, acknowledgeAlert } = useRouteMonitoring()
   const { jobs } = useJobs()
-  const { displayName, orgTypeLabel, complete } = useOrgSettings()
+  const { displayName, orgTypeLabel } = useOrgSettings()
   const searchHits = useMemo(
     () => searchAppData({ query: searchQuery, jobs, history, alerts }),
     [alerts, history, jobs, searchQuery],
@@ -87,6 +89,10 @@ export default function Layout() {
 
   useEffect(() => {
     document.title = documentTitleFor(location.pathname)
+  }, [location.pathname])
+
+  useEffect(() => {
+    void flushPendingSaves()
   }, [location.pathname])
 
   useEffect(() => {
@@ -151,14 +157,15 @@ export default function Layout() {
 
       {/* ── Sidebar ───────────────────────────────────────────────── */}
       <aside
-        className={`app-sidebar ${mobileOpen ? 'mobile-open' : ''}`}
+        className={`app-sidebar${mobileOpen ? ' mobile-open' : ''}${sidebarCollapsed ? ' is-collapsed-rail' : ''}`}
         style={{
           width: sidebarCollapsed ? 72 : 232,
           transition: 'width 220ms var(--ease-out)',
           display: 'flex',
           flexDirection: 'column',
           flexShrink: 0,
-          overflow: 'hidden',
+          // Collapsed rail tooltips sit outside the aside — do not clip them.
+          overflow: sidebarCollapsed ? 'visible' : 'hidden',
         }}
       >
         {/* Logo row */}
@@ -217,8 +224,9 @@ export default function Layout() {
               key={path}
               to={path}
               end={exact}
-              title={sidebarCollapsed ? label : undefined}
-              className="sidebar-link"
+              aria-label={label}
+              data-tooltip={sidebarCollapsed ? label : undefined}
+              className={`sidebar-link${sidebarCollapsed ? ' has-tooltip' : ''}`}
               onClick={() => setMobileOpen(false)}
             >
               {({ isActive }) => (
@@ -244,8 +252,9 @@ export default function Layout() {
             <NavLink
               key={path}
               to={path}
-              title={sidebarCollapsed ? label : undefined}
-              className="sidebar-link"
+              aria-label={label}
+              data-tooltip={sidebarCollapsed ? label : undefined}
+              className={`sidebar-link${sidebarCollapsed ? ' has-tooltip' : ''}`}
               onClick={() => setMobileOpen(false)}
             >
               {({ isActive }) => (
@@ -260,9 +269,15 @@ export default function Layout() {
           ))}
         </nav>
 
-        {/* Settings */}
+        {/* Settings + signed-in user */}
         <div className="sidebar-footer">
-          <NavLink to="/settings" title={sidebarCollapsed ? 'Settings' : undefined} className="sidebar-link" onClick={() => setMobileOpen(false)}>
+          <NavLink
+            to="/settings"
+            aria-label="Settings"
+            data-tooltip={sidebarCollapsed ? 'Settings' : undefined}
+            className={`sidebar-link${sidebarCollapsed ? ' has-tooltip' : ''}`}
+            onClick={() => setMobileOpen(false)}
+          >
             {({ isActive }) => (
               <div className={`sidebar-link-row ${isActive ? 'is-active' : ''} ${sidebarCollapsed ? 'is-collapsed' : ''}`}>
                 <Settings size={18} strokeWidth={isActive ? 2 : 1.75} />
@@ -270,6 +285,9 @@ export default function Layout() {
               </div>
             )}
           </NavLink>
+          <div className={`sidebar-user${sidebarCollapsed ? ' is-collapsed' : ''}`}>
+            <UserChip collapsed={sidebarCollapsed} />
+          </div>
         </div>
       </aside>
       {mobileOpen && <button type="button" className="mobile-nav-backdrop" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}
@@ -295,6 +313,9 @@ export default function Layout() {
           <button type="button" className="mobile-nav-trigger" aria-label="Open navigation" onClick={onOpenMobileNav}>
             <Menu size={18} />
           </button>
+          <div className="mobile-user-chip">
+            <UserChip compact />
+          </div>
           {/* Search */}
           <div className="topbar-search" ref={searchRef} style={{
             flex: 1,
@@ -406,7 +427,7 @@ export default function Layout() {
                   </div>
                   {notifications.length === 0 && (
                     <div style={{ padding: '16px', fontSize: 14, color: 'var(--text-secondary)' }}>
-                      No alerts yet. Alerts appear after you run a route check in this browser.
+                      No alerts yet. Alerts appear after you run a route check.
                     </div>
                   )}
                   {notifications.map((n, i) => (
@@ -486,26 +507,14 @@ export default function Layout() {
               onClick={() => navigate('/settings')}
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
-                padding: '4px 8px 4px 4px',
+                padding: '6px 8px',
                 borderRadius: 10,
                 background: 'transparent',
                 cursor: 'pointer',
               }}
             >
               <span className="sr-only">{displayName} · {orgTypeLabel}</span>
-              <div
-                aria-hidden="true"
-                style={{
-                width: 28, height: 28, borderRadius: 9,
-                background: 'var(--navy-mid)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontWeight: 700, fontSize: 14, color: 'white',
-                letterSpacing: '-0.01em',
-                flexShrink: 0,
-              }}>
-                {orgInitials(complete ? displayName : 'Dispatcher')}
-              </div>
-              <div aria-hidden="true">
+              <div aria-hidden="true" className="topbar-org-meta">
                 <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.3, letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
                   {displayName}
                 </div>

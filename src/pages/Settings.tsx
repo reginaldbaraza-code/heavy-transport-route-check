@@ -15,14 +15,14 @@ const tabs = [
 ] as const
 
 const deliveryChannels = [
-  { id: 'inApp', label: 'In-app', description: 'Show route alerts in this browser. Stored only on this device.' },
+  { id: 'inApp', label: 'In-app', description: 'Show route alerts for your account. Saved with your notification preferences.' },
   { id: 'email', label: 'E-mail', description: 'Not enabled — this app does not send email.' },
   { id: 'sms', label: 'SMS', description: 'Not enabled — this app does not send SMS.' },
 ] as const
 
 const alertTypes = [
   { id: 'verdict', label: 'Verdict change', description: 'READY, VERIFY, or HOLD status changes from checks you run.' },
-  { id: 'closure', label: 'New closure', description: 'A closure appears in a check you ran in this browser.' },
+  { id: 'closure', label: 'New closure', description: 'A closure appears in a check you ran.' },
   { id: 'stale', label: 'Data stale', description: 'A required source is too old for a dispatch decision.' },
 ] as const
 
@@ -52,11 +52,11 @@ export default function Settings() {
     setSaved(true)
   }
 
-  const statusLabel = dirty ? 'Unsaved changes' : complete ? 'Saved in this browser' : 'Optional profile'
+  const statusLabel = dirty ? 'Unsaved changes' : complete ? 'Saved to your account' : 'Optional profile'
   const footerStatus = dirty
     ? 'You have unsaved changes.'
     : complete
-      ? 'Organisation name is saved in this browser only.'
+      ? 'Organisation name is saved to your account.'
       : 'Add an organisation name when you want it in the header. Nothing is required to run a check.'
 
   return (
@@ -69,7 +69,7 @@ export default function Settings() {
               : activeTab === 'monitoring' ? 'Tab monitoring'
                 : 'Data sources and limits'}
         </h1>
-        <p>Manage the operator identity shown in this browser, in-tab monitoring, and which free data sources this check uses. Settings are saved in this browser only.</p>
+        <p>Manage the operator identity shown in the header, in-tab monitoring, and which free data sources this check uses. Settings are saved to your account.</p>
       </header>
 
       <div className="settings-workspace">
@@ -99,7 +99,7 @@ export default function Settings() {
                   <span className="settings-card-icon"><Building2 size={18} /></span>
                   <div>
                     <h2>Organisation profile</h2>
-                    <p>This identity appears in the header. It is stored only in this browser.</p>
+                    <p>This identity appears in the header. It is stored on your account.</p>
                   </div>
                 </div>
                 <div className="settings-card-badges">
@@ -147,7 +147,7 @@ export default function Settings() {
                 {error && !error.toLowerCase().includes('website') && <p role="alert" className="settings-error">{error}</p>}
               </div>
               <footer className="settings-card-footer">
-                <p>{footerStatus} Settings are saved in this browser only.</p>
+                <p>{footerStatus} Settings are saved to your account.</p>
                 <button type="button" onClick={save} disabled={!dirty}><Save size={16} /> Save changes</button>
               </footer>
             </section>
@@ -160,7 +160,7 @@ export default function Settings() {
                   <span className="settings-card-icon"><Bell size={18} /></span>
                   <div>
                     <h2>Route alert preferences</h2>
-                    <p>In-app alerts come from route checks you run in this browser. Email and SMS are not sent.</p>
+                    <p>In-app alerts come from route checks you run. Email and SMS are not sent.</p>
                   </div>
                 </div>
               </header>
@@ -197,7 +197,7 @@ export default function Settings() {
                   </label>
                 ))}
               </div>
-              <p className="storage-note settings-storage-note">Notification preferences are saved in this browser only. This app does not send email, SMS, or push messages. Browser notifications only appear after you click Allow.</p>
+              <p className="storage-note settings-storage-note">Notification preferences are saved to your account. This app does not send email, SMS, or push messages. Browser notifications only appear after you click Allow.</p>
             </section>
           )}
 
@@ -268,7 +268,7 @@ export default function Settings() {
           )}
         </div>
       </div>
-      {saved && <Toast message="Profile saved in this browser only. It is not stored on a server." onClose={() => setSaved(false)} />}
+      {saved && <Toast message="Profile saved to your account." onClose={() => setSaved(false)} />}
     </div>
   )
 }

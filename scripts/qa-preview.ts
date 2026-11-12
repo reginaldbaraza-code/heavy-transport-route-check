@@ -4,6 +4,7 @@ import { extname, join, normalize, resolve } from 'node:path'
 import checkRouteHandler from '../api/check-route.ts'
 import autobahnEventsHandler from '../api/autobahn-events.ts'
 import bwRoadworksHandler from '../api/bw-roadworks.ts'
+import stateHandler from '../api/state.ts'
 
 const dist = resolve(process.cwd(), 'dist')
 const port = Number(process.env.QA_PORT || 4173)
@@ -80,6 +81,11 @@ const server = createServer(async (req, res) => {
     }
     if (url.pathname === '/api/bw-roadworks') {
       await bwRoadworksHandler(apiReq as any, mockRes(res) as any)
+      return
+    }
+    if (url.pathname === '/api/state') {
+      const body = req.method === 'GET' || req.method === 'OPTIONS' ? undefined : await readJsonBody(req)
+      await stateHandler({ ...apiReq, body } as any, mockRes(res) as any)
       return
     }
 
