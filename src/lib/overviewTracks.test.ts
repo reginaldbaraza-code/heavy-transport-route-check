@@ -116,8 +116,4 @@ test('overview and sample maps no longer use the illustrated Germany heatmap', (
   assert.equal(overview.includes('germanyOutline'), false)
   assert.equal(overview.includes('Hamburg, Bremen, Leipzig, Duisburg, München'), false)
   assert.ok(overview.includes('LazyPermitMap'))
-  const heatmap = readFileSync('src/components/MobilityHeatmap.tsx', 'utf8')
-  assert.ok(heatmap.includes("from '../data/germanyMap'"))
-  const home = readFileSync('src/pages/Home.tsx', 'utf8')
-  assert.equal(home.includes('showRoute'), false)
 })
