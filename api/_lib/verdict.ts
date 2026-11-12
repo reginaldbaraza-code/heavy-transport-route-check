@@ -689,6 +689,8 @@ export function determineVerdict(
   evidence: Array<Pick<ClassifiedEvidence, 'id' | 'state' | 'blocker' | 'category'>>,
   opts: {
     degraded?: boolean
+    /** Override the default degraded reason (e.g. corridor undetected). */
+    degradedReason?: string
     clearanceConfirmed?: boolean
     acknowledgements?: SiteAcknowledgement[]
   } = {},
@@ -712,7 +714,12 @@ export function determineVerdict(
     }
   }
   if (opts.degraded) {
-    return { verdict: 'VERIFY', confidence: 'medium', reasons: ['Live Autobahn source unavailable.'], acknowledgedCount: 0 }
+    return {
+      verdict: 'VERIFY',
+      confidence: 'medium',
+      reasons: [opts.degradedReason || 'Live Autobahn source unavailable.'],
+      acknowledgedCount: 0,
+    }
   }
   const acknowledgeable = evidence.filter(item => isAcknowledgeable(item))
   const verifyBlockers = acknowledgeable.filter(item => !ackIds.has(item.id))
@@ -744,6 +751,7 @@ export function verdictCopy(
   opts: {
     degraded?: boolean
     degradedPartial?: boolean
+    corridorUndetected?: boolean
     issueCount: number
     distanceKm: number
     clearanceConfirmed?: boolean
@@ -764,6 +772,12 @@ export function verdictCopy(
     }
   }
   if (opts.degraded) {
+    if (opts.corridorUndetected) {
+      return {
+        title: "Can't confirm route – motorway not detected",
+        summary: 'Could not identify which Autobahn the GPX follows. Pass a corridor hint (e.g. A20) or verify manually.',
+      }
+    }
     return {
       title: opts.degradedPartial
         ? "Can't confirm route – some Autobahn feeds unavailable"
