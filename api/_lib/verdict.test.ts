@@ -393,6 +393,17 @@ test('permitted roads inferred from corridor; other Autobahn is VERIFY', () => {
   assert.match(other?.reason || '', /not the permitted/)
 })
 
+test('inferPermittedRoads sanitizes polluted job re-run corridor tokens', () => {
+  assert.deepEqual(
+    inferPermittedRoads('A1 · ±0.5 km HOLD / ±1.5 km VERIFY', ['A1·±0.5kmHOLD/±1.5kmVERIFY']),
+    ['A1'],
+  )
+  assert.deepEqual(
+    inferPermittedRoads('A1, A1·±0.5KMHOLD/±1.5KMVERIFY · ±0.5 km HOLD / ±1.5 km VERIFY'),
+    ['A1'],
+  )
+})
+
 test('Autobahn closure without Vollsperrung is VERIFY, not HOLD', () => {
   const item = classifyCandidate(candidate({
     title: 'Sperrung rechter Fahrstreifen A7',
