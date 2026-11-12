@@ -14,6 +14,7 @@ import {
   type MonitorPrefs,
   type SavedJob,
 } from '../lib/jobs'
+import { prepareSavedJobsForPersist, SAVED_JOBS_MAX_RECORDS } from '../lib/jobsPersist'
 import { notificationBody, shouldEscalateAlert, verdictChangeCopy } from '../lib/monitoring'
 import { checkRoute, type RouteCheckResult } from '../lib/routeCheck'
 import { confirmOnSiteTitles } from '../lib/siteAcknowledgements'
@@ -74,10 +75,24 @@ export function JobsProvider({ children }: { children: ReactNode }) {
   prefsRef.current = prefs
   alertsRef.current = alerts
 
-  const persistJobs = (next: SavedJob[]) => {
+  const persistJobs = (next: SavedJob[], opts?: { immediate?: boolean }) => {
     const normalized = next.map(normalizeSavedJob)
-    writeJson(STORAGE_KEYS.savedJobs, normalized)
-    setJobs(normalized)
+    const prepared = prepareSavedJobsForPersist(normalized, {
+      maxRecords: SAVED_JOBS_MAX_RECORDS,
+    })
+    // Keep in-memory GPX full for the session; writeJson re-compacts for sync.
+    const forMemory = normalized.slice(0, prepared.jobs.length)
+    if (prepared.dropped > 0 && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('htr-app-toast', {
+        detail: {
+          message: prepared.dropped === 1
+            ? 'Oldest saved job removed (50 job limit).'
+            : `Oldest ${prepared.dropped} saved jobs removed (50 job limit).`,
+        },
+      }))
+    }
+    writeJson(STORAGE_KEYS.savedJobs, forMemory, { immediate: opts?.immediate })
+    setJobs(forMemory)
   }
 
   const saveJob = useCallback<JobsValue['saveJob']>((draft, id) => {
@@ -96,7 +111,7 @@ export function JobsProvider({ children }: { children: ReactNode }) {
         ? draft.monitoringStoppedReason 
         : (isFutureDeparture(draft) ? null : 'departed'),
     })
-    persistJobs([saved, ...jobsRef.current.filter(job => job.id !== saved.id)])
+    persistJobs([saved, ...jobsRef.current.filter(job => job.id !== saved.id)], { immediate: true })
     return saved
   }, [])
 

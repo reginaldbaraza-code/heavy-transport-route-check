@@ -61,7 +61,7 @@ export default function Login() {
       if (buttons.length === 0) return
       const currentIndex = buttons.indexOf(document.activeElement as HTMLButtonElement)
       if (currentIndex < 0) return
-      const cols = window.matchMedia('(min-width: 768px)').matches ? 4 : 2
+      const cols = window.matchMedia('(min-width: 768px)').matches ? 3 : 2
       let next = currentIndex
       if (event.key === 'ArrowRight') next = Math.min(buttons.length - 1, currentIndex + 1)
       else if (event.key === 'ArrowLeft') next = Math.max(0, currentIndex - 1)

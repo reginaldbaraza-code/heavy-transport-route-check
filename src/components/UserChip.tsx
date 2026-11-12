@@ -19,15 +19,16 @@ export default function UserChip({
     memoryBadge ? 'Not saved online (dev)' : null,
     'Switch user',
   ].filter(Boolean)
-  const title = titleBits.join(' · ')
+  const tooltip = titleBits.join(' · ')
+  const switchLabel = `Switch user (${user.name})`
 
   if (collapsed) {
     return (
       <button
         type="button"
-        className="user-chip is-collapsed"
-        title={title}
-        aria-label={`Switch user (${user.name})`}
+        className="user-chip is-collapsed has-tooltip"
+        data-tooltip={tooltip}
+        aria-label={switchLabel}
         onClick={() => { void switchUser() }}
       >
         <span

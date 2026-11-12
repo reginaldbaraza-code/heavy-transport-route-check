@@ -4,8 +4,11 @@ import {
   shouldUseKeepalive,
   STATE_BODY_MAX_BYTES,
   utf8ByteLength,
+  KEEPALIVE_BODY_MAX_BYTES,
   type HistoryPersistInput,
 } from './checkHistoryPersist'
+import { prepareSavedJobsForPersist } from './jobsPersist'
+import type { SavedJob } from './jobs'
 
 export const STORAGE_KEYS = {
   orgProfile: 'htr-org-profile',
@@ -42,6 +45,14 @@ export {
   utf8ByteLength,
 } from './checkHistoryPersist'
 
+/**
+ * Chrome rejects fetch `{ keepalive: true }` and `navigator.sendBeacon` bodies
+ * over ~64 KB. We stay under with {@link KEEPALIVE_BODY_MAX_BYTES} (60 KB).
+ * On pagehide/visibility hidden, bodies above that limit use a synchronous
+ * XHR best-effort write instead — browsers may still cancel in-flight async
+ * fetches during unload, so large payloads are not guaranteed to flush.
+ */
+
 const DEBOUNCE_MS = 600
 const MAX_RETRIES = 3
 
@@ -51,6 +62,7 @@ const cache = new Map<string, string>()
 const pendingTimers = new Map<string, number>()
 const pendingKeys = new Set<string>()
 const retryCounts = new Map<string, number>()
+const inflightControllers = new Map<string, AbortController>()
 const listeners = new Set<SyncListener>()
 
 let activeUserId: string | null = null
@@ -97,7 +109,7 @@ function setBackend(next: SyncBackend) {
 function installFlushHooks() {
   if (flushHookInstalled || typeof window === 'undefined') return
   flushHookInstalled = true
-  // Prefer keepalive fetch so the write can finish; beacon is a fallback inside flush.
+  // Prefer keepalive fetch so the write can finish; beacon / sync XHR inside flush.
   const flush = () => { void flushPendingSaves({ beacon: true }) }
   window.addEventListener('pagehide', flush)
   window.addEventListener('beforeunload', flush)
@@ -124,32 +136,78 @@ export function readJson<T>(key: string, fallback: T): T {
   return parseCached(cache.get(key), fallback)
 }
 
-export function writeJson(key: string, value: unknown) {
-  let toStore: unknown = value
+function prepareValueForPersist(key: string, value: unknown): { value: unknown; dropped?: number } {
   if (key === STORAGE_KEYS.checkHistory && Array.isArray(value)) {
-    // Persist a compact, capped copy. Callers may keep full in-memory records.
-    toStore = prepareCheckHistoryForPersist(value as HistoryPersistInput[], {
+    return {
+      value: prepareCheckHistoryForPersist(value as HistoryPersistInput[], {
+        userId: activeUserId || 'user',
+        maxBodyBytes: STATE_BODY_MAX_BYTES,
+      }),
+    }
+  }
+  if (key === STORAGE_KEYS.savedJobs && Array.isArray(value)) {
+    const prepared = prepareSavedJobsForPersist(value as SavedJob[], {
       userId: activeUserId || 'user',
       maxBodyBytes: STATE_BODY_MAX_BYTES,
     })
+    return { value: prepared.jobs, dropped: prepared.dropped }
   }
-  const serialized = JSON.stringify(toStore)
+  return { value }
+}
+
+export function writeJson(key: string, value: unknown, opts?: { immediate?: boolean }) {
+  const prepared = prepareValueForPersist(key, value)
+  // Job-cap toasts are owned by JobsContext so the UI list and message stay in sync.
+  const serialized = JSON.stringify(prepared.value)
   cache.set(key, serialized)
   if (!activeUserId) return
   if (!(STATE_FIELD_KEYS as readonly string[]).includes(key)) return
-  scheduleSave(key, serialized)
+  if (opts?.immediate) {
+    scheduleSaveImmediate(key, serialized)
+  } else {
+    scheduleSave(key, serialized)
+  }
+}
+
+function clearPendingTimer(key: string) {
+  const existing = pendingTimers.get(key)
+  if (existing != null) {
+    window.clearTimeout(existing)
+    pendingTimers.delete(key)
+  }
+}
+
+function abortInflight(key: string) {
+  const controller = inflightControllers.get(key)
+  if (!controller) return
+  controller.abort()
+  inflightControllers.delete(key)
 }
 
 function scheduleSave(key: string, serialized: string) {
   pendingKeys.add(key)
   setSaveStatus('pending')
-  const existing = pendingTimers.get(key)
-  if (existing != null) window.clearTimeout(existing)
+  clearPendingTimer(key)
   const timer = window.setTimeout(() => {
     pendingTimers.delete(key)
     void persistKey(key, serialized)
   }, DEBOUNCE_MS)
   pendingTimers.set(key, timer)
+}
+
+/** Skip debounce — used for job save and route-change flushes. */
+function scheduleSaveImmediate(key: string, serialized: string) {
+  pendingKeys.add(key)
+  setSaveStatus('pending')
+  clearPendingTimer(key)
+  void persistKey(key, serialized)
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    (error instanceof DOMException && error.name === 'AbortError')
+    || (error instanceof Error && error.name === 'AbortError')
+  )
 }
 
 async function persistKey(key: string, serialized: string, attempt = 0): Promise<boolean> {
@@ -170,7 +228,7 @@ async function persistKey(key: string, serialized: string, attempt = 0): Promise
     return false
   }
 
-  // History: last-chance trim if something still exceeds the server limit.
+  // History / jobs: last-chance trim if something still exceeds the server limit.
   if (key === STORAGE_KEYS.checkHistory && Array.isArray(value)) {
     const trimmed = prepareCheckHistoryForPersist(value as HistoryPersistInput[], {
       userId: activeUserId,
@@ -181,6 +239,18 @@ async function persistKey(key: string, serialized: string, attempt = 0): Promise
       cache.set(key, trimmedSerialized)
       serialized = trimmedSerialized
       value = trimmed
+    }
+  }
+  if (key === STORAGE_KEYS.savedJobs && Array.isArray(value)) {
+    const trimmed = prepareSavedJobsForPersist(value as SavedJob[], {
+      userId: activeUserId,
+      maxBodyBytes: STATE_BODY_MAX_BYTES,
+    })
+    const trimmedSerialized = JSON.stringify(trimmed.jobs)
+    if (trimmedSerialized !== serialized) {
+      cache.set(key, trimmedSerialized)
+      serialized = trimmedSerialized
+      value = trimmed.jobs
     }
   }
 
@@ -199,6 +269,10 @@ async function persistKey(key: string, serialized: string, attempt = 0): Promise
     return false
   }
 
+  abortInflight(key)
+  const controller = new AbortController()
+  inflightControllers.set(key, controller)
+
   try {
     const res = await fetch('/api/state', {
       method: 'PUT',
@@ -206,14 +280,34 @@ async function persistKey(key: string, serialized: string, attempt = 0): Promise
       body,
       // Chrome rejects keepalive bodies over ~64 KB — use normal fetch above that.
       keepalive: shouldUseKeepalive(bodyBytes),
+      signal: controller.signal,
     })
+    if (inflightControllers.get(key) === controller) inflightControllers.delete(key)
     if (!res.ok) throw new Error(`save failed ${res.status}`)
+    // Ignore success for a superseded body.
+    if (cache.get(key) !== serialized) {
+      pendingKeys.delete(key)
+      if (pendingKeys.size === 0 && saveStatus !== 'error') setSaveStatus('ok')
+      return true
+    }
     pendingKeys.delete(key)
     retryCounts.delete(key)
     saveToastShown = false
     if (pendingKeys.size === 0) setSaveStatus('ok')
     return true
-  } catch {
+  } catch (error) {
+    if (inflightControllers.get(key) === controller) inflightControllers.delete(key)
+    // Superseded request — silent.
+    if (isAbortError(error)) {
+      pendingKeys.delete(key)
+      if (pendingKeys.size === 0 && saveStatus !== 'error') setSaveStatus('ok')
+      return true
+    }
+    if (cache.get(key) !== serialized) {
+      pendingKeys.delete(key)
+      if (pendingKeys.size === 0 && saveStatus !== 'error') setSaveStatus('ok')
+      return true
+    }
     if (attempt + 1 < MAX_RETRIES) {
       const delay = 400 * (2 ** attempt)
       await new Promise(resolve => window.setTimeout(resolve, delay))
@@ -240,16 +334,37 @@ async function persistKey(key: string, serialized: string, attempt = 0): Promise
 function beaconSave(userId: string, key: string, serialized: string) {
   try {
     const body = encodeStateWriteBody(userId, key, JSON.parse(serialized))
-    // sendBeacon shares the ~64 KB keepalive limit — skip and fall back to fetch.
+    // sendBeacon shares the ~64 KB keepalive limit — skip and fall back.
     if (!shouldUseKeepalive(utf8ByteLength(body))) return false
     if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
       const blob = new Blob([body], { type: 'application/json' })
       if (navigator.sendBeacon('/api/state', blob)) return true
     }
   } catch {
-    // fall through to fetch
+    // fall through
   }
   return false
+}
+
+/**
+ * Synchronous best-effort PUT for unload when the body exceeds the keepalive
+ * limit (~60 KB). Async fetch is unreliable during pagehide; sync XHR may still
+ * complete. Documented limit: see KEEPALIVE_BODY_MAX_BYTES.
+ */
+function syncUnloadSave(userId: string, key: string, serialized: string): boolean {
+  try {
+    const body = encodeStateWriteBody(userId, key, JSON.parse(serialized))
+    const bodyBytes = utf8ByteLength(body)
+    if (bodyBytes > STATE_BODY_MAX_BYTES) return false
+    if (typeof XMLHttpRequest === 'undefined') return false
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', '/api/state', false)
+    xhr.setRequestHeader('Content-Type', 'application/json')
+    xhr.send(body)
+    return xhr.status >= 200 && xhr.status < 300
+  } catch {
+    return false
+  }
 }
 
 export async function flushPendingSaves(opts?: { beacon?: boolean }): Promise<void> {
@@ -267,9 +382,23 @@ export async function flushPendingSaves(opts?: { beacon?: boolean }): Promise<vo
       pendingKeys.delete(key)
       return
     }
-    if (opts?.beacon && beaconSave(userId, key, serialized)) {
-      pendingKeys.delete(key)
-      return
+    if (opts?.beacon) {
+      if (beaconSave(userId, key, serialized)) {
+        pendingKeys.delete(key)
+        return
+      }
+      // Body > keepalive limit: sync XHR best-effort during unload.
+      try {
+        const bodyBytes = utf8ByteLength(encodeStateWriteBody(userId, key, JSON.parse(serialized)))
+        if (bodyBytes > KEEPALIVE_BODY_MAX_BYTES) {
+          if (syncUnloadSave(userId, key, serialized)) {
+            pendingKeys.delete(key)
+            return
+          }
+        }
+      } catch {
+        // fall through to async persist
+      }
     }
     await persistKey(key, serialized)
   }))
@@ -281,6 +410,8 @@ export async function hydrateUserStore(userId: string): Promise<SyncBackend> {
   cache.clear()
   pendingKeys.clear()
   retryCounts.clear()
+  for (const controller of inflightControllers.values()) controller.abort()
+  inflightControllers.clear()
   for (const timer of pendingTimers.values()) window.clearTimeout(timer)
   pendingTimers.clear()
   saveToastShown = false
@@ -312,6 +443,8 @@ export async function clearUserStore(opts?: { flush?: boolean }) {
   cache.clear()
   pendingKeys.clear()
   retryCounts.clear()
+  for (const controller of inflightControllers.values()) controller.abort()
+  inflightControllers.clear()
   for (const timer of pendingTimers.values()) window.clearTimeout(timer)
   pendingTimers.clear()
   setBackend(null)

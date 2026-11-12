@@ -1317,7 +1317,7 @@ button, a, input, select, textarea {
   .app-topbar { height: 56px !important; padding: 0 14px !important; }
   .live-map-page { height: calc(100dvh - 56px); }
   .topbar-search { max-width: none !important; }
-  .topbar-org-button > div:not(:first-child), .topbar-org-button > svg, .topbar-divider { display: none; }
+  .topbar-org-button .topbar-org-meta, .topbar-org-button > svg, .topbar-divider { display: none; }
   .topbar-org-button { padding-right: 4px !important; }
   .offer-detail-hero, .offer-detail-layout { grid-template-columns: 1fr; }
   .offer-facts-sidebar { display: grid; grid-template-columns: repeat(3, 1fr); }
@@ -3494,7 +3494,7 @@ body, button, input, select, textarea {
     display: none !important;
   }
   
-  .topbar-org-button > div:last-of-type,
+  .topbar-org-button .topbar-org-meta,
   .topbar-org-button > svg {
     display: none !important;
   }
@@ -3783,6 +3783,45 @@ select:focus-visible {
   display: block;
   margin-bottom: 2px;
   text-decoration: none;
+  position: relative;
+}
+
+/* Collapsed-rail tooltips — same surface language as map tooltips, not native title. */
+.has-tooltip {
+  position: relative;
+}
+
+.has-tooltip[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 40;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+  box-shadow: var(--shadow-sm);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.has-tooltip[data-tooltip]:hover::after,
+.has-tooltip[data-tooltip]:focus-visible::after {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .has-tooltip[data-tooltip]:hover::after {
+    opacity: 0;
+  }
 }
 .sidebar-link-row {
   display: flex;
@@ -5339,9 +5378,13 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   min-height: 100dvh;
   min-height: 100svh;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
-  padding: calc(24px + var(--safe-area-inset-top)) 20px calc(28px + var(--safe-area-inset-bottom));
+  /* ~40/60 top bias: a little more space below than above */
+  padding:
+    calc(max(24px, 8vh) + var(--safe-area-inset-top))
+    20px
+    calc(max(28px, 14vh) + var(--safe-area-inset-bottom));
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 88%, var(--navy) 12%) 0%, var(--bg-base) 280px, var(--bg-base) 100%);
   overflow-x: clip;
@@ -5352,6 +5395,13 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  margin-block: auto;
+}
+
+.login-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .login-brand {
@@ -5359,7 +5409,6 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   flex-direction: column;
   align-items: flex-start;
   gap: 10px;
-  padding-top: 12px;
 }
 
 .login-brand h1 {
@@ -5387,7 +5436,7 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
 
 @media (min-width: 768px) {
   .login-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -5435,6 +5484,7 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   font-weight: 700;
   letter-spacing: -0.02em;
   flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
 }
 
 .login-user-copy {
@@ -5475,6 +5525,7 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   display: flex;
   align-items: center;
   gap: 12px;
+  width: 100%;
   color: var(--text-tertiary);
   font-size: var(--text-footnote);
   font-weight: 600;
@@ -5482,26 +5533,27 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   text-transform: uppercase;
 }
 
+.login-demo-divider > span {
+  flex: none;
+}
+
 .login-demo-divider::before,
 .login-demo-divider::after {
   content: '';
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 1.5rem;
   height: 1px;
   background: var(--border);
 }
 
 .login-demo-row {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
 }
 
-@media (min-width: 768px) {
-  .login-demo-row {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-  .login-demo-row .login-user-tile {
-    grid-column: 1 / span 2;
-  }
+.login-demo-row .login-user-tile {
+  width: 100%;
+  grid-column: 1 / -1;
 }
 
 .login-user-tile.is-demo {
@@ -5564,6 +5616,7 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
   font-size: 12px;
   font-weight: 700;
   flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
 }
 
 .user-chip-meta {
@@ -5663,5 +5716,32 @@ h1, .app-page h1, .market-page-header h1, .route-header h1, .live-map-title h1 {
 @media (max-width: 1024px) {
   .mobile-user-chip {
     display: block;
+  }
+
+  /* User chip is the only identity in the header — hide org chrome avatar/name. */
+  .topbar-org-button {
+    display: none !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .mobile-user-chip {
+    max-width: none;
+  }
+
+  .mobile-user-chip .user-chip {
+    padding: 0;
+    width: 36px;
+    height: 36px;
+    justify-content: center;
+  }
+
+  .mobile-user-chip .user-chip-meta {
+    display: none;
+  }
+
+  .mobile-user-chip .user-chip-avatar {
+    width: 32px;
+    height: 32px;
   }
 }

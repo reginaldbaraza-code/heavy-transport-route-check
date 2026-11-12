@@ -156,7 +156,7 @@ export default function MarketplaceOverview() {
         <section className="saved-checks-section" aria-label="Saved jobs">
           <div className="market-section-header compact">
             <div>
-              <span className="market-eyebrow">This browser</span>
+              <span className="market-eyebrow">Your account</span>
               <h2>Saved jobs</h2>
             </div>
             <Link to="/jobs">Open jobs <ArrowRight size={16} /></Link>

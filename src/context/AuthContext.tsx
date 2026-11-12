@@ -78,8 +78,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const detail = (event as CustomEvent<{ message?: string }>).detail
       setSyncToast(detail?.message || "Couldn't save to your account. Retrying…")
     }
+    const onAppToast = (event: Event) => {
+      const detail = (event as CustomEvent<{ message?: string }>).detail
+      if (detail?.message) setSyncToast(detail.message)
+    }
     window.addEventListener('htr-sync-error', onSyncError)
-    return () => window.removeEventListener('htr-sync-error', onSyncError)
+    window.addEventListener('htr-app-toast', onAppToast)
+    return () => {
+      window.removeEventListener('htr-sync-error', onSyncError)
+      window.removeEventListener('htr-app-toast', onAppToast)
+    }
   }, [])
 
   useEffect(() => {
